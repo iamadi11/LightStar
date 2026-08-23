@@ -73,6 +73,8 @@ final class LightBLEManager: NSObject {
     private let maxReconnectAttempts = 5
     private let systemAudio = SystemAudioSampler()
     private var transitionTask: Task<Void, Never>?
+    private var writeQueue: [UInt8: Data] = [:]   // keyed by command byte — latest wins
+    private var drainTimer: Timer?
     private var beatHue: Double = 0
     private var flashLevel: Double = 0
     private var lastScreenH: Double = 0
@@ -104,6 +106,7 @@ final class LightBLEManager: NSObject {
         reconnectTask?.cancel()
         reconnectTask = nil
         reconnectAttempts = maxReconnectAttempts
+        drainTimer?.invalidate(); drainTimer = nil; writeQueue.removeAll()
         if let p = peripheral { central.cancelPeripheralConnection(p) }
         connectionState = .disconnected
     }
@@ -1002,8 +1005,25 @@ final class LightBLEManager: NSObject {
 
     // FFF3 supports write-with-response (.write) — CB queues internally, ACK guaranteed.
     private func write(_ bytes: [UInt8]) {
-        guard connectionState == .connected, let p = peripheral, let ch = writeChar else { return }
-        p.writeValue(Data(bytes), for: ch, type: .withResponse)
+        guard connectionState == .connected else { return }
+        writeQueue[bytes[0]] = Data(bytes)
+        guard drainTimer == nil else { return }
+        let t = Timer(timeInterval: 0.020, repeats: true) { [weak self] timer in
+            MainActor.assumeIsolated {
+                guard let self else { timer.invalidate(); return }
+                guard self.connectionState == .connected,
+                      let p = self.peripheral, let ch = self.writeChar else {
+                    timer.invalidate(); self.drainTimer = nil; return
+                }
+                guard let (cmd, data) = self.writeQueue.first else {
+                    timer.invalidate(); self.drainTimer = nil; return
+                }
+                self.writeQueue.removeValue(forKey: cmd)
+                p.writeValue(data, for: ch, type: .withResponse)
+            }
+        }
+        RunLoop.main.add(t, forMode: .common)
+        drainTimer = t
     }
 
     private func scheduleReconnect() {
@@ -1089,6 +1109,7 @@ extension LightBLEManager: CBCentralManagerDelegate {
         Task { @MainActor in
             self.writeChar = nil
             self.connectionState = .disconnected
+            self.drainTimer?.invalidate(); self.drainTimer = nil; self.writeQueue.removeAll()
             self.transitionTask?.cancel()
             self.systemAudio.onBands = nil
             self.screenSampler.onColor = nil
