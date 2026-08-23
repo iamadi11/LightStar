@@ -64,6 +64,8 @@ final class LightBLEManager: NSObject {
     private let systemAudio = SystemAudioSampler()
     // Beat hue — advances 30° per beat for rainbow/frequency modes
     private var beatHue: Double = 0
+    // Combined mode: flash envelope — spikes to 1.0 on beat, decays each audio frame
+    private var flashLevel: Double = 0
     var audioSyncError: String?
     private let camera = CameraChangeDetector()
     private let screenSampler = ScreenColorSampler()
@@ -170,9 +172,21 @@ final class LightBLEManager: NSObject {
             guard now - lastWrite >= 1.0 / 30.0 else { return }
             lastWrite = now
 
-            // Combined mode: screen controls hue — audio only pulses brightness + saturation
+            // Combined mode: screen owns hue/sat — audio owns brightness + beat flash
             if self.screenSyncActive {
-                let bri = min(1.0, max(0.05, bands.bass * 1.4 + bands.rms * 0.3))
+                // Beat → instant spike to full brightness; decay at 82% per audio frame (~86Hz)
+                // Net: flash visible ~200ms, then fades. Feels tight to the beat.
+                if bands.isBeat {
+                    self.flashLevel = 1.0
+                    // Brief saturation pop so color visually "punches" on the beat
+                    let (h, s, _) = self.color.hsvComponents
+                    self.write(Cmd.hue(h, saturation: min(1.0, s * 1.4 + 0.25)))
+                } else {
+                    self.flashLevel = max(0.0, self.flashLevel * 0.82)
+                }
+                // Base brightness from bass energy; flash envelope adds the punch
+                let baseBri = bands.bass * 0.55 + bands.rms * 0.15
+                let bri = min(1.0, max(0.04, baseBri + self.flashLevel * 0.80))
                 self.write(Cmd.brightness(bri))
                 return
             }
@@ -223,6 +237,7 @@ final class LightBLEManager: NSObject {
     func stopAudioSync() {
         guard audioSyncActive else { return }
         audioSyncActive = false
+        flashLevel = 0
         Task { await self.systemAudio.stop() }
         // Restore steady state only if screen sync isn't still active
         if !screenSyncActive {
