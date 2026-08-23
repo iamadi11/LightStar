@@ -1,6 +1,8 @@
 import SwiftUI
 import AppKit
 import Carbon.HIToolbox
+import AVFoundation
+import ScreenCaptureKit
 
 @main
 struct LightStarApp: App {
@@ -24,9 +26,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
         setupMenuBar()
-        ble.connect()             // always auto-connect on launch
+        ble.connect()
         startObservingBLE()
         setupGlobalHotKey()
+        Task { await requestAllPermissions() }
+    }
+
+    // MARK: - Permissions (request all upfront so macOS shows dialogs at launch)
+
+    private func requestAllPermissions() async {
+        // Microphone
+        await AVCaptureDevice.requestAccess(for: .audio)
+        // Camera
+        await AVCaptureDevice.requestAccess(for: .video)
+        // Screen Recording — attempting SCShareableContent triggers the TCC prompt
+        _ = try? await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
+        // Bluetooth is triggered automatically by CBCentralManager init in LightBLEManager
     }
 
     // MARK: - Menu bar icon
