@@ -103,25 +103,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - Global keyboard shortcut (⌘⇧L — toggle power)
 
     private func setupGlobalHotKey() {
-        // Request Accessibility permission — system shows one-time prompt.
-        // Without it, global monitor silently receives no events.
-        let opts: CFDictionary = ["AXTrustedCheckOptionPrompt": true] as CFDictionary
+        // Show prompt once; retries check silently so dialog never repeats.
+        let showPrompt = globalMonitor == nil
+        let opts: CFDictionary = ["AXTrustedCheckOptionPrompt": showPrompt] as CFDictionary
         let trusted = AXIsProcessTrustedWithOptions(opts)
 
         guard trusted else {
-            // Re-check after a delay; user may grant in System Settings
             Task {
-                try? await Task.sleep(nanoseconds: 5_000_000_000)
+                try? await Task.sleep(nanoseconds: 3_000_000_000)
                 await MainActor.run { self.setupGlobalHotKey() }
             }
             return
         }
 
+        guard globalMonitor == nil else { return }   // already registered
         globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            // ⌘⇧L
+            // ⌘⇧L — toggle power
             guard event.modifierFlags.intersection([.command, .shift, .option, .control])
                     == [.command, .shift],
-                  event.keyCode == 37 else { return }   // 37 = L
+                  event.keyCode == 37 else { return }
             Task { @MainActor in
                 guard let self else { return }
                 self.ble.setPower(on: !self.ble.isOn)
