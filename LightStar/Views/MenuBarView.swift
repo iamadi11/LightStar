@@ -265,6 +265,33 @@ private struct ScreenSyncView: View {
                 .toggleStyle(.switch)
                 .labelsHidden()
             }
+
+            // Display picker — load on appear, refresh on tap
+            HStack(spacing: 4) {
+                Picker("", selection: Binding(
+                    get: { ble.selectedDisplayID },
+                    set: { ble.selectedDisplayID = $0 }
+                )) {
+                    Text("Primary display").tag(Optional<CGDirectDisplayID>.none)
+                    ForEach(ble.availableDisplays, id: \.id) { d in
+                        Text(d.name).tag(Optional(d.id))
+                    }
+                }
+                .labelsHidden()
+                .frame(maxWidth: .infinity)
+                .controlSize(.small)
+
+                Button {
+                    ble.loadAvailableDisplays()
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                }
+                .buttonStyle(.plain)
+                .font(.caption)
+                .help("Refresh display list")
+            }
+            .onAppear { ble.loadAvailableDisplays() }
+
             if let err = ble.screenSyncError {
                 Text(err)
                     .font(.system(size: 9))
@@ -272,18 +299,9 @@ private struct ScreenSyncView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             if ble.screenSyncActive {
-                Text("Strip follows screen color. Brightness controlled by slider above.")
+                Text("Edges weighted 3× — brightness stays at slider above.")
                     .font(.system(size: 9))
                     .foregroundStyle(.secondary)
-                VStack(alignment: .leading, spacing: 2) {
-                    Label("Responsiveness", systemImage: "dial.medium")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                    Slider(value: Binding(
-                        get: { ble.screenSyncResponsiveness },
-                        set: { ble.screenSyncResponsiveness = $0 }
-                    ), in: 0.05...1.0)
-                }
             }
         }
     }

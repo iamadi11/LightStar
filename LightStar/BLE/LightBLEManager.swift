@@ -24,6 +24,9 @@ final class LightBLEManager: NSObject {
     var screenSyncActive = false
     var screenSyncResponsiveness: Double = 0.3
     var screenSyncError: String?
+    // Display picker
+    var availableDisplays: [(id: CGDirectDisplayID, name: String)] = []
+    var selectedDisplayID: CGDirectDisplayID? = nil
 
     // MARK: - Protocol probe
     var probeLog: [String] = []
@@ -150,21 +153,33 @@ final class LightBLEManager: NSObject {
         stopScreenSync()
         effectModeActive = false
         micSyncError = nil
-        // Initialize beat hue from current color so it blends smoothly
         let (h, _, _) = color.hsvComponents
         beatHue = h
 
-        micSync.onLevel = { [weak self] level in
+        var lastWrite: Double = 0
+
+        micSync.onBands = { [weak self] bands in
             guard let self, self.micSyncActive else { return }
-            // Amplitude → brightness: minimum 0.05 so strip stays visible in silence
-            let bri = max(0.05, level)
+
+            // Beat → hue jump (30°); treble energy → small continuous drift
+            if bands.isBeat {
+                self.beatHue = (self.beatHue + 1.0/12.0).truncatingRemainder(dividingBy: 1.0)
+            } else {
+                self.beatHue = (self.beatHue + bands.high * 0.008)
+                    .truncatingRemainder(dividingBy: 1.0)
+            }
+
+            // Bass drives brightness spike; mid drives saturation richness
+            let bri = min(1.0, max(0.05, bands.bass * 1.2 + bands.rms * 0.4))
+            let sat = min(1.0, max(0.6, bands.mid * 0.5 + 0.6))
+
+            // Cap BLE writes at 30 Hz — no point sending faster than connection interval
+            let now = CACurrentMediaTime()
+            guard now - lastWrite >= 1.0 / 30.0 else { return }
+            lastWrite = now
+
+            self.write(Cmd.hue(self.beatHue, saturation: sat))
             self.write(Cmd.brightness(bri))
-            self.write(Cmd.hue(self.beatHue, saturation: 1.0))
-        }
-        micSync.onBeat = { [weak self] in
-            guard let self, self.micSyncActive else { return }
-            // Advance hue by 30° (1/12 of wheel) on each beat → rainbow effect
-            self.beatHue = (self.beatHue + 1.0/12.0).truncatingRemainder(dividingBy: 1.0)
         }
 
         micSyncActive = true
@@ -185,7 +200,6 @@ final class LightBLEManager: NSObject {
         guard micSyncActive else { return }
         micSyncActive = false
         micSync.stop()
-        // Restore solid color at user's brightness
         let (h, s, _) = color.hsvComponents
         write(Cmd.hue(h, saturation: s))
         write(Cmd.brightness(brightness))
@@ -197,19 +211,36 @@ final class LightBLEManager: NSObject {
         effectModeActive = false
         screenSyncError = nil
         screenSyncActive = true
-        screenSampler.responsiveness = screenSyncResponsiveness
-        var lastScreenWrite: Double = 0
-        screenSampler.onColor = { [weak self] h, s, _ in
+        screenSampler.selectedDisplayID = selectedDisplayID
+
+        var lastH: Double = -1
+        var lastWrite: Double = 0
+
+        screenSampler.onColor = { [weak self] h, s, v in
             guard let self, self.screenSyncActive else { return }
-            // BLE can't sustain 30 writes/sec — cap at 15 Hz
+
+            // Skip near-black frames (v < 0.04) — sending black looks like a flicker
+            guard v > 0.04 else { return }
+
             let now = CACurrentMediaTime()
-            guard now - lastScreenWrite >= 1.0 / 15.0 else { return }
-            lastScreenWrite = now
-            // 2× saturation boost — screen averages to muted tones
-            let boostedS = min(1.0, s * 2.0)
+
+            // Hue delta check: only write if color changed meaningfully OR 500ms passed
+            let hueDelta = min(abs(h - lastH), 1.0 - abs(h - lastH))
+            let stale = now - lastWrite > 0.5
+            guard hueDelta > 0.008 || stale else { return }   // 0.008 = ~3°
+
+            // Cap at 20 Hz regardless — BLE connection interval is ~10ms,
+            // 2 packets per frame = ~20ms minimum round-trip per color change.
+            guard now - lastWrite >= 1.0 / 20.0 else { return }
+            lastWrite = now
+            lastH = h
+
+            // Dynamic saturation boost: muted screen content gets lifted,
+            // already-vivid content gets a mild boost only.
+            let boostedS = s < 0.3 ? min(1.0, s * 3.0) : min(1.0, s * 1.5)
             self.write(Cmd.hue(h, saturation: boostedS))
-            // Brightness stays under user control
         }
+
         Task {
             do {
                 try await self.screenSampler.start()
@@ -220,6 +251,13 @@ final class LightBLEManager: NSObject {
                     self.screenSyncError = error.localizedDescription
                 }
             }
+        }
+    }
+
+    func loadAvailableDisplays() {
+        Task {
+            let displays = await ScreenColorSampler.availableDisplays()
+            await MainActor.run { self.availableDisplays = displays }
         }
     }
 
