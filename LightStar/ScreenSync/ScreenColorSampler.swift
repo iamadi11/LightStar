@@ -45,7 +45,7 @@ final class ScreenColorSampler: NSObject {
         // 16×9 gives better edge sampling than 8×4 with negligible CPU cost
         cfg.width  = 16
         cfg.height = 9
-        cfg.minimumFrameInterval = CMTime(value: 1, timescale: 30)
+        cfg.minimumFrameInterval = CMTime(value: 1, timescale: 60)
         cfg.pixelFormat = kCVPixelFormatType_32BGRA
         cfg.showsCursor = false
         cfg.shouldBeOpaque = true

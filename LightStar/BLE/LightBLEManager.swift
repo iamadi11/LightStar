@@ -11,6 +11,13 @@ final class LightBLEManager: NSObject {
         case disconnected, scanning, connecting, connected
     }
 
+    enum SyncMode: String, CaseIterable, Equatable {
+        case off      = "Off"
+        case video    = "Video"
+        case audio    = "Audio"
+        case combined = "Video+Audio"
+    }
+
     // MARK: - Observable state
 
     var connectionState: ConnectionState = .disconnected
@@ -20,16 +27,18 @@ final class LightBLEManager: NSObject {
     var effectID: UInt8 = 0x01
     var effectSpeed: Double = 0.5   // 0–1 mapped to 0–100
     var effectModeActive = false
-    // Audio sync (system audio via SCStream — can coexist with screenSyncActive for combined mode)
-    var audioSyncActive = false
+    // Sync state machine
+    var syncMode: SyncMode = .off
+    var syncError: String?
+    var syncTransitioning = false
     enum AudioSyncMode: String, CaseIterable { case rainbow = "Rainbow"; case pulse = "Pulse"; case frequency = "Frequency" }
     var audioSyncMode: AudioSyncMode = .rainbow
-    var screenSyncActive = false
-    var screenSyncResponsiveness: Double = 0.3
-    var screenSyncError: String?
     // Display picker
     var availableDisplays: [(id: CGDirectDisplayID, name: String)] = []
     var selectedDisplayID: CGDirectDisplayID? = nil
+
+    var isSyncingVideo: Bool { syncMode == .video || syncMode == .combined }
+    var isSyncingAudio: Bool { syncMode == .audio || syncMode == .combined }
 
     // MARK: - Protocol probe
     var probeLog: [String] = []
@@ -62,14 +71,11 @@ final class LightBLEManager: NSObject {
     private var reconnectAttempts = 0
     private let maxReconnectAttempts = 5
     private let systemAudio = SystemAudioSampler()
-    // Beat hue — advances 30° per beat for rainbow/frequency modes
+    private var transitionTask: Task<Void, Never>?
     private var beatHue: Double = 0
-    // Combined mode: flash envelope — spikes to 1.0 on beat, decays each audio frame
     private var flashLevel: Double = 0
-    // Last hue/sat seen from screen sync — used for beat pop so we don't flash wrong color
     private var lastScreenH: Double = 0
     private var lastScreenS: Double = 1
-    var audioSyncError: String?
     private let camera = CameraChangeDetector()
     private let screenSampler = ScreenColorSampler()
 
@@ -96,11 +102,7 @@ final class LightBLEManager: NSObject {
 
     func setPower(on: Bool) {
         isOn = on
-        if !on {
-            // Stop syncs before sending power-off — otherwise they immediately re-light the strip
-            stopScreenSync()
-            stopAudioSync()
-        }
+        if !on { setSyncMode(.off) }
         write(on ? Cmd.powerOn : Cmd.powerOff)
     }
 
@@ -133,8 +135,7 @@ final class LightBLEManager: NSObject {
     }
 
     func setEffect(id: UInt8) {
-        stopScreenSync()
-        stopAudioSync()
+        setSyncMode(.off)
         effectID = id
         effectModeActive = true
         write(Cmd.effect(id: id))
@@ -161,149 +162,154 @@ final class LightBLEManager: NSObject {
         }
     }
 
-    // Starts system audio sync. Can run alongside screenSyncActive (combined mode):
-    //   • combined: audio only drives brightness — screen drives hue
-    //   • audio-only: audio drives hue + brightness per audioSyncMode
-    func startAudioSync() {
-        guard !audioSyncActive else { return }
+    // MARK: - Sync state machine
+
+    func setSyncMode(_ mode: SyncMode) {
+        if mode == syncMode && !syncTransitioning { return }
+        transitionTask?.cancel()
+        syncTransitioning = true
+        syncError = nil
+        transitionTask = Task { @MainActor in
+            await self.teardownSync()
+            guard !Task.isCancelled else {
+                self.syncTransitioning = false
+                return
+            }
+            await self.buildSync(mode)
+            if !Task.isCancelled { self.syncTransitioning = false }
+        }
+    }
+
+    private func teardownSync() async {
+        systemAudio.onBands = nil
+        screenSampler.onColor = nil
+        flashLevel = 0
+        await systemAudio.stop()
+        await screenSampler.stop()
+    }
+
+    private func buildSync(_ mode: SyncMode) async {
         effectModeActive = false
-        audioSyncError = nil
-        let (h, _, _) = color.hsvComponents
-        beatHue = h
+        switch mode {
+        case .off:
+            syncMode = .off
+            restoreSteadyState()
 
+        case .video:
+            setupScreenCallback()
+            screenSampler.selectedDisplayID = selectedDisplayID
+            do {
+                try await screenSampler.start()
+                syncMode = .video
+            } catch {
+                screenSampler.onColor = nil
+                syncMode = .off
+                syncError = error.localizedDescription
+                restoreSteadyState()
+            }
+
+        case .audio:
+            let (h, _, _) = color.hsvComponents
+            beatHue = h
+            setupAudioCallback()
+            do {
+                try await systemAudio.start()
+                syncMode = .audio
+            } catch {
+                systemAudio.onBands = nil
+                syncMode = .off
+                syncError = error.localizedDescription
+                restoreSteadyState()
+            }
+
+        case .combined:
+            setupScreenCallback()
+            setupAudioCallback()
+            screenSampler.selectedDisplayID = selectedDisplayID
+            var errors: [String] = []
+            do { try await screenSampler.start() } catch {
+                screenSampler.onColor = nil
+                errors.append("Screen: \(error.localizedDescription)")
+            }
+            do { try await systemAudio.start() } catch {
+                systemAudio.onBands = nil
+                errors.append("Audio: \(error.localizedDescription)")
+            }
+            let screenOk = screenSampler.onColor != nil
+            let audioOk  = systemAudio.onBands != nil
+            syncMode = screenOk && audioOk ? .combined
+                     : screenOk           ? .video
+                     : audioOk            ? .audio
+                     :                     .off
+            if !errors.isEmpty { syncError = errors.joined(separator: "; ") }
+            if syncMode == .off { restoreSteadyState() }
+        }
+    }
+
+    private func setupScreenCallback() {
+        var lastH: Double = -1
         var lastWrite: Double = 0
+        screenSampler.onColor = { [weak self] h, s, v in
+            guard let self, self.isSyncingVideo, self.isOn else { return }
+            guard v > 0.04 else { return }
+            let now = CACurrentMediaTime()
+            let hueDelta = min(abs(h - lastH), 1.0 - abs(h - lastH))
+            guard hueDelta > 0.008 || now - lastWrite > 0.5 else { return }
+            guard now - lastWrite >= 1.0 / 20.0 else { return }
+            lastWrite = now; lastH = h
+            let boostedS = s < 0.3 ? min(1.0, s * 3.0) : min(1.0, s * 1.5)
+            self.lastScreenH = h
+            self.lastScreenS = boostedS
+            self.write(Cmd.hue(h, saturation: boostedS))
+        }
+    }
 
+    private func setupAudioCallback() {
+        var lastWrite: Double = 0
         systemAudio.onBands = { [weak self] (bands: FrequencyBands) in
-            guard let self, self.audioSyncActive, self.isOn else { return }
-
+            guard let self, self.isSyncingAudio, self.isOn else { return }
             let now = CACurrentMediaTime()
             guard now - lastWrite >= 1.0 / 30.0 else { return }
             lastWrite = now
 
-            // Combined mode: screen owns hue/sat — audio owns brightness + beat flash
-            if self.screenSyncActive {
-                // Beat → instant spike to full brightness; decay at 82% per audio frame (~86Hz)
-                // Net: flash visible ~200ms, then fades. Feels tight to the beat.
+            if self.syncMode == .combined {
                 if bands.isBeat {
                     self.flashLevel = 1.0
-                    // Saturation pop uses last SCREEN color, not manual color — prevents blue→purple flash
                     self.write(Cmd.hue(self.lastScreenH, saturation: min(1.0, self.lastScreenS * 1.3 + 0.15)))
                 } else {
                     self.flashLevel = max(0.0, self.flashLevel * 0.82)
                 }
-                // Base brightness from bass energy; flash envelope adds the punch
-                let baseBri = bands.bass * 0.55 + bands.rms * 0.15
-                let bri = min(1.0, max(0.04, baseBri + self.flashLevel * 0.80))
+                let bri = min(1.0, max(0.04, bands.bass * 0.55 + bands.rms * 0.15 + self.flashLevel * 0.80))
                 self.write(Cmd.brightness(bri))
                 return
             }
 
-            // Audio-only mode: full hue + brightness control
             switch self.audioSyncMode {
-
             case .rainbow:
                 if bands.isBeat {
                     self.beatHue = (self.beatHue + 1.0/12.0).truncatingRemainder(dividingBy: 1.0)
                 } else {
                     self.beatHue = (self.beatHue + bands.high * 0.006).truncatingRemainder(dividingBy: 1.0)
                 }
-                let bri = min(1.0, max(0.05, bands.bass * 1.3 + bands.rms * 0.3))
-                let sat = min(1.0, 0.6 + bands.mid * 0.4)
-                self.write(Cmd.hue(self.beatHue, saturation: sat))
-                self.write(Cmd.brightness(bri))
-
+                self.write(Cmd.hue(self.beatHue, saturation: min(1.0, 0.6 + bands.mid * 0.4)))
+                self.write(Cmd.brightness(min(1.0, max(0.05, bands.bass * 1.3 + bands.rms * 0.3))))
             case .pulse:
-                let bri = min(1.0, max(0.03, bands.bass * 1.5 + bands.rms * 0.2))
-                let sat = min(1.0, 0.8 + bands.mid * 0.2)
                 let (h, _, _) = self.color.hsvComponents
-                self.write(Cmd.hue(h, saturation: sat))
-                self.write(Cmd.brightness(bri))
-
+                self.write(Cmd.hue(h, saturation: min(1.0, 0.8 + bands.mid * 0.2)))
+                self.write(Cmd.brightness(min(1.0, max(0.03, bands.bass * 1.5 + bands.rms * 0.2))))
             case .frequency:
                 let total = bands.bass + bands.mid + bands.high + 0.001
-                let h = (bands.bass * 0.0 + bands.mid * (120/360.0) + bands.high * (240/360.0)) / total
-                let bri = min(1.0, max(0.05, (bands.bass + bands.mid + bands.high) / 3 * 1.5 + bands.rms * 0.2))
+                let h = (bands.mid * (120/360.0) + bands.high * (240/360.0)) / total
                 self.write(Cmd.hue(h, saturation: 1.0))
-                self.write(Cmd.brightness(bri))
-            }
-        }
-
-        audioSyncActive = true
-        Task {
-            do {
-                try await systemAudio.start()
-            } catch {
-                await MainActor.run {
-                    self.audioSyncActive = false
-                    self.audioSyncError = error.localizedDescription
-                }
+                self.write(Cmd.brightness(min(1.0, max(0.05, (bands.bass + bands.mid + bands.high) / 3 * 1.5 + bands.rms * 0.2))))
             }
         }
     }
 
-    func stopAudioSync() {
-        guard audioSyncActive else { return }
-        audioSyncActive = false
-        flashLevel = 0
-        systemAudio.onBands = nil      // nil synchronously — kills any queued main-actor callbacks immediately
-        Task { await self.systemAudio.stop() }
-        // Always restore brightness (audio may have left it very dim)
+    private func restoreSteadyState() {
+        let (h, s, _) = color.hsvComponents
+        write(Cmd.hue(h, saturation: s))
         write(Cmd.brightness(brightness))
-        if !screenSyncActive {
-            let (h, s, _) = color.hsvComponents
-            write(Cmd.hue(h, saturation: s))
-        }
-    }
-
-    func startScreenSync() {
-        guard !screenSyncActive, connectionState == .connected else { return }
-        // Don't stop audioSync — they can coexist (combined mode)
-        effectModeActive = false
-        screenSyncError = nil
-        screenSyncActive = true
-        screenSampler.selectedDisplayID = selectedDisplayID
-
-        var lastH: Double = -1
-        var lastWrite: Double = 0
-
-        screenSampler.onColor = { [weak self] h, s, v in
-            guard let self, self.screenSyncActive, self.isOn else { return }
-
-            // Skip near-black frames (v < 0.04) — sending black looks like a flicker
-            guard v > 0.04 else { return }
-
-            let now = CACurrentMediaTime()
-
-            // Hue delta check: only write if color changed meaningfully OR 500ms passed
-            let hueDelta = min(abs(h - lastH), 1.0 - abs(h - lastH))
-            let stale = now - lastWrite > 0.5
-            guard hueDelta > 0.008 || stale else { return }   // 0.008 = ~3°
-
-            // Cap at 20 Hz regardless — BLE connection interval is ~10ms,
-            // 2 packets per frame = ~20ms minimum round-trip per color change.
-            guard now - lastWrite >= 1.0 / 20.0 else { return }
-            lastWrite = now
-            lastH = h
-
-            // Dynamic saturation boost: muted screen content gets lifted,
-            // already-vivid content gets a mild boost only.
-            let boostedS = s < 0.3 ? min(1.0, s * 3.0) : min(1.0, s * 1.5)
-            self.lastScreenH = h
-            self.lastScreenS = boostedS
-            self.write(Cmd.hue(h, saturation: boostedS))
-        }
-
-        Task {
-            do {
-                try await self.screenSampler.start()
-            } catch {
-                await MainActor.run {
-                    self.screenSyncActive = false
-                    self.screenSampler.onColor = nil
-                    self.screenSyncError = error.localizedDescription
-                }
-            }
-        }
     }
 
     func loadAvailableDisplays() {
@@ -311,17 +317,6 @@ final class LightBLEManager: NSObject {
             let displays = await ScreenColorSampler.availableDisplays()
             await MainActor.run { self.availableDisplays = displays }
         }
-    }
-
-    func stopScreenSync() {
-        guard screenSyncActive else { return }
-        screenSyncActive = false
-        screenSampler.onColor = nil    // nil synchronously — kills queued callbacks immediately
-        Task { await self.screenSampler.stop() }
-        // Restore to manual color + slider brightness
-        let (h, s, _) = color.hsvComponents
-        write(Cmd.hue(h, saturation: s))
-        write(Cmd.brightness(brightness))
     }
 
     // MARK: - Live camera for debug tab
@@ -476,7 +471,7 @@ final class LightBLEManager: NSObject {
     func testColorMapping() {
         guard !probeRunning, connectionState == .connected else { return }
         probeRunning = true
-        stopScreenSync(); stopAudioSync(); effectModeActive = false
+        setSyncMode(.off); effectModeActive = false
 
         probeLog = [
             "=== COMPREHENSIVE COLOR MAPPING TEST ===",
@@ -681,7 +676,7 @@ final class LightBLEManager: NSObject {
     func sweepColorPalette() {
         guard connectionState == .connected, !probeRunning else { return }
         probeRunning = true
-        stopScreenSync(); stopAudioSync(); effectModeActive = false
+        setSyncMode(.off); effectModeActive = false
         let hues: [(String, Double)] = [
             ("Red", 0/12.0), ("Orange", 1/12.0), ("Yellow", 2/12.0),
             ("Chartreuse", 3/12.0), ("Green", 4/12.0), ("Spring", 5/12.0),
@@ -1058,15 +1053,13 @@ extension LightBLEManager: CBCentralManagerDelegate {
         Task { @MainActor in
             self.writeChar = nil
             self.connectionState = .disconnected
-            if self.audioSyncActive {
-                self.audioSyncActive = false
-                Task { await self.systemAudio.stop() }
-            }
-            if self.screenSyncActive {
-                self.screenSyncActive = false
-                self.screenSampler.onColor = nil
-                Task { await self.screenSampler.stop() }
-            }
+            self.transitionTask?.cancel()
+            self.systemAudio.onBands = nil
+            self.screenSampler.onColor = nil
+            self.syncMode = .off
+            self.syncTransitioning = false
+            Task { await self.systemAudio.stop() }
+            Task { await self.screenSampler.stop() }
             if error != nil { self.scheduleReconnect() }
         }
     }

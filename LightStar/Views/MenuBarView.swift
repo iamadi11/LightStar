@@ -130,18 +130,13 @@ struct MenuBarView: View {
 
             Divider()
 
-            // Audio sync (system audio)
-            AudioSyncView()
+            // Sync mode (video / audio / combined)
+            SyncControlView()
 
             Divider()
 
             // Effects
             EffectsView()
-
-            Divider()
-
-            // Screen sync (Ambilight)
-            ScreenSyncView()
 
             Divider()
 
@@ -168,69 +163,85 @@ struct MenuBarView: View {
 
 }
 
-private struct AudioSyncView: View {
+private struct SyncControlView: View {
     @Environment(LightBLEManager.self) private var ble
-
-    private func modeDescription(_ mode: LightBLEManager.AudioSyncMode) -> String {
-        if ble.screenSyncActive {
-            return "Combined: screen drives color · audio pulses brightness"
-        }
-        switch mode {
-        case .rainbow:   return "Beats → hue jump · treble → color drift · bass → brightness"
-        case .pulse:     return "Bass → brightness pulse · keeps current color"
-        case .frequency: return "Bass → red · mid → green · treble → blue"
-        }
-    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
-                Label("Audio Sync", systemImage: "speaker.wave.3")
+                Label("Sync", systemImage: "waveform.and.magnifyingglass")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                if ble.audioSyncActive && ble.screenSyncActive {
-                    Text("COMBINED")
-                        .font(.system(size: 8, weight: .bold))
-                        .padding(.horizontal, 4).padding(.vertical, 1)
-                        .background(Color.purple.opacity(0.2))
-                        .foregroundStyle(.purple)
-                        .clipShape(RoundedRectangle(cornerRadius: 3))
-                }
                 Spacer()
-                Toggle("", isOn: Binding(
-                    get: { ble.audioSyncActive },
-                    set: { on in on ? ble.startAudioSync() : ble.stopAudioSync() }
-                ))
-                .toggleStyle(.switch)
-                .labelsHidden()
+                if ble.syncTransitioning { ProgressView().controlSize(.mini) }
             }
-            if let err = ble.audioSyncError {
-                Text(err)
-                    .font(.system(size: 9))
-                    .foregroundStyle(.red)
+
+            Picker("", selection: Binding(
+                get: { ble.syncMode },
+                set: { ble.setSyncMode($0) }
+            )) {
+                ForEach(LightBLEManager.SyncMode.allCases, id: \.self) {
+                    Text($0.rawValue).tag($0)
+                }
+            }
+            .pickerStyle(.segmented)
+            .disabled(ble.syncTransitioning)
+
+            if let err = ble.syncError {
+                Text(err).font(.system(size: 9)).foregroundStyle(.red)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            if ble.audioSyncActive {
-                if !ble.screenSyncActive {
+
+            if ble.syncMode == .audio {
+                Picker("", selection: Binding(
+                    get: { ble.audioSyncMode },
+                    set: { ble.audioSyncMode = $0 }
+                )) {
+                    ForEach(LightBLEManager.AudioSyncMode.allCases, id: \.self) {
+                        Text($0.rawValue).tag($0)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .controlSize(.mini)
+            }
+
+            Text(modeDescription)
+                .font(.system(size: 9))
+                .foregroundStyle(.secondary)
+
+            if ble.isSyncingVideo {
+                HStack(spacing: 4) {
                     Picker("", selection: Binding(
-                        get: { ble.audioSyncMode },
-                        set: { ble.audioSyncMode = $0 }
+                        get: { ble.selectedDisplayID },
+                        set: { ble.selectedDisplayID = $0 }
                     )) {
-                        ForEach(LightBLEManager.AudioSyncMode.allCases, id: \.self) {
-                            Text($0.rawValue).tag($0)
+                        Text("Primary display").tag(Optional<CGDirectDisplayID>.none)
+                        ForEach(ble.availableDisplays, id: \.id) { d in
+                            Text(d.name).tag(Optional(d.id))
                         }
                     }
-                    .pickerStyle(.segmented)
-                    .controlSize(.mini)
+                    .labelsHidden().frame(maxWidth: .infinity).controlSize(.small)
+                    Button { ble.loadAvailableDisplays() } label: {
+                        Image(systemName: "arrow.clockwise")
+                    }
+                    .buttonStyle(.plain).font(.caption).help("Refresh display list")
                 }
-                Text(modeDescription(ble.audioSyncMode))
-                    .font(.system(size: 9))
-                    .foregroundStyle(.secondary)
-            } else {
-                Text("Captures system audio — no microphone needed")
-                    .font(.system(size: 9))
-                    .foregroundStyle(.secondary)
+                .onAppear { ble.loadAvailableDisplays() }
             }
+        }
+    }
+
+    private var modeDescription: String {
+        switch ble.syncMode {
+        case .off:      return "No sync — color picker and presets above are active"
+        case .video:    return "Edges weighted 3× · brightness stays at slider · 20 Hz"
+        case .audio:
+            switch ble.audioSyncMode {
+            case .rainbow:   return "Beats → hue · treble → drift · bass → brightness"
+            case .pulse:     return "Bass → brightness · keeps current color"
+            case .frequency: return "Bass → red · mid → green · treble → blue"
+            }
+        case .combined: return "Screen → color · audio beats → brightness · no mic needed"
         }
     }
 }
@@ -278,68 +289,6 @@ private struct EffectsView: View {
                         set: { ble.setEffectSpeed($0) }
                     ), in: 0...1)
                 }
-            }
-        }
-    }
-}
-
-private struct ScreenSyncView: View {
-    @Environment(LightBLEManager.self) private var ble
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                Label("Screen Sync", systemImage: "display")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Spacer()
-                Toggle("", isOn: Binding(
-                    get: { ble.screenSyncActive },
-                    set: { on in on ? ble.startScreenSync() : ble.stopScreenSync() }
-                ))
-                .toggleStyle(.switch)
-                .labelsHidden()
-            }
-
-            // Display picker — load on appear, refresh on tap
-            HStack(spacing: 4) {
-                Picker("", selection: Binding(
-                    get: { ble.selectedDisplayID },
-                    set: { ble.selectedDisplayID = $0 }
-                )) {
-                    Text("Primary display").tag(Optional<CGDirectDisplayID>.none)
-                    ForEach(ble.availableDisplays, id: \.id) { d in
-                        Text(d.name).tag(Optional(d.id))
-                    }
-                }
-                .labelsHidden()
-                .frame(maxWidth: .infinity)
-                .controlSize(.small)
-
-                Button {
-                    ble.loadAvailableDisplays()
-                } label: {
-                    Image(systemName: "arrow.clockwise")
-                }
-                .buttonStyle(.plain)
-                .font(.caption)
-                .help("Refresh display list")
-            }
-            .onAppear { ble.loadAvailableDisplays() }
-
-            if let err = ble.screenSyncError {
-                let msg = (err.contains("TCC") || err.contains("declined") || err.contains("denied"))
-                    ? "Screen Recording permission required — System Settings → Privacy & Security → Screen Recording → enable LightStar."
-                    : err
-                Text(msg)
-                    .font(.system(size: 9))
-                    .foregroundStyle(.red)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            if ble.screenSyncActive {
-                Text("Edges weighted 3× — brightness stays at slider above.")
-                    .font(.system(size: 9))
-                    .foregroundStyle(.secondary)
             }
         }
     }
@@ -395,8 +344,7 @@ private struct AnimationsView: View {
     }
 
     private func sendAnimation() {
-        ble.stopScreenSync()
-        ble.stopAudioSync()
+        ble.setSyncMode(.off)
         ble.sendRaw([0xBC, 0x13, 0x01, currentID, 0x55])
     }
 }
@@ -405,8 +353,7 @@ private struct AnimationsView: View {
 private extension MenuBarView {
     func applyPreset(_ preset: Preset) {
         if !ble.isOn { ble.setPower(on: true) }
-        ble.stopScreenSync()
-        ble.stopAudioSync()
+        ble.setSyncMode(.off)
         ble.setColor(preset.color)
         ble.setBrightness(preset.brightness)
     }
@@ -510,7 +457,7 @@ private struct ColorControlView: View {
 
     private func sendColor() {
         ignoreNextBLEUpdate = true
-        ble.stopScreenSync()
+        ble.setSyncMode(.off)
         ble.setHue(hue, saturation: sat)
     }
 }
