@@ -99,6 +99,7 @@ private func dominantHSV(_ pb: CVPixelBuffer) -> (Double, Double, Double) {
     var histogram = [Double](repeating: 0, count: bins)
     var binSat    = [Double](repeating: 0, count: bins)
     var binVal    = [Double](repeating: 0, count: bins)
+    var binCount  = [Int](repeating: 0, count: bins)
     var totalV = 0.0, pixCount = 0
 
     for row in 0..<h {
@@ -120,16 +121,17 @@ private func dominantHSV(_ pb: CVPixelBuffer) -> (Double, Double, Double) {
             histogram[bin] += wt * ss * vv   // weight by saturation × brightness
             binSat[bin] += ss
             binVal[bin] += vv
+            binCount[bin] += 1
         }
     }
 
     // Pick the most weighted hue bin
     if let maxBin = histogram.indices.max(by: { histogram[$0] < histogram[$1] }),
-       histogram[maxBin] > 0 {
+       histogram[maxBin] > 0, binCount[maxBin] > 0 {
         let h = (Double(maxBin) + 0.5) / Double(bins)
-        let weight = histogram[maxBin]
-        let s = binSat[maxBin] / weight * binSat[maxBin]   // representative sat
-        let v = binVal[maxBin] / weight * binVal[maxBin]   // representative val
+        let n = Double(binCount[maxBin])
+        let s = binSat[maxBin] / n
+        let v = binVal[maxBin] / n
         return (h, min(1, s), min(1, v))
     }
 
