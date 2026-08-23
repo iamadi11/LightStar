@@ -72,8 +72,7 @@ extension ScreenColorSampler: SCStreamOutput {
                             of type: SCStreamOutputType) {
         guard type == .screen,
               let pb = CMSampleBufferGetImageBuffer(sb) else { return }
-        let (r, g, b) = edgeWeightedRGB(pb)
-        let (h, s, v) = rgbToHSV(r, g, b)
+        let (h, s, v) = dominantHSV(pb)
         DispatchQueue.main.async { [weak self] in
             self?.onColor?(h, s, v)
         }
@@ -82,8 +81,11 @@ extension ScreenColorSampler: SCStreamOutput {
 
 // MARK: - Pixel helpers
 
-// Weights border pixels 3× — approximates Ambilight edge sampling.
-private func edgeWeightedRGB(_ pb: CVPixelBuffer) -> (Double, Double, Double) {
+// Dominant color via hue histogram on edge pixels.
+// Ignores dark pixels (v < 0.12) and desaturated pixels (s < 0.15) —
+// black bars, white text, and letterboxing don't pollute the result.
+// Falls back to weighted average brightness if no vivid pixels exist.
+private func dominantHSV(_ pb: CVPixelBuffer) -> (Double, Double, Double) {
     CVPixelBufferLockBaseAddress(pb, .readOnly)
     defer { CVPixelBufferUnlockBaseAddress(pb, .readOnly) }
     guard let base = CVPixelBufferGetBaseAddress(pb) else { return (0, 0, 0) }
@@ -93,20 +95,47 @@ private func edgeWeightedRGB(_ pb: CVPixelBuffer) -> (Double, Double, Double) {
     let bpr = CVPixelBufferGetBytesPerRow(pb)
     let ptr = base.assumingMemoryBound(to: UInt8.self)
 
-    var sumR = 0.0, sumG = 0.0, sumB = 0.0, total = 0.0
+    let bins = 36   // 10° per bin
+    var histogram = [Double](repeating: 0, count: bins)
+    var binSat    = [Double](repeating: 0, count: bins)
+    var binVal    = [Double](repeating: 0, count: bins)
+    var totalV = 0.0, pixCount = 0
+
     for row in 0..<h {
         for col in 0..<w {
             let isEdge = row == 0 || row == h - 1 || col == 0 || col == w - 1
             let wt: Double = isEdge ? 3.0 : 1.0
-            let i = row * bpr + col * 4   // BGRA
-            sumB += wt * Double(ptr[i])
-            sumG += wt * Double(ptr[i + 1])
-            sumR += wt * Double(ptr[i + 2])
-            total += wt
+            let i = row * bpr + col * 4
+            let r = Double(ptr[i + 2]) / 255
+            let g = Double(ptr[i + 1]) / 255
+            let b = Double(ptr[i])     / 255
+            let (hh, ss, vv) = rgbToHSV(r, g, b)
+            totalV += vv * wt
+            pixCount += 1
+
+            // Skip dark or desaturated pixels — they're not "color"
+            guard vv > 0.12, ss > 0.15 else { continue }
+
+            let bin = min(bins - 1, Int(hh * Double(bins)))
+            histogram[bin] += wt * ss * vv   // weight by saturation × brightness
+            binSat[bin] += ss
+            binVal[bin] += vv
         }
     }
-    let n = total * 255
-    return (sumR / n, sumG / n, sumB / n)
+
+    // Pick the most weighted hue bin
+    if let maxBin = histogram.indices.max(by: { histogram[$0] < histogram[$1] }),
+       histogram[maxBin] > 0 {
+        let h = (Double(maxBin) + 0.5) / Double(bins)
+        let weight = histogram[maxBin]
+        let s = binSat[maxBin] / weight * binSat[maxBin]   // representative sat
+        let v = binVal[maxBin] / weight * binVal[maxBin]   // representative val
+        return (h, min(1, s), min(1, v))
+    }
+
+    // Fallback: screen is dark/desaturated — return average brightness as near-white
+    let avgV = pixCount > 0 ? totalV / Double(pixCount) : 0
+    return (0, 0, avgV)
 }
 
 private func rgbToHSV(_ r: Double, _ g: Double, _ b: Double) -> (Double, Double, Double) {

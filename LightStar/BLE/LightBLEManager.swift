@@ -21,6 +21,8 @@ final class LightBLEManager: NSObject {
     var effectSpeed: Double = 0.5   // 0–1 mapped to 0–100
     var effectModeActive = false
     var micSyncActive = false
+    enum MicSyncMode: String, CaseIterable { case rainbow = "Rainbow"; case pulse = "Pulse"; case frequency = "Frequency" }
+    var micSyncMode: MicSyncMode = .rainbow
     var screenSyncActive = false
     var screenSyncResponsiveness: Double = 0.3
     var screenSyncError: String?
@@ -161,25 +163,41 @@ final class LightBLEManager: NSObject {
         micSync.onBands = { [weak self] bands in
             guard let self, self.micSyncActive else { return }
 
-            // Beat → hue jump (30°); treble energy → small continuous drift
-            if bands.isBeat {
-                self.beatHue = (self.beatHue + 1.0/12.0).truncatingRemainder(dividingBy: 1.0)
-            } else {
-                self.beatHue = (self.beatHue + bands.high * 0.008)
-                    .truncatingRemainder(dividingBy: 1.0)
-            }
-
-            // Bass drives brightness spike; mid drives saturation richness
-            let bri = min(1.0, max(0.05, bands.bass * 1.2 + bands.rms * 0.4))
-            let sat = min(1.0, max(0.6, bands.mid * 0.5 + 0.6))
-
-            // Cap BLE writes at 30 Hz — no point sending faster than connection interval
             let now = CACurrentMediaTime()
             guard now - lastWrite >= 1.0 / 30.0 else { return }
             lastWrite = now
 
-            self.write(Cmd.hue(self.beatHue, saturation: sat))
-            self.write(Cmd.brightness(bri))
+            switch self.micSyncMode {
+
+            case .rainbow:
+                // Beat → 30° hue jump; treble → continuous slow drift
+                if bands.isBeat {
+                    self.beatHue = (self.beatHue + 1.0/12.0).truncatingRemainder(dividingBy: 1.0)
+                } else {
+                    self.beatHue = (self.beatHue + bands.high * 0.006).truncatingRemainder(dividingBy: 1.0)
+                }
+                let bri = min(1.0, max(0.05, bands.bass * 1.3 + bands.rms * 0.3))
+                let sat = min(1.0, 0.6 + bands.mid * 0.4)
+                self.write(Cmd.hue(self.beatHue, saturation: sat))
+                self.write(Cmd.brightness(bri))
+
+            case .pulse:
+                // Keep current color; bass → dramatic brightness spike, decay on low energy
+                let bri = min(1.0, max(0.03, bands.bass * 1.5 + bands.rms * 0.2))
+                let sat = min(1.0, 0.8 + bands.mid * 0.2)
+                let (h, _, _) = self.color.hsvComponents
+                self.write(Cmd.hue(h, saturation: sat))
+                self.write(Cmd.brightness(bri))
+
+            case .frequency:
+                // Bass → warm hue (red 0°), mid → green (120°), treble → blue (240°)
+                // Blend between them based on which band dominates
+                let total = bands.bass + bands.mid + bands.high + 0.001
+                let h = (bands.bass * 0.0 + bands.mid * (120/360.0) + bands.high * (240/360.0)) / total
+                let bri = min(1.0, max(0.05, (bands.bass + bands.mid + bands.high) / 3 * 1.5 + bands.rms * 0.2))
+                self.write(Cmd.hue(h, saturation: 1.0))
+                self.write(Cmd.brightness(bri))
+            }
         }
 
         micSyncActive = true

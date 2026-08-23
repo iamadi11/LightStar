@@ -171,6 +171,14 @@ struct MenuBarView: View {
 private struct MicSyncView: View {
     @Environment(LightBLEManager.self) private var ble
 
+    private func modeDescription(_ mode: LightBLEManager.MicSyncMode) -> String {
+        switch mode {
+        case .rainbow:   return "Beats → hue jump · treble → color drift · bass → brightness"
+        case .pulse:     return "Bass → brightness pulse · keeps current color"
+        case .frequency: return "Bass → red · mid → green · treble → blue"
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
@@ -192,7 +200,17 @@ private struct MicSyncView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             if ble.micSyncActive {
-                Text("Amplitude → brightness · beats → rainbow hue shift")
+                Picker("", selection: Binding(
+                    get: { ble.micSyncMode },
+                    set: { ble.micSyncMode = $0 }
+                )) {
+                    ForEach(LightBLEManager.MicSyncMode.allCases, id: \.self) {
+                        Text($0.rawValue).tag($0)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .controlSize(.mini)
+                Text(modeDescription(ble.micSyncMode))
                     .font(.system(size: 9))
                     .foregroundStyle(.secondary)
             }
