@@ -1,0 +1,54 @@
+name: LightStar
+options:
+  bundleIdPrefix: com.adityaraj
+  deploymentTarget:
+    macOS: "13.0"
+  xcodeVersion: "16.0"
+  createIntermediateGroups: true
+  groupSortPosition: top
+  generateEmptyDirectories: true
+
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    MACOSX_DEPLOYMENT_TARGET: "13.0"
+    CODE_SIGN_STYLE: Automatic
+    DEVELOPMENT_TEAM: ""
+    ENABLE_HARDENED_RUNTIME: YES
+    SWIFT_STRICT_CONCURRENCY: complete
+
+targets:
+  LightStar:
+    type: application
+    platform: macOS
+    deploymentTarget: "13.0"
+    sources:
+      - path: LightStar
+        excludes:
+          - "Docs/**"
+    resources:
+      - path: LightStar/Assets.xcassets
+    info:
+      path: LightStar/Info.plist
+      properties:
+        CFBundleName: LightStar
+        CFBundleDisplayName: LightStar
+        CFBundleIdentifier: com.adityaraj.LightStar
+        CFBundleShortVersionString: "1.0"
+        CFBundleVersion: "1"
+        LSUIElement: true
+        NSBluetoothAlwaysUsageDescription: "LightStar needs Bluetooth to connect to your LED light."
+        NSBluetoothPeripheralUsageDescription: "LightStar needs Bluetooth to connect to your LED light."
+        LSMinimumSystemVersion: "13.0"
+    entitlements:
+      path: LightStar/LightStar.entitlements
+      properties:
+        com.apple.security.app-sandbox: false
+        com.apple.security.bluetooth: true
+        com.apple.security.screen-recording: true
+        com.apple.developer.bluetooth.allow: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.adityaraj.LightStar
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor

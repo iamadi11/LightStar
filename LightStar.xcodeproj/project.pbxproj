@@ -1,0 +1,359 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		7884A1F9031CF65BF2A6B9ED /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 0E14A2153AEDB323F83BE4C8 /* Assets.xcassets */; };
+		A3956EA2931DD57FFE98BE83 /* MenuBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8584E39FD808B45A57E6E9CD /* MenuBarView.swift */; };
+		B4C3D8703B2DCC52DC779715 /* LightState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 85C325703421F5313421C1A2 /* LightState.swift */; };
+		EBBACD224CBCE8EDF326097A /* LightStarApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 351F6724302A2A9C8F8FBF29 /* LightStarApp.swift */; };
+		FE0EC53441B7F6561EF584DC /* PresetStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53F50B77BEC004F04F88246F /* PresetStore.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		0E14A2153AEDB323F83BE4C8 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		351F6724302A2A9C8F8FBF29 /* LightStarApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LightStarApp.swift; sourceTree = "<group>"; };
+		53F50B77BEC004F04F88246F /* PresetStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PresetStore.swift; sourceTree = "<group>"; };
+		59C313B960E5BBCD917BE314 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		6FCFA247DF69CD7841EB5321 /* LightStar.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = LightStar.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		8584E39FD808B45A57E6E9CD /* MenuBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarView.swift; sourceTree = "<group>"; };
+		85C325703421F5313421C1A2 /* LightState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LightState.swift; sourceTree = "<group>"; };
+		BD4AC3D3F3191CB3A7F42B05 /* LightStar.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = LightStar.entitlements; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXGroup section */
+		02F83A3EA6FD8195FB7BAB99 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				6FCFA247DF69CD7841EB5321 /* LightStar.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		38C021A913F224BB493B9DAE /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				85C325703421F5313421C1A2 /* LightState.swift */,
+				53F50B77BEC004F04F88246F /* PresetStore.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		7530A7EF639BAEA330901CF7 = {
+			isa = PBXGroup;
+			children = (
+				7F32E8FF461E29F1D91D2E4C /* LightStar */,
+				02F83A3EA6FD8195FB7BAB99 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		7F32E8FF461E29F1D91D2E4C /* LightStar */ = {
+			isa = PBXGroup;
+			children = (
+				F6C56C1C81EF209885AF692A /* BLE */,
+				38C021A913F224BB493B9DAE /* Models */,
+				97D724947EEB3B5995A41844 /* ScreenSync */,
+				97DEBE098AF027C7B28B506B /* Views */,
+				0E14A2153AEDB323F83BE4C8 /* Assets.xcassets */,
+				59C313B960E5BBCD917BE314 /* Info.plist */,
+				BD4AC3D3F3191CB3A7F42B05 /* LightStar.entitlements */,
+				351F6724302A2A9C8F8FBF29 /* LightStarApp.swift */,
+			);
+			path = LightStar;
+			sourceTree = "<group>";
+		};
+		97D724947EEB3B5995A41844 /* ScreenSync */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			path = ScreenSync;
+			sourceTree = "<group>";
+		};
+		97DEBE098AF027C7B28B506B /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				8584E39FD808B45A57E6E9CD /* MenuBarView.swift */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+		F6C56C1C81EF209885AF692A /* BLE */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			path = BLE;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		C68498EFB4B90DF7C1061CA7 /* LightStar */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 2B109CD3516F8C6635EF4AB4 /* Build configuration list for PBXNativeTarget "LightStar" */;
+			buildPhases = (
+				F704B5147AE88D324870F3B9 /* Sources */,
+				FCFCB187587FB10775C7E7E1 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = LightStar;
+			packageProductDependencies = (
+			);
+			productName = LightStar;
+			productReference = 6FCFA247DF69CD7841EB5321 /* LightStar.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		364B950B741AAD2489805138 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1600;
+				TargetAttributes = {
+					C68498EFB4B90DF7C1061CA7 = {
+						DevelopmentTeam = "";
+						ProvisioningStyle = Automatic;
+					};
+				};
+			};
+			buildConfigurationList = 273AB1E9F3E146014107D61B /* Build configuration list for PBXProject "LightStar" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 7530A7EF639BAEA330901CF7;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 02F83A3EA6FD8195FB7BAB99 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				C68498EFB4B90DF7C1061CA7 /* LightStar */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		FCFCB187587FB10775C7E7E1 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				7884A1F9031CF65BF2A6B9ED /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		F704B5147AE88D324870F3B9 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				EBBACD224CBCE8EDF326097A /* LightStarApp.swift in Sources */,
+				B4C3D8703B2DCC52DC779715 /* LightState.swift in Sources */,
+				A3956EA2931DD57FFE98BE83 /* MenuBarView.swift in Sources */,
+				FE0EC53441B7F6561EF584DC /* PresetStore.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		318C15C50E4056A11FADA797 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+		5697185DCDE5F731A2B418E3 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = LightStar/LightStar.entitlements;
+				COMBINE_HIDPI_IMAGES = YES;
+				INFOPLIST_FILE = LightStar/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.adityaraj.LightStar;
+				SDKROOT = macosx;
+			};
+			name = Release;
+		};
+		755FC83CDFA729D3C0B21ACD /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = LightStar/LightStar.entitlements;
+				COMBINE_HIDPI_IMAGES = YES;
+				INFOPLIST_FILE = LightStar/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.adityaraj.LightStar;
+				SDKROOT = macosx;
+			};
+			name = Debug;
+		};
+		F54F277377055907E373FC11 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = "";
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		273AB1E9F3E146014107D61B /* Build configuration list for PBXProject "LightStar" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				318C15C50E4056A11FADA797 /* Debug */,
+				F54F277377055907E373FC11 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		2B109CD3516F8C6635EF4AB4 /* Build configuration list for PBXNativeTarget "LightStar" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				755FC83CDFA729D3C0B21ACD /* Debug */,
+				5697185DCDE5F731A2B418E3 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 364B950B741AAD2489805138 /* Project object */;
+}
