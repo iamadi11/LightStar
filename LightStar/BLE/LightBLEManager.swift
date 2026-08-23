@@ -66,6 +66,9 @@ final class LightBLEManager: NSObject {
     private var beatHue: Double = 0
     // Combined mode: flash envelope — spikes to 1.0 on beat, decays each audio frame
     private var flashLevel: Double = 0
+    // Last hue/sat seen from screen sync — used for beat pop so we don't flash wrong color
+    private var lastScreenH: Double = 0
+    private var lastScreenS: Double = 1
     var audioSyncError: String?
     private let camera = CameraChangeDetector()
     private let screenSampler = ScreenColorSampler()
@@ -183,9 +186,8 @@ final class LightBLEManager: NSObject {
                 // Net: flash visible ~200ms, then fades. Feels tight to the beat.
                 if bands.isBeat {
                     self.flashLevel = 1.0
-                    // Brief saturation pop so color visually "punches" on the beat
-                    let (h, s, _) = self.color.hsvComponents
-                    self.write(Cmd.hue(h, saturation: min(1.0, s * 1.4 + 0.25)))
+                    // Saturation pop uses last SCREEN color, not manual color — prevents blue→purple flash
+                    self.write(Cmd.hue(self.lastScreenH, saturation: min(1.0, self.lastScreenS * 1.3 + 0.15)))
                 } else {
                     self.flashLevel = max(0.0, self.flashLevel * 0.82)
                 }
@@ -243,12 +245,13 @@ final class LightBLEManager: NSObject {
         guard audioSyncActive else { return }
         audioSyncActive = false
         flashLevel = 0
+        systemAudio.onBands = nil      // nil synchronously — kills any queued main-actor callbacks immediately
         Task { await self.systemAudio.stop() }
-        // Restore steady state only if screen sync isn't still active
+        // Always restore brightness (audio may have left it very dim)
+        write(Cmd.brightness(brightness))
         if !screenSyncActive {
             let (h, s, _) = color.hsvComponents
             write(Cmd.hue(h, saturation: s))
-            write(Cmd.brightness(brightness))
         }
     }
 
@@ -285,6 +288,8 @@ final class LightBLEManager: NSObject {
             // Dynamic saturation boost: muted screen content gets lifted,
             // already-vivid content gets a mild boost only.
             let boostedS = s < 0.3 ? min(1.0, s * 3.0) : min(1.0, s * 1.5)
+            self.lastScreenH = h
+            self.lastScreenS = boostedS
             self.write(Cmd.hue(h, saturation: boostedS))
         }
 
@@ -311,8 +316,12 @@ final class LightBLEManager: NSObject {
     func stopScreenSync() {
         guard screenSyncActive else { return }
         screenSyncActive = false
-        screenSampler.onColor = nil
+        screenSampler.onColor = nil    // nil synchronously — kills queued callbacks immediately
         Task { await self.screenSampler.stop() }
+        // Restore to manual color + slider brightness
+        let (h, s, _) = color.hsvComponents
+        write(Cmd.hue(h, saturation: s))
+        write(Cmd.brightness(brightness))
     }
 
     // MARK: - Live camera for debug tab
