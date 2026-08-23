@@ -188,7 +188,11 @@ private struct SyncControlView: View {
             .disabled(ble.syncTransitioning)
 
             if let err = ble.syncError {
-                Text(err).font(.system(size: 9)).foregroundStyle(.red)
+                // Show fatal error only when fully failed (.off); partial failures
+                // (e.g. audio failed but video is running) show as a warning instead.
+                Text(err)
+                    .font(.system(size: 9))
+                    .foregroundStyle(ble.syncMode == .off ? .red : .orange)
                     .fixedSize(horizontal: false, vertical: true)
             }
 

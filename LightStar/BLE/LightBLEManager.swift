@@ -76,6 +76,7 @@ final class LightBLEManager: NSObject {
     private var flashLevel: Double = 0
     private var lastScreenH: Double = 0
     private var lastScreenS: Double = 1
+    private var audioPulseH: Double = 0   // cached hue for pulse mode — avoids 30Hz hsvComponents
     private let camera = CameraChangeDetector()
     private let screenSampler = ScreenColorSampler()
 
@@ -102,7 +103,13 @@ final class LightBLEManager: NSObject {
 
     func setPower(on: Bool) {
         isOn = on
-        if !on { setSyncMode(.off) }
+        if !on {
+            // Nil closures synchronously so no callbacks fire after powerOff
+            systemAudio.onBands = nil
+            screenSampler.onColor = nil
+            flashLevel = 0
+            setSyncMode(.off)
+        }
         write(on ? Cmd.powerOn : Cmd.powerOff)
     }
 
@@ -114,6 +121,7 @@ final class LightBLEManager: NSObject {
     // Preferred over setColor — avoids lossy Color→NSColor→getHue round-trip.
     func setHue(_ h: Double, saturation s: Double) {
         color = Color(hue: h, saturation: s, brightness: 1)
+        audioPulseH = h
         effectModeActive = false
         colorDebounce?.cancel()
         colorDebounce = Task { @MainActor in
@@ -135,7 +143,13 @@ final class LightBLEManager: NSObject {
     }
 
     func setEffect(id: UInt8) {
-        setSyncMode(.off)
+        // Nil closures synchronously so async teardown can't overwrite the effect packet
+        systemAudio.onBands = nil
+        screenSampler.onColor = nil
+        flashLevel = 0
+        transitionTask?.cancel()
+        syncMode = .off
+        syncTransitioning = false
         effectID = id
         effectModeActive = true
         write(Cmd.effect(id: id))
@@ -165,7 +179,6 @@ final class LightBLEManager: NSObject {
     // MARK: - Sync state machine
 
     func setSyncMode(_ mode: SyncMode) {
-        if mode == syncMode && !syncTransitioning { return }
         transitionTask?.cancel()
         syncTransitioning = true
         syncError = nil
@@ -190,6 +203,11 @@ final class LightBLEManager: NSObject {
 
     private func buildSync(_ mode: SyncMode) async {
         effectModeActive = false
+        guard mode == .off || connectionState == .connected else {
+            syncMode = .off
+            syncError = "Not connected"
+            return
+        }
         switch mode {
         case .off:
             syncMode = .off
@@ -211,6 +229,7 @@ final class LightBLEManager: NSObject {
         case .audio:
             let (h, _, _) = color.hsvComponents
             beatHue = h
+            audioPulseH = h
             setupAudioCallback()
             do {
                 try await systemAudio.start()
@@ -227,11 +246,14 @@ final class LightBLEManager: NSObject {
             setupAudioCallback()
             screenSampler.selectedDisplayID = selectedDisplayID
             var errors: [String] = []
-            do { try await screenSampler.start() } catch {
+            // Start both streams concurrently — total latency = max(screen, audio)
+            async let screenStart: () = screenSampler.start()
+            async let audioStart: () = systemAudio.start()
+            do { try await screenStart } catch {
                 screenSampler.onColor = nil
                 errors.append("Screen: \(error.localizedDescription)")
             }
-            do { try await systemAudio.start() } catch {
+            do { try await audioStart } catch {
                 systemAudio.onBands = nil
                 errors.append("Audio: \(error.localizedDescription)")
             }
@@ -294,12 +316,13 @@ final class LightBLEManager: NSObject {
                 self.write(Cmd.hue(self.beatHue, saturation: min(1.0, 0.6 + bands.mid * 0.4)))
                 self.write(Cmd.brightness(min(1.0, max(0.05, bands.bass * 1.3 + bands.rms * 0.3))))
             case .pulse:
-                let (h, _, _) = self.color.hsvComponents
-                self.write(Cmd.hue(h, saturation: min(1.0, 0.8 + bands.mid * 0.2)))
+                self.write(Cmd.hue(self.audioPulseH, saturation: min(1.0, 0.8 + bands.mid * 0.2)))
                 self.write(Cmd.brightness(min(1.0, max(0.03, bands.bass * 1.5 + bands.rms * 0.2))))
             case .frequency:
-                let total = bands.bass + bands.mid + bands.high + 0.001
-                let h = (bands.mid * (120/360.0) + bands.high * (240/360.0)) / total
+                // Hue blends mid→green and high→blue; bass excluded from denominator so
+                // bass-heavy music doesn't pull hue toward zero (red) unintentionally.
+                let hTotal = bands.mid + bands.high + 0.001
+                let h = (bands.mid * (120/360.0) + bands.high * (240/360.0)) / hTotal
                 self.write(Cmd.hue(h, saturation: 1.0))
                 self.write(Cmd.brightness(min(1.0, max(0.05, (bands.bass + bands.mid + bands.high) / 3 * 1.5 + bands.rms * 0.2))))
             }
