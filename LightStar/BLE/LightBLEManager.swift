@@ -390,9 +390,9 @@ final class LightBLEManager: NSObject {
 
                 self.write(Cmd.hue(h, saturation: s))
                 self.write(Cmd.brightness(bri))
-                try? await Task.sleep(nanoseconds: 16_700_000)
+                do { try await Task.sleep(nanoseconds: 16_700_000) }
+                catch { return }  // cancelled — leave strip at last written color
             }
-            guard !Task.isCancelled else { return }
             self.restoreSteadyState()
         }
     }

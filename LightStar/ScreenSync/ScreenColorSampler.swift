@@ -13,10 +13,10 @@ final class ScreenColorSampler: NSObject {
 
     private(set) var isRunning = false
     private var displayStream: CGDisplayStream?
-    private let queue = DispatchQueue(label: "screen.sample", qos: .userInteractive)
 
     // Returns (displayID, localizedName) pairs for the display picker.
     // Uses NSScreen directly — no SCShareableContent round-trip needed.
+    @MainActor
     static func availableDisplays() async -> [(id: CGDirectDisplayID, name: String)] {
         NSScreen.screens.compactMap { screen in
             guard let id = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")]
@@ -35,21 +35,21 @@ final class ScreenColorSampler: NSObject {
             CGDisplayStream.minimumFrameTime: 1.0 / 60.0,
         ]
 
-        // CGDisplayStream delivers IOSurface-backed CVPixelBuffer at vsync (~2-5ms latency)
-        // vs SCStream's compositor round-trip (~50ms). dominantHSV() takes CVPixelBuffer — no change there.
+        // Deliver on main — 16×9 pixel work is <0.1ms, no background queue needed.
+        // Avoids _dispatch_assert_queue_fail from cross-queue @MainActor property access.
         let stream = CGDisplayStream(
             dispatchQueueDisplay: displayID,
             outputWidth: 16, outputHeight: 9,
             pixelFormat: Int32(kCVPixelFormatType_32BGRA),
             properties: props as CFDictionary,
-            queue: queue
+            queue: DispatchQueue.main
         ) { [weak self] status, _, surface, _ in
             guard status == .frameComplete, let surface else { return }
             var pbRef: Unmanaged<CVPixelBuffer>?
             CVPixelBufferCreateWithIOSurface(nil, surface, nil, &pbRef)
             guard let pb = pbRef?.takeRetainedValue() else { return }
             let (h, s, v) = dominantHSV(pb)
-            DispatchQueue.main.async { self?.onColor?(h, s, v) }
+            self?.onColor?(h, s, v)
         }
         guard let stream else {
             throw NSError(domain: "ScreenSync", code: 1,
