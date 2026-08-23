@@ -67,6 +67,7 @@ final class LightBLEManager: NSObject {
     private var peripheral: CBPeripheral?
     private var writeChar: CBCharacteristic?
     private var reconnectTask: Task<Void, Never>?
+    private var connectWhenReady = false   // deferred connect until BT powered on
     private var colorDebounce: Task<Void, Never>?
     private var reconnectAttempts = 0
     private let maxReconnectAttempts = 5
@@ -90,7 +91,13 @@ final class LightBLEManager: NSObject {
     func connect() {
         guard connectionState == .disconnected else { return }
         reconnectAttempts = 0
-        startScan()
+        if central.state == .poweredOn {
+            startScan()
+        } else {
+            // BT not ready yet — startScan deferred to centralManagerDidUpdateState
+            connectWhenReady = true
+            connectionState = .scanning
+        }
     }
 
     func disconnect() {
@@ -982,6 +989,7 @@ final class LightBLEManager: NSObject {
     // MARK: - Private helpers
 
     private func startScan() {
+        guard central.state == .poweredOn else { return }
         connectionState = .scanning
         central.scanForPeripherals(withServices: [Self.advertisedUUID], options: nil)
         Task { @MainActor in
@@ -1023,7 +1031,12 @@ final class LightBLEManager: NSObject {
 extension LightBLEManager: CBCentralManagerDelegate {
 
     nonisolated func centralManagerDidUpdateState(_ central: CBCentralManager) {
-        // could auto-connect here on BT power-on
+        guard central.state == .poweredOn else { return }
+        Task { @MainActor in
+            guard self.connectWhenReady else { return }
+            self.connectWhenReady = false
+            self.startScan()
+        }
     }
 
     nonisolated func centralManager(_ central: CBCentralManager,
