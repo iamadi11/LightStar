@@ -15,6 +15,7 @@
 		A1B2C3D4E5F601234567890A /* MicSyncManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F601234567890B /* MicSyncManager.swift */; };
 		A1B2C3D4E5F601234567890C /* CameraChangeDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F601234567890D /* CameraChangeDetector.swift */; };
 		A1B2C3D4E5F601234567890E /* ScreenColorSampler.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F601234567890F /* ScreenColorSampler.swift */; };
+		A1B2C3D4E5F601234567891A /* SystemAudioSampler.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F601234567891B /* SystemAudioSampler.swift */; };
 		FE0EC53441B7F6561EF584DC /* PresetStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53F50B77BEC004F04F88246F /* PresetStore.swift */; };
 /* End PBXBuildFile section */
 
@@ -28,6 +29,7 @@
 		A1B2C3D4E5F601234567890B /* MicSyncManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MicSyncManager.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F601234567890D /* CameraChangeDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraChangeDetector.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F601234567890F /* ScreenColorSampler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenColorSampler.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F601234567891B /* SystemAudioSampler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemAudioSampler.swift; sourceTree = "<group>"; };
 		8584E39FD808B45A57E6E9CD /* MenuBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarView.swift; sourceTree = "<group>"; };
 		85C325703421F5313421C1A2 /* LightState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LightState.swift; sourceTree = "<group>"; };
 		BD4AC3D3F3191CB3A7F42B05 /* LightStar.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = LightStar.entitlements; sourceTree = "<group>"; };
@@ -78,6 +80,7 @@
 			isa = PBXGroup;
 			children = (
 				A1B2C3D4E5F601234567890F /* ScreenColorSampler.swift */,
+				A1B2C3D4E5F601234567891B /* SystemAudioSampler.swift */,
 			);
 			path = ScreenSync;
 			sourceTree = "<group>";
@@ -175,6 +178,7 @@
 				A1B2C3D4E5F601234567890A /* MicSyncManager.swift in Sources */,
 				A1B2C3D4E5F601234567890C /* CameraChangeDetector.swift in Sources */,
 				A1B2C3D4E5F601234567890E /* ScreenColorSampler.swift in Sources */,
+				A1B2C3D4E5F601234567891A /* SystemAudioSampler.swift in Sources */,
 				EBBACD224CBCE8EDF326097A /* LightStarApp.swift in Sources */,
 				B4C3D8703B2DCC52DC779715 /* LightState.swift in Sources */,
 				A3956EA2931DD57FFE98BE83 /* MenuBarView.swift in Sources */,

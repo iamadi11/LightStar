@@ -35,13 +35,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - Permissions (request all upfront so macOS shows dialogs at launch)
 
     private func requestAllPermissions() async {
-        // Microphone
-        await AVCaptureDevice.requestAccess(for: .audio)
-        // Camera
+        // Camera (for protocol debug tab)
         await AVCaptureDevice.requestAccess(for: .video)
-        // Screen Recording — attempting SCShareableContent triggers the TCC prompt
+        // Screen Recording — triggers TCC prompt; also covers system audio via SCStream
         _ = try? await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
-        // Bluetooth is triggered automatically by CBCentralManager init in LightBLEManager
+        // Bluetooth triggered automatically by CBCentralManager init
     }
 
     // MARK: - Menu bar icon

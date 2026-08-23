@@ -20,9 +20,10 @@ final class LightBLEManager: NSObject {
     var effectID: UInt8 = 0x01
     var effectSpeed: Double = 0.5   // 0–1 mapped to 0–100
     var effectModeActive = false
-    var micSyncActive = false
-    enum MicSyncMode: String, CaseIterable { case rainbow = "Rainbow"; case pulse = "Pulse"; case frequency = "Frequency" }
-    var micSyncMode: MicSyncMode = .rainbow
+    // Audio sync (system audio via SCStream — can coexist with screenSyncActive for combined mode)
+    var audioSyncActive = false
+    enum AudioSyncMode: String, CaseIterable { case rainbow = "Rainbow"; case pulse = "Pulse"; case frequency = "Frequency" }
+    var audioSyncMode: AudioSyncMode = .rainbow
     var screenSyncActive = false
     var screenSyncResponsiveness: Double = 0.3
     var screenSyncError: String?
@@ -60,10 +61,10 @@ final class LightBLEManager: NSObject {
     private var colorDebounce: Task<Void, Never>?
     private var reconnectAttempts = 0
     private let maxReconnectAttempts = 5
-    private let micSync = MicSyncManager()
-    // Beat hue — advances 30° per beat for rainbow effect
+    private let systemAudio = SystemAudioSampler()
+    // Beat hue — advances 30° per beat for rainbow/frequency modes
     private var beatHue: Double = 0
-    var micSyncError: String?
+    var audioSyncError: String?
     private let camera = CameraChangeDetector()
     private let screenSampler = ScreenColorSampler()
 
@@ -123,7 +124,7 @@ final class LightBLEManager: NSObject {
 
     func setEffect(id: UInt8) {
         stopScreenSync()
-        stopMicSync()
+        stopAudioSync()
         effectID = id
         effectModeActive = true
         write(Cmd.effect(id: id))
@@ -150,27 +151,36 @@ final class LightBLEManager: NSObject {
         }
     }
 
-    func startMicSync() {
-        guard !micSyncActive else { return }
-        stopScreenSync()
+    // Starts system audio sync. Can run alongside screenSyncActive (combined mode):
+    //   • combined: audio only drives brightness — screen drives hue
+    //   • audio-only: audio drives hue + brightness per audioSyncMode
+    func startAudioSync() {
+        guard !audioSyncActive else { return }
         effectModeActive = false
-        micSyncError = nil
+        audioSyncError = nil
         let (h, _, _) = color.hsvComponents
         beatHue = h
 
         var lastWrite: Double = 0
 
-        micSync.onBands = { [weak self] bands in
-            guard let self, self.micSyncActive else { return }
+        systemAudio.onBands = { [weak self] (bands: FrequencyBands) in
+            guard let self, self.audioSyncActive else { return }
 
             let now = CACurrentMediaTime()
             guard now - lastWrite >= 1.0 / 30.0 else { return }
             lastWrite = now
 
-            switch self.micSyncMode {
+            // Combined mode: screen controls hue — audio only pulses brightness + saturation
+            if self.screenSyncActive {
+                let bri = min(1.0, max(0.05, bands.bass * 1.4 + bands.rms * 0.3))
+                self.write(Cmd.brightness(bri))
+                return
+            }
+
+            // Audio-only mode: full hue + brightness control
+            switch self.audioSyncMode {
 
             case .rainbow:
-                // Beat → 30° hue jump; treble → continuous slow drift
                 if bands.isBeat {
                     self.beatHue = (self.beatHue + 1.0/12.0).truncatingRemainder(dividingBy: 1.0)
                 } else {
@@ -182,7 +192,6 @@ final class LightBLEManager: NSObject {
                 self.write(Cmd.brightness(bri))
 
             case .pulse:
-                // Keep current color; bass → dramatic brightness spike, decay on low energy
                 let bri = min(1.0, max(0.03, bands.bass * 1.5 + bands.rms * 0.2))
                 let sat = min(1.0, 0.8 + bands.mid * 0.2)
                 let (h, _, _) = self.color.hsvComponents
@@ -190,8 +199,6 @@ final class LightBLEManager: NSObject {
                 self.write(Cmd.brightness(bri))
 
             case .frequency:
-                // Bass → warm hue (red 0°), mid → green (120°), treble → blue (240°)
-                // Blend between them based on which band dominates
                 let total = bands.bass + bands.mid + bands.high + 0.001
                 let h = (bands.bass * 0.0 + bands.mid * (120/360.0) + bands.high * (240/360.0)) / total
                 let bri = min(1.0, max(0.05, (bands.bass + bands.mid + bands.high) / 3 * 1.5 + bands.rms * 0.2))
@@ -200,32 +207,34 @@ final class LightBLEManager: NSObject {
             }
         }
 
-        micSyncActive = true
+        audioSyncActive = true
         Task {
             do {
-                try await micSync.start()
+                try await systemAudio.start()
             } catch {
                 await MainActor.run {
-                    self.micSyncActive = false
-                    self.micSync.stop()
-                    self.micSyncError = error.localizedDescription
+                    self.audioSyncActive = false
+                    self.audioSyncError = error.localizedDescription
                 }
             }
         }
     }
 
-    func stopMicSync() {
-        guard micSyncActive else { return }
-        micSyncActive = false
-        micSync.stop()
-        let (h, s, _) = color.hsvComponents
-        write(Cmd.hue(h, saturation: s))
-        write(Cmd.brightness(brightness))
+    func stopAudioSync() {
+        guard audioSyncActive else { return }
+        audioSyncActive = false
+        Task { await self.systemAudio.stop() }
+        // Restore steady state only if screen sync isn't still active
+        if !screenSyncActive {
+            let (h, s, _) = color.hsvComponents
+            write(Cmd.hue(h, saturation: s))
+            write(Cmd.brightness(brightness))
+        }
     }
 
     func startScreenSync() {
         guard !screenSyncActive, connectionState == .connected else { return }
-        stopMicSync()
+        // Don't stop audioSync — they can coexist (combined mode)
         effectModeActive = false
         screenSyncError = nil
         screenSyncActive = true
@@ -438,7 +447,7 @@ final class LightBLEManager: NSObject {
     func testColorMapping() {
         guard !probeRunning, connectionState == .connected else { return }
         probeRunning = true
-        stopScreenSync(); stopMicSync(); effectModeActive = false
+        stopScreenSync(); stopAudioSync(); effectModeActive = false
 
         probeLog = [
             "=== COMPREHENSIVE COLOR MAPPING TEST ===",
@@ -643,7 +652,7 @@ final class LightBLEManager: NSObject {
     func sweepColorPalette() {
         guard connectionState == .connected, !probeRunning else { return }
         probeRunning = true
-        stopScreenSync(); stopMicSync(); effectModeActive = false
+        stopScreenSync(); stopAudioSync(); effectModeActive = false
         let hues: [(String, Double)] = [
             ("Red", 0/12.0), ("Orange", 1/12.0), ("Yellow", 2/12.0),
             ("Chartreuse", 3/12.0), ("Green", 4/12.0), ("Spring", 5/12.0),
@@ -1020,9 +1029,9 @@ extension LightBLEManager: CBCentralManagerDelegate {
         Task { @MainActor in
             self.writeChar = nil
             self.connectionState = .disconnected
-            if self.micSyncActive {
-                self.micSync.stop()
-                self.micSyncActive = false
+            if self.audioSyncActive {
+                self.audioSyncActive = false
+                Task { await self.systemAudio.stop() }
             }
             if self.screenSyncActive {
                 self.screenSyncActive = false

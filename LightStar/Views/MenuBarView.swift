@@ -130,8 +130,8 @@ struct MenuBarView: View {
 
             Divider()
 
-            // Mic sync
-            MicSyncView()
+            // Audio sync (system audio)
+            AudioSyncView()
 
             Divider()
 
@@ -168,10 +168,13 @@ struct MenuBarView: View {
 
 }
 
-private struct MicSyncView: View {
+private struct AudioSyncView: View {
     @Environment(LightBLEManager.self) private var ble
 
-    private func modeDescription(_ mode: LightBLEManager.MicSyncMode) -> String {
+    private func modeDescription(_ mode: LightBLEManager.AudioSyncMode) -> String {
+        if ble.screenSyncActive {
+            return "Combined: screen drives color · audio pulses brightness"
+        }
         switch mode {
         case .rainbow:   return "Beats → hue jump · treble → color drift · bass → brightness"
         case .pulse:     return "Bass → brightness pulse · keeps current color"
@@ -182,35 +185,49 @@ private struct MicSyncView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
-                Label("Mic Sync", systemImage: "waveform.and.mic")
+                Label("Audio Sync", systemImage: "speaker.wave.3")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                if ble.audioSyncActive && ble.screenSyncActive {
+                    Text("COMBINED")
+                        .font(.system(size: 8, weight: .bold))
+                        .padding(.horizontal, 4).padding(.vertical, 1)
+                        .background(Color.purple.opacity(0.2))
+                        .foregroundStyle(.purple)
+                        .clipShape(RoundedRectangle(cornerRadius: 3))
+                }
                 Spacer()
                 Toggle("", isOn: Binding(
-                    get: { ble.micSyncActive },
-                    set: { on in on ? ble.startMicSync() : ble.stopMicSync() }
+                    get: { ble.audioSyncActive },
+                    set: { on in on ? ble.startAudioSync() : ble.stopAudioSync() }
                 ))
                 .toggleStyle(.switch)
                 .labelsHidden()
             }
-            if let err = ble.micSyncError {
+            if let err = ble.audioSyncError {
                 Text(err)
                     .font(.system(size: 9))
                     .foregroundStyle(.red)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            if ble.micSyncActive {
-                Picker("", selection: Binding(
-                    get: { ble.micSyncMode },
-                    set: { ble.micSyncMode = $0 }
-                )) {
-                    ForEach(LightBLEManager.MicSyncMode.allCases, id: \.self) {
-                        Text($0.rawValue).tag($0)
+            if ble.audioSyncActive {
+                if !ble.screenSyncActive {
+                    Picker("", selection: Binding(
+                        get: { ble.audioSyncMode },
+                        set: { ble.audioSyncMode = $0 }
+                    )) {
+                        ForEach(LightBLEManager.AudioSyncMode.allCases, id: \.self) {
+                            Text($0.rawValue).tag($0)
+                        }
                     }
+                    .pickerStyle(.segmented)
+                    .controlSize(.mini)
                 }
-                .pickerStyle(.segmented)
-                .controlSize(.mini)
-                Text(modeDescription(ble.micSyncMode))
+                Text(modeDescription(ble.audioSyncMode))
+                    .font(.system(size: 9))
+                    .foregroundStyle(.secondary)
+            } else {
+                Text("Captures system audio — no microphone needed")
                     .font(.system(size: 9))
                     .foregroundStyle(.secondary)
             }
@@ -379,7 +396,7 @@ private struct AnimationsView: View {
 
     private func sendAnimation() {
         ble.stopScreenSync()
-        ble.stopMicSync()
+        ble.stopAudioSync()
         ble.sendRaw([0xBC, 0x13, 0x01, currentID, 0x55])
     }
 }
@@ -389,7 +406,7 @@ private extension MenuBarView {
     func applyPreset(_ preset: Preset) {
         if !ble.isOn { ble.setPower(on: true) }
         ble.stopScreenSync()
-        ble.stopMicSync()
+        ble.stopAudioSync()
         ble.setColor(preset.color)
         ble.setBrightness(preset.brightness)
     }
