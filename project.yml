@@ -44,9 +44,6 @@ targets:
       path: LightStar/LightStar.entitlements
       properties:
         com.apple.security.app-sandbox: false
-        com.apple.security.bluetooth: true
-        com.apple.security.screen-recording: true
-        com.apple.developer.bluetooth.allow: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.adityaraj.LightStar

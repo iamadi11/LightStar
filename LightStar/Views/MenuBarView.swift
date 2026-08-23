@@ -1,8 +1,10 @@
 import SwiftUI
+import AVFoundation
 
 struct MenuBarView: View {
     @Environment(LightBLEManager.self) private var ble
     @Environment(PresetStore.self) private var presets
+    @State private var selectedTab = 0
 
     var body: some View {
         VStack(spacing: 0) {
@@ -16,22 +18,44 @@ struct MenuBarView: View {
                 connectionButton
             }
             .padding(.horizontal, 16)
-            .padding(.vertical, 12)
+            .padding(.vertical, 10)
+
+            // Tab picker
+            HStack(spacing: 0) {
+                tabButton("Control", index: 0)
+                tabButton("Debug", index: 1)
+            }
+            .padding(.horizontal, 16)
+            .padding(.bottom, 8)
 
             Divider()
 
             ScrollView {
-                VStack(spacing: 16) {
+                if selectedTab == 0 {
                     if ble.connectionState == .connected {
                         controlsSection
                     } else {
                         statusSection
                     }
+                } else {
+                    DebugTabView()
                 }
-                .padding(16)
             }
         }
-        .frame(width: 300)
+        .frame(width: 320)
+    }
+
+    private func tabButton(_ label: String, index: Int) -> some View {
+        Button(label) { selectedTab = index }
+            .buttonStyle(.plain)
+            .font(.caption.weight(selectedTab == index ? .semibold : .regular))
+            .foregroundStyle(selectedTab == index ? .primary : .secondary)
+            .padding(.vertical, 4)
+            .padding(.horizontal, 12)
+            .background(
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(selectedTab == index ? Color.accentColor.opacity(0.15) : .clear)
+            )
     }
 
     // MARK: - Sections
@@ -51,7 +75,7 @@ struct MenuBarView: View {
 
     private var controlsSection: some View {
         VStack(spacing: 16) {
-            // Power + color row
+            // Power row
             HStack(spacing: 12) {
                 Toggle("", isOn: Binding(
                     get: { ble.isOn },
@@ -59,19 +83,12 @@ struct MenuBarView: View {
                 ))
                 .toggleStyle(.switch)
                 .labelsHidden()
-
                 Text(ble.isOn ? "On" : "Off")
                     .frame(width: 24, alignment: .leading)
-
                 Spacer()
-
-                ColorPicker("Color", selection: Binding(
-                    get: { ble.color },
-                    set: { ble.setColor($0) }
-                ), supportsOpacity: false)
-                .labelsHidden()
-                .frame(width: 44, height: 28)
             }
+
+            ColorControlView()
 
             // Brightness
             VStack(alignment: .leading, spacing: 4) {
@@ -113,9 +130,24 @@ struct MenuBarView: View {
 
             Divider()
 
+            // Mic sync
+            MicSyncView()
+
+            Divider()
+
             // Effects
             EffectsView()
+
+            Divider()
+
+            // Screen sync (Ambilight)
+            ScreenSyncView()
+
+            Divider()
+
+            AnimationsView()
         }
+        .padding(16)
     }
 
     private var connectionButton: some View {
@@ -134,15 +166,196 @@ struct MenuBarView: View {
         .tint(ble.connectionState == .connected ? .red : .accentColor)
     }
 
-    // MARK: - Helpers
+}
 
-    private func applyPreset(_ preset: Preset) {
+private struct MicSyncView: View {
+    @Environment(LightBLEManager.self) private var ble
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Label("Mic Sync", systemImage: "waveform.and.mic")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Toggle("", isOn: Binding(
+                    get: { ble.micSyncActive },
+                    set: { on in on ? ble.startMicSync() : ble.stopMicSync() }
+                ))
+                .toggleStyle(.switch)
+                .labelsHidden()
+            }
+            if let err = ble.micSyncError {
+                Text(err)
+                    .font(.system(size: 9))
+                    .foregroundStyle(.red)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            if ble.micSyncActive {
+                Text("Amplitude → brightness · beats → rainbow hue shift")
+                    .font(.system(size: 9))
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+}
+
+private struct EffectsView: View {
+    @Environment(LightBLEManager.self) private var ble
+
+    // Effect IDs confirmed from second PacketLogger capture (2026-08-23)
+    private let effects: [(name: String, id: UInt8)] = [
+        ("Effect 1", 0x01),
+        ("Effect 3", 0x03),
+        ("Effect 53", 0x35),
+    ]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("Effects")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                if ble.effectModeActive {
+                    Button("Solid Color") { ble.exitEffectMode() }
+                        .buttonStyle(.bordered)
+                        .controlSize(.mini)
+                }
+            }
+
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 6) {
+                ForEach(effects, id: \.id) { fx in
+                    Button(fx.name) { ble.setEffect(id: fx.id) }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .tint(ble.effectModeActive && ble.effectID == fx.id ? .accentColor : nil)
+                }
+            }
+
+            if ble.effectModeActive {
+                VStack(alignment: .leading, spacing: 4) {
+                    Label("Speed", systemImage: "hare")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Slider(value: Binding(
+                        get: { ble.effectSpeed },
+                        set: { ble.setEffectSpeed($0) }
+                    ), in: 0...1)
+                }
+            }
+        }
+    }
+}
+
+private struct ScreenSyncView: View {
+    @Environment(LightBLEManager.self) private var ble
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Label("Screen Sync", systemImage: "display")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Toggle("", isOn: Binding(
+                    get: { ble.screenSyncActive },
+                    set: { on in on ? ble.startScreenSync() : ble.stopScreenSync() }
+                ))
+                .toggleStyle(.switch)
+                .labelsHidden()
+            }
+            if let err = ble.screenSyncError {
+                Text(err)
+                    .font(.system(size: 9))
+                    .foregroundStyle(.red)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            if ble.screenSyncActive {
+                Text("Strip follows screen color. Brightness controlled by slider above.")
+                    .font(.system(size: 9))
+                    .foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 2) {
+                    Label("Responsiveness", systemImage: "dial.medium")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                    Slider(value: Binding(
+                        get: { ble.screenSyncResponsiveness },
+                        set: { ble.screenSyncResponsiveness = $0 }
+                    ), in: 0.05...1.0)
+                }
+            }
+        }
+    }
+}
+
+// BC13: 253 built-in animation scenes (0x00–0xFF, gaps at 0x3D 0x5B 0x96)
+private struct AnimationsView: View {
+    @Environment(LightBLEManager.self) private var ble
+    // Valid IDs — skip the 3 gaps
+    private static let validIDs: [UInt8] = (0x00...0xFF).compactMap { v in
+        [0x3D, 0x5B, 0x96].contains(v) ? nil : UInt8(v)
+    }
+    @State private var sceneIndex: Double = 0
+
+    private var currentID: UInt8 { Self.validIDs[min(Int(sceneIndex), Self.validIDs.count - 1)] }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Label("Animations", systemImage: "sparkles")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Text("Scene \(Int(sceneIndex) + 1)/\(Self.validIDs.count)  (0x\(String(format: "%02X", currentID)))")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            Slider(value: $sceneIndex, in: 0...Double(Self.validIDs.count - 1), step: 1) {
+                EmptyView()
+            } onEditingChanged: { _ in
+                sendAnimation()
+            }
+            HStack(spacing: 6) {
+                Button("◀") {
+                    sceneIndex = max(0, sceneIndex - 1)
+                    sendAnimation()
+                }
+                Button("▶") {
+                    sceneIndex = min(Double(Self.validIDs.count - 1), sceneIndex + 1)
+                    sendAnimation()
+                }
+                Button("▶ Play") { sendAnimation() }
+                Button("Random") {
+                    sceneIndex = Double(Int.random(in: 0..<Self.validIDs.count))
+                    sendAnimation()
+                }
+                Spacer()
+                Button("Stop") { ble.exitEffectMode() }
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.mini)
+        }
+    }
+
+    private func sendAnimation() {
+        ble.stopScreenSync()
+        ble.stopMicSync()
+        ble.sendRaw([0xBC, 0x13, 0x01, currentID, 0x55])
+    }
+}
+
+// MARK: - MenuBarView helpers (private extension keeps them off the struct namespace)
+private extension MenuBarView {
+    func applyPreset(_ preset: Preset) {
         if !ble.isOn { ble.setPower(on: true) }
+        ble.stopScreenSync()
+        ble.stopMicSync()
         ble.setColor(preset.color)
         ble.setBrightness(preset.brightness)
     }
 
-    private var stateIcon: String {
+    var stateIcon: String {
         switch ble.connectionState {
         case .disconnected: return "wifi.slash"
         case .scanning:     return "antenna.radiowaves.left.and.right"
@@ -151,7 +364,7 @@ struct MenuBarView: View {
         }
     }
 
-    private var stateLabel: String {
+    var stateLabel: String {
         switch ble.connectionState {
         case .disconnected: return "Not connected"
         case .scanning:     return "Scanning…"
@@ -160,7 +373,7 @@ struct MenuBarView: View {
         }
     }
 
-    private var connectionButtonLabel: String {
+    var connectionButtonLabel: String {
         switch ble.connectionState {
         case .disconnected: return "Connect"
         case .scanning:     return "Cancel"
@@ -170,47 +383,360 @@ struct MenuBarView: View {
     }
 }
 
-// MARK: - Effects subview
-
-private struct EffectsView: View {
+// Inline hue + saturation picker — no popup window.
+private struct ColorControlView: View {
     @Environment(LightBLEManager.self) private var ble
+    @State private var hue: Double = 0        // red
+    @State private var sat: Double = 1.0      // full saturation — never start at white
+    @State private var ignoreNextBLEUpdate = false
 
-    private let effects: [(String, UInt8)] = [
-        ("Jump RGB", 0x25), ("Fade RGB", 0x27),
-        ("Flash", 0x29), ("Strobe", 0x2C),
-    ]
+    private static let hueGradient = Gradient(colors: stride(from: 0.0, through: 1.0, by: 1.0/12).map {
+        Color(hue: $0, saturation: 1, brightness: 1)
+    })
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Effects")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 6) {
+            // Preview swatch
+            HStack(spacing: 8) {
+                Label("Color", systemImage: "paintbrush")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                // White shortcut
+                Button("White") {
+                    sat = 0
+                    sendColor()
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.mini)
+                RoundedRectangle(cornerRadius: 5)
+                    .fill(Color(hue: hue, saturation: sat, brightness: 1))
+                    .frame(width: 36, height: 22)
+                    .overlay(RoundedRectangle(cornerRadius: 5).stroke(Color.primary.opacity(0.15), lineWidth: 0.5))
+            }
 
-            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
-                ForEach(effects, id: \.1) { name, mode in
-                    Button {
-                        ble.setEffect(mode: mode, speed: ble.effectSpeed)
-                    } label: {
-                        Text(name)
-                            .frame(maxWidth: .infinity)
-                            .lineLimit(1)
+            // Hue slider
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Hue").font(.caption2).foregroundStyle(.secondary)
+                GradientSlider(gradient: Self.hueGradient, value: $hue)
+                    .onChange(of: hue) { _, _ in sendColor() }
+            }
+
+            // Saturation slider (white → full color)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Saturation").font(.caption2).foregroundStyle(.secondary)
+                GradientSlider(
+                    gradient: Gradient(colors: [
+                        Color(hue: hue, saturation: 0, brightness: 1),
+                        Color(hue: hue, saturation: 1, brightness: 1)
+                    ]),
+                    value: $sat
+                )
+                .onChange(of: sat) { _, _ in sendColor() }
+            }
+        }
+        .onAppear { syncFromBLE() }
+        .onChange(of: ble.color) { _, _ in
+            guard !ignoreNextBLEUpdate else { ignoreNextBLEUpdate = false; return }
+            syncFromBLE()
+        }
+    }
+
+    private func syncFromBLE() {
+        let (h, s, _) = ble.color.hsvComponents
+        if s > 0.05 {
+            hue = h
+            sat = s
+        }
+        // If color is white/near-white, keep sliders as-is so dragging hue
+        // immediately shows color. Don't reset sat to 0.
+    }
+
+    private func sendColor() {
+        ignoreNextBLEUpdate = true
+        ble.stopScreenSync()
+        ble.setHue(hue, saturation: sat)
+    }
+}
+
+private struct GradientSlider: View {
+    let gradient: Gradient
+    @Binding var value: Double
+
+    var body: some View {
+        GeometryReader { geo in
+            let thumbSize: CGFloat = 16
+            let trackWidth = geo.size.width - thumbSize
+            ZStack(alignment: .leading) {
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(LinearGradient(gradient: gradient, startPoint: .leading, endPoint: .trailing))
+                    .frame(height: 10)
+                    .padding(.horizontal, thumbSize / 2)
+                Circle()
+                    .fill(Color.white)
+                    .shadow(color: .black.opacity(0.35), radius: 2, x: 0, y: 1)
+                    .frame(width: thumbSize, height: thumbSize)
+                    .offset(x: value * trackWidth)
+            }
+            .frame(height: thumbSize)
+            .contentShape(Rectangle())
+            .gesture(DragGesture(minimumDistance: 0).onChanged { drag in
+                value = max(0, min(1, (drag.location.x - thumbSize / 2) / trackWidth))
+            })
+        }
+        .frame(height: 16)
+    }
+}
+
+// MARK: - Debug Tab
+
+private struct DebugTabView: View {
+    @Environment(LightBLEManager.self) private var ble
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            // Live camera monitor
+            LiveCameraCard()
+
+            Divider()
+
+            // Raw BLE commands
+            VStack(alignment: .leading, spacing: 6) {
+                Label("Raw Commands", systemImage: "terminal")
+                    .font(.caption).foregroundStyle(.secondary)
+                HStack(spacing: 6) {
+                    Button("OFF")   { ble.sendRaw([0xBC,0x01,0x01,0x00,0x55]) }
+                    Button("ON")    { ble.sendRaw([0xBC,0x01,0x01,0x01,0x55]) }
+                }
+                HStack(spacing: 6) {
+                    Button("Red")   { ble.sendRaw([0xBC,0x04,0x06,0x00,0x00,0x03,0xE8,0x00,0x00,0x55]) }
+                    Button("Green") { ble.sendRaw([0xBC,0x04,0x06,0x00,0x78,0x03,0xE8,0x00,0x00,0x55]) }
+                    Button("Blue")  { ble.sendRaw([0xBC,0x04,0x06,0x00,0xF0,0x03,0xE8,0x00,0x00,0x55]) }
+                }
+                HStack(spacing: 6) {
+                    Button("Bri MAX") { ble.sendRaw([0xBC,0x05,0x06,0x03,0xE8,0x00,0x00,0x00,0x00,0x55]) }
+                    Button("Bri MIN") { ble.sendRaw([0xBC,0x05,0x06,0x00,0x64,0x00,0x00,0x00,0x00,0x55]) }
+                }
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.mini)
+
+            Divider()
+
+            // Probe tools
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    Label("Probe Tools", systemImage: "magnifyingglass")
+                        .font(.caption).foregroundStyle(.secondary)
+                    Spacer()
+                    Toggle("📷 Camera", isOn: Binding(
+                        get: { ble.cameraProbeEnabled },
+                        set: { ble.cameraProbeEnabled = $0 }
+                    ))
+                    .toggleStyle(.button)
+                    .controlSize(.mini)
+                    .help("Use camera to detect strip color during probe")
+                }
+                CameraPickerRow()
+                HStack(spacing: 6) {
+                    Button(ble.probeRunning ? "Running…" : "Color Test") {
+                        ble.testColorMapping()
                     }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                    .tint(ble.effectMode == mode ? .accentColor : .primary)
+                    .disabled(ble.probeRunning)
+                    Button(ble.probeRunning ? "Running…" : "Sweep") {
+                        ble.sweepColorPalette()
+                    }
+                    .disabled(ble.probeRunning)
+                    Button(ble.probeRunning ? "…" : "Broad") {
+                        ble.probeProtocol()
+                    }
+                    .disabled(ble.probeRunning)
+                    Button(ble.probeRunning ? "…" : "Deep") {
+                        ble.probeDeep()
+                    }
+                    .disabled(ble.probeRunning)
+                    .help("Full BC sweep ~5 min")
+                    if !ble.probeLog.isEmpty && !ble.probeRunning {
+                        Spacer()
+                        Button("Clear") { ble.probeLog = [] }
+                    }
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.mini)
+
+                if !ble.probeLog.isEmpty {
+                    logView(lines: ble.probeLog)
                 }
             }
 
-            VStack(alignment: .leading, spacing: 4) {
-                Label("Speed", systemImage: "hare")
-                    .font(.caption)
+            Divider()
+
+            // Device info
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    Label("Device Info", systemImage: "info.circle")
+                        .font(.caption).foregroundStyle(.secondary)
+                    Spacer()
+                    if !ble.deviceLog.isEmpty {
+                        Button("Save") { ble.saveDeviceLog() }
+                            .buttonStyle(.bordered)
+                            .controlSize(.mini)
+                    }
+                }
+                if ble.deviceLog.isEmpty {
+                    Text("Connect to strip to discover services")
+                        .font(.system(size: 9))
+                        .foregroundStyle(.secondary)
+                } else {
+                    logView(lines: ble.deviceLog)
+                }
+            }
+        }
+        .padding(16)
+    }
+
+    private func logView(lines: [String]) -> some View {
+        ScrollView {
+            Text(lines.joined(separator: "\n"))
+                .font(.system(size: 9, design: .monospaced))
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .textSelection(.enabled)
+        }
+        .frame(height: 140)
+        .background(Color(nsColor: .textBackgroundColor))
+        .clipShape(RoundedRectangle(cornerRadius: 4))
+    }
+}
+
+// Live camera color monitor card
+private struct LiveCameraCard: View {
+    @Environment(LightBLEManager.self) private var ble
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Label("Live Camera", systemImage: "camera.fill")
+                    .font(.caption).foregroundStyle(.secondary)
+                Spacer()
+                Button(ble.liveHue >= 0 ? "Stop" : "Start") {
+                    if ble.liveHue >= 0 { ble.stopLiveCamera() }
+                    else { ble.startLiveCamera() }
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.mini)
+            }
+
+            if ble.liveHue >= 0 {
+                HStack(spacing: 12) {
+                    // Detected color swatch
+                    RoundedRectangle(cornerRadius: 6)
+                        .fill(Color(hue: ble.liveHue, saturation: 1, brightness: 1))
+                        .frame(width: 48, height: 48)
+                        .overlay(RoundedRectangle(cornerRadius: 6)
+                            .stroke(Color.primary.opacity(0.2), lineWidth: 0.5))
+                        .shadow(radius: 2)
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack {
+                            Text("Hue").font(.caption).foregroundStyle(.secondary).frame(width: 36, alignment: .leading)
+                            Text(String(format: "%.0f°", ble.liveHue * 360))
+                                .font(.system(size: 13, design: .monospaced))
+                                .foregroundStyle(.primary)
+                        }
+                        HStack {
+                            Text("Bri").font(.caption).foregroundStyle(.secondary).frame(width: 36, alignment: .leading)
+                            Text(String(format: "%.0f%%", ble.liveBrightness * 100))
+                                .font(.system(size: 13, design: .monospaced))
+                                .foregroundStyle(.primary)
+                        }
+                        // Hue arc indicator
+                        GeometryReader { geo in
+                            ZStack(alignment: .leading) {
+                                RoundedRectangle(cornerRadius: 2)
+                                    .fill(LinearGradient(
+                                        gradient: Gradient(colors: stride(from: 0.0, through: 1.0, by: 1/12.0)
+                                            .map { Color(hue: $0, saturation: 1, brightness: 1) }),
+                                        startPoint: .leading, endPoint: .trailing))
+                                    .frame(height: 6)
+                                Circle()
+                                    .fill(Color.white)
+                                    .shadow(radius: 1)
+                                    .frame(width: 10, height: 10)
+                                    .offset(x: ble.liveHue * (geo.size.width - 10))
+                            }
+                        }
+                        .frame(height: 10)
+                    }
+                }
+                .animation(.easeInOut(duration: 0.1), value: ble.liveHue)
+            } else {
+                Text("Point iPhone at strip to read detected color")
+                    .font(.system(size: 9))
                     .foregroundStyle(.secondary)
-                // Speed: 0x01 fast → 0x1F slow; invert slider so right = fast
-                Slider(value: Binding(
-                    get: { 1.0 - (Double(ble.effectSpeed) / 31.0) },
-                    set: { ble.setEffect(mode: ble.effectMode, speed: UInt8(max(1, Int((1.0 - $0) * 31)))) }
-                ), in: 0...1)
             }
         }
     }
 }
+
+// Camera selector shown in the debug section.
+// iPhone appears via Continuity Camera (macOS 14+) — must be nearby, same Apple ID.
+// Tap ↺ to refresh the list after connecting iPhone.
+private struct CameraPickerRow: View {
+    @Environment(LightBLEManager.self) private var ble
+    @State private var cameras: [AVCaptureDevice] = []
+
+    private func icon(for cam: AVCaptureDevice) -> String {
+        switch cam.deviceType {
+        case .continuityCamera: return "iphone"
+        case .external:         return "web.camera"
+        default:                return "laptopcomputer"
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 4) {
+                Image(systemName: "camera")
+                    .foregroundStyle(.secondary)
+                    .font(.caption)
+                Text("Camera source")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Button {
+                    cameras = CameraChangeDetector.availableCameras()
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                }
+                .buttonStyle(.plain)
+                .font(.caption)
+                .help("Refresh camera list (connect iPhone first)")
+            }
+
+            Picker("", selection: Binding(
+                get: { ble.selectedCameraID },
+                set: { ble.selectedCameraID = $0 }
+            )) {
+                Label("Auto (iPhone first)", systemImage: "wand.and.stars")
+                    .tag(Optional<String>.none)
+                if cameras.isEmpty {
+                    Text("No cameras found — tap ↺").tag(Optional<String>.none)
+                }
+                ForEach(cameras, id: \.uniqueID) { cam in
+                    Label(cam.localizedName, systemImage: icon(for: cam))
+                        .tag(Optional(cam.uniqueID))
+                }
+            }
+            .labelsHidden()
+            .frame(maxWidth: .infinity)
+
+            if cameras.filter({ $0.deviceType == .continuityCamera }).isEmpty {
+                Text("iPhone not detected — unlock iPhone & bring near Mac")
+                    .font(.system(size: 9))
+                    .foregroundStyle(.orange)
+            }
+        }
+        .onAppear { cameras = CameraChangeDetector.availableCameras() }
+    }
+}
+

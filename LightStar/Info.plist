@@ -24,6 +24,10 @@
 	<string>14.0</string>
 	<key>LSUIElement</key>
 	<true/>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>LightStar uses the microphone to sync your light to music and sound.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>LightStar uses the camera to detect light changes during protocol probing.</string>
 	<key>NSBluetoothAlwaysUsageDescription</key>
 	<string>LightStar needs Bluetooth to connect to your LED light.</string>
 	<key>NSBluetoothPeripheralUsageDescription</key>
