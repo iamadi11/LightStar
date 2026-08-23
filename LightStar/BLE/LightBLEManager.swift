@@ -1201,8 +1201,10 @@ private enum Cmd {
 
     // BC04: hue (0–360°) + saturation (0–1000), big-endian 16-bit
     // Hue correction: strip's internal RGB mapping is non-linear.
-    // LUT derived from color test 2026-08-23: (observed_display_deg, protocol_send_deg)
+    // LUT derived from color test 2026-08-23 + residual recal 2026-08-24:
+    // (observed_display_deg, protocol_send_deg)
     // Inverts (sent→observed) pairs so user's intended color maps to correct protocol value.
+    // 305-360° entries rederived from Phase 1 sweep residual errors (5-13° undershoot).
     private static let hueLUT: [(obs: Double, send: Double)] = [
         (0,   0), (8,   0), (20,  10), (32,  20), (41,  30), (60,  40),
         (89,  50), (109, 60), (123, 70), (135, 80), (145, 90),
@@ -1211,7 +1213,9 @@ private enum Cmd {
         (209, 180), (212, 190), (215, 200), (217, 210), (220, 220),
         (222, 230), (226, 240), (229, 250), (239, 260), (247, 270),
         (252, 280), (255, 290), (259, 300), (264, 310), (269, 320),
-        (276, 330), (286, 340), (305, 350), (360, 360)
+        (276, 330), (286, 340),
+        // Recalibrated from Phase 1 residuals — strip underperforms 5-13° in purple/magenta
+        (305, 351), (310, 353), (320, 355), (330, 357), (340, 358), (360, 360)
     ]
 
     private static func correctedHueDeg(_ h: Double) -> Double {
