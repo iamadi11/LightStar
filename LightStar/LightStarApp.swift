@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import Carbon.HIToolbox
 
 @main
 struct LightStarApp: App {
@@ -16,7 +17,7 @@ struct LightStarApp: App {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem?
     private var popover: NSPopover?
-    private var globalMonitor: Any?
+    private var hotKeyRef: EventHotKeyRef?
     lazy var ble = LightBLEManager()
     lazy var presets = PresetStore()
 
@@ -101,31 +102,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     // MARK: - Global keyboard shortcut (⌘⇧L — toggle power)
+    // Carbon RegisterEventHotKey needs no Accessibility permission and
+    // survives debug re-signs — no system prompt ever shown.
 
     private func setupGlobalHotKey() {
-        // Show prompt once; retries check silently so dialog never repeats.
-        let showPrompt = globalMonitor == nil
-        let opts: CFDictionary = ["AXTrustedCheckOptionPrompt": showPrompt] as CFDictionary
-        let trusted = AXIsProcessTrustedWithOptions(opts)
+        guard hotKeyRef == nil else { return }
 
-        guard trusted else {
-            Task {
-                try? await Task.sleep(nanoseconds: 3_000_000_000)
-                await MainActor.run { self.setupGlobalHotKey() }
-            }
+        var hkID = EventHotKeyID()
+        hkID.signature = 0x4C535452   // 'LSTR'
+        hkID.id = 1
+
+        let status = RegisterEventHotKey(37, UInt32(cmdKey | shiftKey),
+                                         hkID, GetApplicationEventTarget(),
+                                         0, &hotKeyRef)
+        guard status == noErr else {
+            print("[LightStar] hotkey registration failed: \(status)")
             return
         }
 
-        guard globalMonitor == nil else { return }   // already registered
-        globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            // ⌘⇧L — toggle power
-            guard event.modifierFlags.intersection([.command, .shift, .option, .control])
-                    == [.command, .shift],
-                  event.keyCode == 37 else { return }
-            Task { @MainActor in
-                guard let self else { return }
-                self.ble.setPower(on: !self.ble.isOn)
-            }
-        }
+        var spec = EventTypeSpec(eventClass: OSType(kEventClassKeyboard),
+                                 eventKind: UInt32(kEventHotKeyPressed))
+        InstallEventHandler(
+            GetApplicationEventTarget(),
+            { _, _, userData -> OSStatus in
+                guard let ptr = userData else { return noErr }
+                let d = Unmanaged<AppDelegate>.fromOpaque(ptr).takeUnretainedValue()
+                Task { @MainActor in d.ble.setPower(on: !d.ble.isOn) }
+                return noErr
+            },
+            1, &spec,
+            Unmanaged.passUnretained(self).toOpaque(),
+            nil)
     }
 }

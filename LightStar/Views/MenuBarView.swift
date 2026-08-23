@@ -293,7 +293,10 @@ private struct ScreenSyncView: View {
             .onAppear { ble.loadAvailableDisplays() }
 
             if let err = ble.screenSyncError {
-                Text(err)
+                let msg = (err.contains("TCC") || err.contains("declined") || err.contains("denied"))
+                    ? "Screen Recording permission required — System Settings → Privacy & Security → Screen Recording → enable LightStar."
+                    : err
+                Text(msg)
                     .font(.system(size: 9))
                     .foregroundStyle(.red)
                     .fixedSize(horizontal: false, vertical: true)
