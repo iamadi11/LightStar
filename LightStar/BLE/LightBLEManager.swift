@@ -93,6 +93,11 @@ final class LightBLEManager: NSObject {
 
     func setPower(on: Bool) {
         isOn = on
+        if !on {
+            // Stop syncs before sending power-off — otherwise they immediately re-light the strip
+            stopScreenSync()
+            stopAudioSync()
+        }
         write(on ? Cmd.powerOn : Cmd.powerOff)
     }
 
@@ -166,7 +171,7 @@ final class LightBLEManager: NSObject {
         var lastWrite: Double = 0
 
         systemAudio.onBands = { [weak self] (bands: FrequencyBands) in
-            guard let self, self.audioSyncActive else { return }
+            guard let self, self.audioSyncActive, self.isOn else { return }
 
             let now = CACurrentMediaTime()
             guard now - lastWrite >= 1.0 / 30.0 else { return }
@@ -259,7 +264,7 @@ final class LightBLEManager: NSObject {
         var lastWrite: Double = 0
 
         screenSampler.onColor = { [weak self] h, s, v in
-            guard let self, self.screenSyncActive else { return }
+            guard let self, self.screenSyncActive, self.isOn else { return }
 
             // Skip near-black frames (v < 0.04) — sending black looks like a flicker
             guard v > 0.04 else { return }
