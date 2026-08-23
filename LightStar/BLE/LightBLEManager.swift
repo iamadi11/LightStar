@@ -1058,7 +1058,7 @@ final class LightBLEManager: NSObject {
     // FFF3 supports write-with-response (.write) — CB queues internally, ACK guaranteed.
     private func write(_ bytes: [UInt8]) {
         guard connectionState == .connected else { return }
-        writeQueue[bytes[0]] = Data(bytes)
+        writeQueue[bytes[1]] = Data(bytes)  // key by command sub-byte (0x04=hue, 0x05=bri…), not 0xBC header
         guard drainTimer == nil else { return }
         let t = Timer(timeInterval: 0.020, repeats: true) { [weak self] timer in
             MainActor.assumeIsolated {
