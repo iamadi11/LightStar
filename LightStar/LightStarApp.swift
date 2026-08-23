@@ -6,20 +6,25 @@ struct LightStarApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
 
     var body: some Scene {
-        // No windows — menu bar only. WindowGroup kept for Settings if needed later.
         Settings {
             EmptyView()
         }
     }
 }
 
+@MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem?
     private var popover: NSPopover?
+    lazy var ble = LightBLEManager()
+    lazy var presets = PresetStore()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
         setupMenuBar()
+        if UserDefaults.standard.bool(forKey: "autoConnect") {
+            ble.connect()
+        }
     }
 
     private func setupMenuBar() {
@@ -30,9 +35,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         button.target = self
 
         let popover = NSPopover()
-        popover.contentSize = NSSize(width: 300, height: 400)
+        popover.contentSize = NSSize(width: 300, height: 460)
         popover.behavior = .transient
-        popover.contentViewController = NSHostingController(rootView: MenuBarView())
+        popover.contentViewController = NSHostingController(
+            rootView: MenuBarView()
+                .environment(ble)
+                .environment(presets)
+        )
         self.popover = popover
     }
 

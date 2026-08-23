@@ -2,7 +2,7 @@ name: LightStar
 options:
   bundleIdPrefix: com.adityaraj
   deploymentTarget:
-    macOS: "13.0"
+    macOS: "14.0"
   xcodeVersion: "16.0"
   createIntermediateGroups: true
   groupSortPosition: top
@@ -11,7 +11,7 @@ options:
 settings:
   base:
     SWIFT_VERSION: "6.0"
-    MACOSX_DEPLOYMENT_TARGET: "13.0"
+    MACOSX_DEPLOYMENT_TARGET: "14.0"
     CODE_SIGN_STYLE: Automatic
     DEVELOPMENT_TEAM: ""
     ENABLE_HARDENED_RUNTIME: YES
@@ -21,7 +21,7 @@ targets:
   LightStar:
     type: application
     platform: macOS
-    deploymentTarget: "13.0"
+    deploymentTarget: "14.0"
     sources:
       - path: LightStar
         excludes:
@@ -39,7 +39,7 @@ targets:
         LSUIElement: true
         NSBluetoothAlwaysUsageDescription: "LightStar needs Bluetooth to connect to your LED light."
         NSBluetoothPeripheralUsageDescription: "LightStar needs Bluetooth to connect to your LED light."
-        LSMinimumSystemVersion: "13.0"
+        LSMinimumSystemVersion: "14.0"
     entitlements:
       path: LightStar/LightStar.entitlements
       properties:
