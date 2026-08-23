@@ -33,6 +33,8 @@ final class LightBLEManager: NSObject {
 
     // MARK: - Device discovery log
     var deviceLog: [String] = []
+    var capturedAdvertisementStrings: [String: String] = [:]
+    var capturedRSSI: Int = 0
     // Live camera reading for debug tab (hue 0-1, brightness 0-1, -1 = no camera)
     var liveHue: Double = -1
     var liveBrightness: Double = -1
@@ -52,9 +54,6 @@ final class LightBLEManager: NSObject {
     private var reconnectTask: Task<Void, Never>?
     private var colorDebounce: Task<Void, Never>?
     private var reconnectAttempts = 0
-    // BLE write queue — drains only when peripheral signals it's ready.
-    // Prevents silent packet drops from TX buffer overflow (withoutResponse).
-    private var writeQueue: [[UInt8]] = []
     private let maxReconnectAttempts = 5
     private let micSync = MicSyncManager()
     // Beat hue — advances 30° per beat for rainbow effect
@@ -87,12 +86,6 @@ final class LightBLEManager: NSObject {
     func setPower(on: Bool) {
         isOn = on
         write(on ? Cmd.powerOn : Cmd.powerOff)
-        // BLE write-without-response drops silently ~10% of the time — send twice
-        Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 120_000_000)
-            guard self.isOn == on else { return }
-            self.write(on ? Cmd.powerOn : Cmd.powerOff)
-        }
     }
 
     func sendRaw(_ bytes: [UInt8]) {
@@ -279,6 +272,98 @@ final class LightBLEManager: NSObject {
         deviceLog.append("Saved → \(url.lastPathComponent)")
     }
 
+    // Full protocol + device backup — call from Debug tab "Backup" button.
+    // Saves human-readable .txt and machine-readable .json to Desktop.
+    func saveFullBackup() {
+        let ts = Int(Date().timeIntervalSince1970)
+        let base = "/Users/adityaraj/Desktop/lightstar-backup-\(ts)"
+
+        // ── Human-readable text ──────────────────────────────────────────
+        var txt = """
+        ╔══════════════════════════════════════════════════════╗
+        ║          LightStar — Device Backup                   ║
+        ╚══════════════════════════════════════════════════════╝
+        Date: \(Date())
+
+        ── Advertisement ────────────────────────────────────────
+        RSSI: \(capturedRSSI) dBm
+        Name: \(peripheral?.name ?? "unknown")
+        UUID: \(peripheral?.identifier.uuidString ?? "unknown")
+
+        """
+        for (k, v) in capturedAdvertisementStrings.sorted(by: { $0.key < $1.key }) {
+            txt += "  \(k): \(v)\n"
+        }
+
+        txt += "\n── GATT Profile ─────────────────────────────────────\n"
+        txt += deviceLog.joined(separator: "\n")
+
+        txt += """
+
+
+        ── Known BC/55 Commands (reverse-engineered) ────────────
+        Frame: BC [cmd] [data_len] [data × data_len] 55
+        Transport: ATT Write Command (withoutResponse) on FFF3
+        Service: 0000FFF0-0000-1000-8000-00805F9B34FB
+        Scan UUID: 0x2022
+
+        BC01 01 01 00 55  — Power OFF
+        BC01 01 01 01 55  — Power ON
+        BC04 06 [H_hi][H_lo][S_hi][S_lo] 00 00 55  — Hue (0–360 BE) + Sat (0–1000 BE)
+        BC05 06 [B_hi][B_lo] 00 00 00 00 55  — Brightness (100–1000 BE)
+        BC06 02 00 [id] 55  — Effect (IDs: 01, 03, 35 confirmed)
+        BC08 01 [speed 0–100] 55  — Effect speed
+        BC13 01 [id 0–FD] 55  — Firmware animation (ignores BC04/05 until power-cycle)
+        BC13 02 00 00 55  — Speculative: stop animation (unconfirmed)
+
+        ── Unconfirmed / To-Explore ─────────────────────────────
+        BC07: zone select (speculative — 01 00, 01 02 tested, effect unknown)
+        BC10: force solid mode (speculative — 0x00, effect unknown)
+        BC11: unknown
+        BC03: unknown
+
+        ── Restore Instructions ─────────────────────────────────
+        If custom firmware breaks the device:
+        1. Identify chip from lightstar-device-info-*.txt (look for DFU service UUID)
+        2. Nordic nRF (FE59 / 1530): flash OEM firmware via nRF Connect DFU
+        3. Telink TLSR: requires USB programmer + Telink BDT tool
+        4. Restore git tag: git checkout pre-firmware-research
+           Then rebuild from Xcode — the app will work with OEM firmware again.
+
+        Git snapshot: pre-firmware-research tag (run: git log --oneline -5)
+        """
+
+        try? txt.write(toFile: "\(base).txt", atomically: true, encoding: .utf8)
+
+        // ── JSON for machine parsing ──────────────────────────────────────
+        var json: [String: Any] = [
+            "timestamp": ts,
+            "deviceName": peripheral?.name ?? "unknown",
+            "deviceUUID": peripheral?.identifier.uuidString ?? "unknown",
+            "rssi": capturedRSSI,
+            "gattLog": deviceLog,
+            "knownCommands": [
+                ["cmd": "BC01", "desc": "Power", "format": "BC 01 01 [00=off|01=on] 55"],
+                ["cmd": "BC04", "desc": "Hue+Sat", "format": "BC 04 06 H_hi H_lo S_hi S_lo 00 00 55"],
+                ["cmd": "BC05", "desc": "Brightness", "format": "BC 05 06 B_hi B_lo 00 00 00 00 55"],
+                ["cmd": "BC06", "desc": "Effect", "format": "BC 06 02 00 [id] 55"],
+                ["cmd": "BC08", "desc": "Speed", "format": "BC 08 01 [0-100] 55"],
+                ["cmd": "BC13", "desc": "Animation", "format": "BC 13 01 [id] 55"],
+            ]
+        ]
+        json["advertisement"] = capturedAdvertisementStrings
+
+        if let jsonData = try? JSONSerialization.data(withJSONObject: json, options: [.prettyPrinted, .sortedKeys]),
+           let jsonStr = String(data: jsonData, encoding: .utf8) {
+            try? jsonStr.write(toFile: "\(base).json", atomically: true, encoding: .utf8)
+        }
+
+        deviceLog.append("")
+        deviceLog.append("✓ Backup saved:")
+        deviceLog.append("  \(base).txt")
+        deviceLog.append("  \(base).json")
+    }
+
     func saveDeviceInfoIfComplete() {
         // Auto-save once all readable chars have been read (heuristic: log has a READ line)
         guard deviceLog.contains(where: { $0.hasPrefix("  READ") }) else { return }
@@ -320,15 +405,11 @@ final class LightBLEManager: NSObject {
             self.probeLog.append("Camera: \(self.camera.activeCameraName)  Warm-up 2s…")
             try? await Task.sleep(nanoseconds: 2_000_000_000)
 
-            // Hard reset: BC13 animations can persist across power cycles (saved to flash).
-            // 2s off forces capacitor drain; BC06(0) tries to clear effect mode.
-            self.probeLog.append("Hard-resetting strip (2s off)…")
-            self.write(Cmd.powerOff)
-            try? await Task.sleep(nanoseconds: 2_000_000_000)   // 2s — forces full cap discharge
-            self.write(Cmd.powerOn)
-            try? await Task.sleep(nanoseconds: 800_000_000)
-            self.write(Cmd.effect(id: 0x00))                    // BC06 id=0 → try static mode
-            try? await Task.sleep(nanoseconds: 200_000_000)
+            // Try static mode without power-cycling first — power cycles can re-trigger
+            // BC13 animations saved in flash. Only cycle if verify step fails.
+            self.probeLog.append("Clearing effect mode…")
+            self.write(Cmd.effect(id: 0x00))
+            try? await Task.sleep(nanoseconds: 300_000_000)
 
             // Verify: retry up to 5× until strip actually shows red (hue within 40°)
             // Brightness-only check let prior tests proceed with wrong color.
@@ -405,13 +486,6 @@ final class LightBLEManager: NSObject {
             }
 
             // ── PHASE 2: Saturation linearity at 6 key hues ──────────────
-            // Reset between phases — strip locks up after ~36 rapid BC04 commands
-            self.write(Cmd.powerOff)
-            try? await Task.sleep(nanoseconds: 2_000_000_000)
-            self.write(Cmd.powerOn)
-            try? await Task.sleep(nanoseconds: 800_000_000)
-            self.write(Cmd.effect(id: 0x00))
-            try? await Task.sleep(nanoseconds: 200_000_000)
             self.probeLog.append("")
             self.probeLog.append("PHASE 2 — Saturation linearity (6 hues × S=25/50/75/100%) — 24 points")
             self.probeLog.append("  Label                   SentS   ObsH  ObsBri")
@@ -806,20 +880,10 @@ final class LightBLEManager: NSObject {
         }
     }
 
-    // Enqueue a BLE command. Drains immediately if peripheral is ready;
-    // otherwise waits for peripheralIsReady(toSendWriteWithoutResponse:).
+    // FFF3 supports write-with-response (.write) — CB queues internally, ACK guaranteed.
     private func write(_ bytes: [UInt8]) {
-        guard connectionState == .connected else { return }
-        writeQueue.append(bytes)
-        drainWriteQueue()
-    }
-
-    private func drainWriteQueue() {
-        guard let p = peripheral, let ch = writeChar else { return }
-        while !writeQueue.isEmpty && p.canSendWriteWithoutResponse {
-            let pkt = writeQueue.removeFirst()
-            p.writeValue(Data(pkt), for: ch, type: .withoutResponse)
-        }
+        guard connectionState == .connected, let p = peripheral, let ch = writeChar else { return }
+        p.writeValue(Data(bytes), for: ch, type: .withResponse)
     }
 
     private func scheduleReconnect() {
@@ -855,9 +919,23 @@ extension LightBLEManager: CBCentralManagerDelegate {
                                     advertisementData: [String: Any],
                                     rssi RSSI: NSNumber) {
         // Scan filters by 0x2022 service, so any result here is our device
+        // Serialize advertisement before crossing actor boundary (not Sendable)
+        var advStrings: [String: String] = [:]
+        for (k, v) in advertisementData {
+            if let data = v as? Data {
+                advStrings[k] = data.map { String(format: "%02X", $0) }.joined(separator: " ")
+            } else if let uuids = v as? [CBUUID] {
+                advStrings[k] = uuids.map { $0.uuidString }.joined(separator: ", ")
+            } else {
+                advStrings[k] = "\(v)"
+            }
+        }
+        let rssi = RSSI.intValue
         Task { @MainActor in
             central.stopScan()
             self.peripheral = peripheral
+            self.capturedAdvertisementStrings = advStrings
+            self.capturedRSSI = rssi
             peripheral.delegate = self
             self.connectionState = .connecting
             central.connect(peripheral, options: nil)
@@ -885,7 +963,6 @@ extension LightBLEManager: CBCentralManagerDelegate {
                                     error: (any Error)?) {
         Task { @MainActor in
             self.writeChar = nil
-            self.writeQueue.removeAll()   // discard stale commands
             self.connectionState = .disconnected
             if self.micSyncActive {
                 self.micSync.stop()
@@ -965,9 +1042,13 @@ extension LightBLEManager: CBPeripheralDelegate {
         }
     }
 
-    // Called by CoreBluetooth when the TX buffer drains — resume queued writes.
-    nonisolated func peripheralIsReady(toSendWriteWithoutResponse peripheral: CBPeripheral) {
-        Task { @MainActor in self.drainWriteQueue() }
+    // ACK from write-with-response — log failures only
+    nonisolated func peripheral(_ peripheral: CBPeripheral,
+                                didWriteValueFor characteristic: CBCharacteristic,
+                                error: (any Error)?) {
+        if let error {
+            print("[LightStar] write error: \(error.localizedDescription)")
+        }
     }
 
     nonisolated func peripheral(_ peripheral: CBPeripheral,
@@ -996,8 +1077,35 @@ private enum Cmd {
     static let powerOff: [UInt8] = [0xBC, 0x01, 0x01, 0x00, 0x55]
 
     // BC04: hue (0–360°) + saturation (0–1000), big-endian 16-bit
+    // Hue correction: strip's internal RGB mapping is non-linear.
+    // LUT derived from color test 2026-08-23: (observed_display_deg, protocol_send_deg)
+    // Inverts (sent→observed) pairs so user's intended color maps to correct protocol value.
+    private static let hueLUT: [(obs: Double, send: Double)] = [
+        (0,   0), (8,   0), (20,  10), (32,  20), (41,  30), (60,  40),
+        (89,  50), (109, 60), (123, 70), (135, 80), (145, 90),
+        (149, 120),  // 100°-120° all display ~147-149°; send 120° as upper bound
+        (173, 130), (188, 140), (198, 150), (203, 160), (206, 170),
+        (209, 180), (212, 190), (215, 200), (217, 210), (220, 220),
+        (222, 230), (226, 240), (229, 250), (239, 260), (247, 270),
+        (252, 280), (255, 290), (259, 300), (264, 310), (269, 320),
+        (276, 330), (286, 340), (305, 350), (360, 360)
+    ]
+
+    private static func correctedHueDeg(_ h: Double) -> Double {
+        let deg = (h * 360).truncatingRemainder(dividingBy: 360)
+        for i in 0..<hueLUT.count - 1 {
+            let lo = hueLUT[i], hi = hueLUT[i + 1]
+            if deg >= lo.obs && deg <= hi.obs {
+                let t = (hi.obs - lo.obs) < 0.001 ? 0.0
+                      : (deg - lo.obs) / (hi.obs - lo.obs)
+                return lo.send + t * (hi.send - lo.send)
+            }
+        }
+        return deg
+    }
+
     static func hue(_ h: Double, saturation s: Double) -> [UInt8] {
-        let H = UInt16(max(0, min(360, Int(h * 360))))
+        let H = UInt16(max(0, min(360, Int(correctedHueDeg(h)))))
         let S = UInt16(max(0, min(1000, Int(s * 1000))))
         return [0xBC, 0x04, 0x06,
                 UInt8(H >> 8), UInt8(H & 0xFF),

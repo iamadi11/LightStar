@@ -492,6 +492,8 @@ private struct GradientSlider: View {
 
 private struct DebugTabView: View {
     @Environment(LightBLEManager.self) private var ble
+    @State private var rawHex: String = "BC 13 02 00 00 55"
+    @State private var hexError: String? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -507,6 +509,8 @@ private struct DebugTabView: View {
                 HStack(spacing: 6) {
                     Button("OFF")   { ble.sendRaw([0xBC,0x01,0x01,0x00,0x55]) }
                     Button("ON")    { ble.sendRaw([0xBC,0x01,0x01,0x01,0x55]) }
+                    Button("Stop Anim") { ble.sendRaw([0xBC,0x13,0x02,0x00,0x00,0x55]) }
+                        .tint(.orange)
                 }
                 HStack(spacing: 6) {
                     Button("Red")   { ble.sendRaw([0xBC,0x04,0x06,0x00,0x00,0x03,0xE8,0x00,0x00,0x55]) }
@@ -516,6 +520,20 @@ private struct DebugTabView: View {
                 HStack(spacing: 6) {
                     Button("Bri MAX") { ble.sendRaw([0xBC,0x05,0x06,0x03,0xE8,0x00,0x00,0x00,0x00,0x55]) }
                     Button("Bri MIN") { ble.sendRaw([0xBC,0x05,0x06,0x00,0x64,0x00,0x00,0x00,0x00,0x55]) }
+                }
+
+                // Free-form hex input
+                HStack(spacing: 6) {
+                    TextField("BC 13 02 00 00 55", text: $rawHex)
+                        .font(.system(size: 10, design: .monospaced))
+                        .textFieldStyle(.roundedBorder)
+                        .onChange(of: rawHex) { _, _ in hexError = nil }
+                    Button("Send") { sendHex() }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.mini)
+                }
+                if let err = hexError {
+                    Text(err).font(.system(size: 9)).foregroundStyle(.red)
                 }
             }
             .buttonStyle(.bordered)
@@ -578,7 +596,11 @@ private struct DebugTabView: View {
                         .font(.caption).foregroundStyle(.secondary)
                     Spacer()
                     if !ble.deviceLog.isEmpty {
-                        Button("Save") { ble.saveDeviceLog() }
+                        Button("Backup All") { ble.saveFullBackup() }
+                            .buttonStyle(.borderedProminent)
+                            .controlSize(.mini)
+                            .tint(.orange)
+                        Button("Save Log") { ble.saveDeviceLog() }
                             .buttonStyle(.bordered)
                             .controlSize(.mini)
                     }
@@ -593,6 +615,22 @@ private struct DebugTabView: View {
             }
         }
         .padding(16)
+    }
+
+    private func sendHex() {
+        let tokens = rawHex.uppercased()
+            .components(separatedBy: .whitespacesAndNewlines)
+            .filter { !$0.isEmpty }
+        var bytes: [UInt8] = []
+        for tok in tokens {
+            guard let val = UInt8(tok, radix: 16) else {
+                hexError = "Bad byte: \"\(tok)\" — use hex pairs e.g. BC 13 02 00 00 55"
+                return
+            }
+            bytes.append(val)
+        }
+        guard !bytes.isEmpty else { hexError = "Empty — enter hex bytes"; return }
+        ble.sendRaw(bytes)
     }
 
     private func logView(lines: [String]) -> some View {
