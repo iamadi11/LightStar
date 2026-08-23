@@ -1,6 +1,5 @@
-import ScreenCaptureKit
-import CoreMedia
 import CoreVideo
+import CoreGraphics
 import AppKit
 
 @MainActor
@@ -13,69 +12,65 @@ final class ScreenColorSampler: NSObject {
     var selectedDisplayID: CGDirectDisplayID? = nil
 
     private(set) var isRunning = false
-    private var stream: SCStream?
+    private var displayStream: CGDisplayStream?
     private let queue = DispatchQueue(label: "screen.sample", qos: .userInteractive)
 
     // Returns (displayID, localizedName) pairs for the display picker.
+    // Uses NSScreen directly — no SCShareableContent round-trip needed.
     static func availableDisplays() async -> [(id: CGDirectDisplayID, name: String)] {
-        guard let content = try? await SCShareableContent.excludingDesktopWindows(
-            false, onScreenWindowsOnly: true) else { return [] }
-        return content.displays.enumerated().map { idx, d in
-            let name = NSScreen.screens.first(where: {
-                ($0.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")]
-                    as? CGDirectDisplayID) == d.displayID
-            })?.localizedName ?? "Display \(idx + 1)"
-            return (d.displayID, name)
+        NSScreen.screens.compactMap { screen in
+            guard let id = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")]
+                    as? CGDirectDisplayID else { return nil }
+            return (id, screen.localizedName)
         }
     }
 
     func start() async throws {
         guard !isRunning else { return }
-        let content = try await SCShareableContent.excludingDesktopWindows(
-            false, onScreenWindowsOnly: true)
-        guard !content.displays.isEmpty else {
-            throw NSError(domain: "ScreenSync", code: 1,
-                          userInfo: [NSLocalizedDescriptionKey: "No display found"])
+        let displayID = selectedDisplayID ?? CGMainDisplayID()
+
+        let props: [CFString: Any] = [
+            CGDisplayStream.preserveAspectRatio: false,
+            CGDisplayStream.showCursor: false,
+            CGDisplayStream.minimumFrameTime: 1.0 / 60.0,
+        ]
+
+        // CGDisplayStream delivers IOSurface-backed CVPixelBuffer at vsync (~2-5ms latency)
+        // vs SCStream's compositor round-trip (~50ms). dominantHSV() takes CVPixelBuffer — no change there.
+        let stream = CGDisplayStream(
+            dispatchQueueDisplay: displayID,
+            outputWidth: 16, outputHeight: 9,
+            pixelFormat: Int32(kCVPixelFormatType_32BGRA),
+            properties: props as CFDictionary,
+            queue: queue
+        ) { [weak self] status, _, surface, _ in
+            guard status == .frameComplete, let surface else { return }
+            var pbRef: Unmanaged<CVPixelBuffer>?
+            CVPixelBufferCreateWithIOSurface(nil, surface, nil, &pbRef)
+            guard let pb = pbRef?.takeRetainedValue() else { return }
+            let (h, s, v) = dominantHSV(pb)
+            DispatchQueue.main.async { self?.onColor?(h, s, v) }
         }
-        let display = selectedDisplayID.flatMap { id in
-            content.displays.first { $0.displayID == id }
-        } ?? content.displays.first!
+        guard let stream else {
+            throw NSError(domain: "ScreenSync", code: 1,
+                          userInfo: [NSLocalizedDescriptionKey: "Cannot create display stream — check Screen Recording permission"])
+        }
 
-        let cfg = SCStreamConfiguration()
-        // 16×9 gives better edge sampling than 8×4 with negligible CPU cost
-        cfg.width  = 16
-        cfg.height = 9
-        cfg.minimumFrameInterval = CMTime(value: 1, timescale: 60)
-        cfg.pixelFormat = kCVPixelFormatType_32BGRA
-        cfg.showsCursor = false
-        cfg.shouldBeOpaque = true
+        let err = stream.start()
+        guard err == .success else {
+            throw NSError(domain: "ScreenSync", code: Int(err.rawValue),
+                          userInfo: [NSLocalizedDescriptionKey: "Display stream failed to start (CGError \(err.rawValue))"])
+        }
 
-        let s = SCStream(filter: SCContentFilter(display: display, excludingWindows: []),
-                         configuration: cfg, delegate: nil)
-        try s.addStreamOutput(self, type: .screen, sampleHandlerQueue: queue)
-        try await s.startCapture()
-        stream = s
+        displayStream = stream
         isRunning = true
     }
 
     func stop() async {
         guard isRunning else { return }
-        try? await stream?.stopCapture()
-        stream = nil
+        if let s = displayStream { s.stop() }
+        displayStream = nil
         isRunning = false
-    }
-}
-
-extension ScreenColorSampler: SCStreamOutput {
-    nonisolated func stream(_ stream: SCStream,
-                            didOutputSampleBuffer sb: CMSampleBuffer,
-                            of type: SCStreamOutputType) {
-        guard type == .screen,
-              let pb = CMSampleBufferGetImageBuffer(sb) else { return }
-        let (h, s, v) = dominantHSV(pb)
-        DispatchQueue.main.async { [weak self] in
-            self?.onColor?(h, s, v)
-        }
     }
 }
 
