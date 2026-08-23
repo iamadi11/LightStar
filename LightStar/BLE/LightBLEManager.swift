@@ -73,6 +73,7 @@ final class LightBLEManager: NSObject {
     private let maxReconnectAttempts = 5
     private let systemAudio = SystemAudioSampler()
     private var transitionTask: Task<Void, Never>?
+    private var fadeTask: Task<Void, Never>?
     private var writeQueue: [UInt8: Data] = [:]   // keyed by command byte — latest wins
     private var drainTimer: Timer?
     private var beatHue: Double = 0
@@ -133,6 +134,7 @@ final class LightBLEManager: NSObject {
         color = Color(hue: h, saturation: s, brightness: 1)
         audioPulseH = h
         effectModeActive = false
+        fadeTask?.cancel()
         colorDebounce?.cancel()
         colorDebounce = Task { @MainActor in
             try? await Task.sleep(nanoseconds: 50_000_000)
@@ -189,6 +191,7 @@ final class LightBLEManager: NSObject {
     // MARK: - Sync state machine
 
     func setSyncMode(_ mode: SyncMode) {
+        let prevMode = syncMode
         transitionTask?.cancel()
         syncTransitioning = true
         syncError = nil
@@ -198,12 +201,13 @@ final class LightBLEManager: NSObject {
                 self.syncTransitioning = false
                 return
             }
-            await self.buildSync(mode)
+            await self.buildSync(mode, previousMode: prevMode)
             if !Task.isCancelled { self.syncTransitioning = false }
         }
     }
 
     private func teardownSync() async {
+        fadeTask?.cancel()
         systemAudio.onBands = nil
         screenSampler.onColor = nil
         flashLevel = 0
@@ -211,7 +215,7 @@ final class LightBLEManager: NSObject {
         await screenSampler.stop()
     }
 
-    private func buildSync(_ mode: SyncMode) async {
+    private func buildSync(_ mode: SyncMode, previousMode: SyncMode = .off) async {
         effectModeActive = false
         guard mode == .off || connectionState == .connected else {
             syncMode = .off
@@ -221,7 +225,7 @@ final class LightBLEManager: NSObject {
         switch mode {
         case .off:
             syncMode = .off
-            restoreSteadyState()
+            fadeToSteadyState(from: previousMode)
 
         case .video:
             setupScreenCallback()
@@ -343,6 +347,54 @@ final class LightBLEManager: NSObject {
         let (h, s, _) = color.hsvComponents
         write(Cmd.hue(h, saturation: s))
         write(Cmd.brightness(brightness))
+    }
+
+    private func fadeToSteadyState(from prevMode: SyncMode) {
+        let (targetH, targetS, _) = color.hsvComponents
+        let targetBri = brightness
+
+        // Pick start values from the last-known live strip state
+        let startH: Double
+        let startS: Double
+        switch prevMode {
+        case .video, .combined:
+            startH = lastScreenH
+            startS = lastScreenS
+        case .audio:
+            startH = audioPulseH
+            startS = 0.9
+        case .off:
+            restoreSteadyState(); return
+        }
+
+        // Skip fade if strip is already close to target
+        let hueDist = min(abs(startH - targetH), 1.0 - abs(startH - targetH))
+        guard hueDist > 0.02 || abs(startS - targetS) > 0.05 || abs(brightness - targetBri) > 0.05 else {
+            restoreSteadyState(); return
+        }
+
+        fadeTask = Task { @MainActor in
+            let steps = 18  // ~300ms at 60Hz
+            for i in 1...steps {
+                guard !Task.isCancelled else { return }
+                let t = Double(i) / Double(steps)
+                let e = t < 0.5 ? 2*t*t : -1 + (4 - 2*t)*t  // ease-in-out
+
+                var dH = targetH - startH
+                if dH > 0.5 { dH -= 1.0 }
+                if dH < -0.5 { dH += 1.0 }
+                var h = (startH + dH * e).truncatingRemainder(dividingBy: 1.0)
+                if h < 0 { h += 1.0 }
+                let s = max(0, min(1, startS + (targetS - startS) * e))
+                let bri = max(0, min(1, brightness + (targetBri - brightness) * e))
+
+                self.write(Cmd.hue(h, saturation: s))
+                self.write(Cmd.brightness(bri))
+                try? await Task.sleep(nanoseconds: 16_700_000)
+            }
+            guard !Task.isCancelled else { return }
+            self.restoreSteadyState()
+        }
     }
 
     func loadAvailableDisplays() {
