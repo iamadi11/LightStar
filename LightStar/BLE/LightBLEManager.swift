@@ -37,6 +37,7 @@ final class LightBLEManager: NSObject {
     // Display picker
     var availableDisplays: [(id: CGDirectDisplayID, name: String)] = []
     var selectedDisplayID: CGDirectDisplayID? = nil
+    var syncResponsiveness: Double = 0.7  // EMA alpha for screen color (0 = sluggish, 1 = instant)
 
     var isSyncingVideo: Bool { syncMode == .video || syncMode == .combined }
     var isSyncingAudio: Bool { syncMode == .audio || syncMode == .combined }
@@ -303,20 +304,29 @@ final class LightBLEManager: NSObject {
     }
 
     private func setupScreenCallback() {
-        var lastH: Double = -1
+        var smoothH: Double = -1
+        var smoothS: Double = 0
         var lastWrite: Double = 0
         screenSampler.onColor = { [weak self] h, s, v in
             guard let self, self.isSyncingVideo, self.isOn else { return }
             guard v > 0.04 else { return }
             let now = CACurrentMediaTime()
-            let hueDelta = min(abs(h - lastH), 1.0 - abs(h - lastH))
-            guard hueDelta > 0.008 || now - lastWrite > 0.5 else { return }
             guard now - lastWrite >= 1.0 / 20.0 else { return }
-            lastWrite = now; lastH = h
-            let boostedS = s < 0.3 ? min(1.0, s * 3.0) : min(1.0, s * 1.5)
-            self.lastScreenH = h
+            let α = self.syncResponsiveness
+            if smoothH < 0 { smoothH = h; smoothS = s }  // first sample
+            // Hue EMA with wraparound — go the short way around the circle
+            var dh = h - smoothH
+            if dh > 0.5 { dh -= 1 }; if dh < -0.5 { dh += 1 }
+            smoothH = (smoothH + dh * α).truncatingRemainder(dividingBy: 1)
+            if smoothH < 0 { smoothH += 1 }
+            smoothS = smoothS + (s - smoothS) * α
+            let hueDelta = min(abs(smoothH - (self.lastScreenH)), 1 - abs(smoothH - self.lastScreenH))
+            guard hueDelta > 0.008 || now - lastWrite > 0.5 else { return }
+            lastWrite = now
+            let boostedS = smoothS < 0.3 ? min(1.0, smoothS * 3.0) : min(1.0, smoothS * 1.5)
+            self.lastScreenH = smoothH
             self.lastScreenS = boostedS
-            self.write(Cmd.hue(h, saturation: boostedS))
+            self.write(Cmd.hue(smoothH, saturation: boostedS))
         }
     }
 

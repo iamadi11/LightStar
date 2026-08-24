@@ -1,5 +1,6 @@
 import SwiftUI
 import AVFoundation
+import ServiceManagement
 
 struct MenuBarView: View {
     @Environment(LightBLEManager.self) private var ble
@@ -7,6 +8,7 @@ struct MenuBarView: View {
     @State private var selectedTab = 0
     @State private var showSaveSheet = false
     @State private var newPresetName = ""
+    @AppStorage("launchAtLogin") private var launchAtLogin = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -172,6 +174,19 @@ struct MenuBarView: View {
             Divider()
 
             AnimationsView()
+
+            Divider()
+
+            Toggle("Launch at Login", isOn: $launchAtLogin)
+                .font(.caption)
+                .toggleStyle(.checkbox)
+                .onChange(of: launchAtLogin) { _, enabled in
+                    if enabled {
+                        try? SMAppService.mainApp.register()
+                    } else {
+                        try? SMAppService.mainApp.unregister()
+                    }
+                }
         }
         .padding(16)
     }
@@ -270,6 +285,17 @@ private struct SyncControlView: View {
                     .buttonStyle(.plain).font(.caption).help("Refresh display list")
                 }
                 .onAppear { ble.loadAvailableDisplays() }
+
+                HStack {
+                    Text("Responsiveness")
+                        .font(.system(size: 9))
+                        .foregroundStyle(.secondary)
+                    Slider(value: Binding(
+                        get: { ble.syncResponsiveness },
+                        set: { ble.syncResponsiveness = $0 }
+                    ), in: 0.1...1.0)
+                    .controlSize(.mini)
+                }
             }
         }
     }
