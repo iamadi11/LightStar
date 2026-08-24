@@ -41,6 +41,14 @@ final class LightBLEManager: NSObject {
     var syncResponsiveness: Double = UserDefaults.standard.object(forKey: "syncResponsiveness") as? Double ?? 0.7 {
         didSet { UserDefaults.standard.set(syncResponsiveness, forKey: "syncResponsiveness") }
     }
+    // Beat sensitivity: 0 = very hard to trigger, 0.5 = default (flux > 0.60), 1 = very sensitive (flux > 0.20)
+    var beatSensitivity: Double = UserDefaults.standard.object(forKey: "beatSensitivity") as? Double ?? 0.5 {
+        didSet { UserDefaults.standard.set(beatSensitivity, forKey: "beatSensitivity") }
+    }
+    // When true, video sync also drives strip brightness from average screen brightness
+    var videoSyncBrightness: Bool = UserDefaults.standard.bool(forKey: "videoSyncBrightness") {
+        didSet { UserDefaults.standard.set(videoSyncBrightness, forKey: "videoSyncBrightness") }
+    }
 
     var isSyncingVideo: Bool { syncMode == .video || syncMode == .combined }
     var isSyncingAudio: Bool { syncMode == .audio || syncMode == .combined }
@@ -326,6 +334,7 @@ final class LightBLEManager: NSObject {
     private func setupScreenCallback() {
         var smoothH: Double = -1
         var smoothS: Double = 0
+        var smoothV: Double = -1
         var lastWrite: Double = 0
         screenSampler.onColor = { [weak self] h, s, v in
             guard let self, self.isSyncingVideo, self.isOn else { return }
@@ -333,13 +342,14 @@ final class LightBLEManager: NSObject {
             let now = CACurrentMediaTime()
             guard now - lastWrite >= 1.0 / 20.0 else { return }
             let α = self.syncResponsiveness
-            if smoothH < 0 { smoothH = h; smoothS = s }  // first sample
+            if smoothH < 0 { smoothH = h; smoothS = s; smoothV = v }  // first sample
             // Hue EMA with wraparound — go the short way around the circle
             var dh = h - smoothH
             if dh > 0.5 { dh -= 1 }; if dh < -0.5 { dh += 1 }
             smoothH = (smoothH + dh * α).truncatingRemainder(dividingBy: 1)
             if smoothH < 0 { smoothH += 1 }
             smoothS = smoothS + (s - smoothS) * α
+            smoothV = smoothV + (v - smoothV) * 0.15  // gentle brightness tracking
             let hueDelta = min(abs(smoothH - (self.lastScreenH)), 1 - abs(smoothH - self.lastScreenH))
             guard hueDelta > 0.008 || now - lastWrite > 0.5 else { return }
             lastWrite = now
@@ -347,6 +357,9 @@ final class LightBLEManager: NSObject {
             self.lastScreenH = smoothH
             self.lastScreenS = boostedS
             self.write(Cmd.hue(smoothH, saturation: boostedS))
+            if self.videoSyncBrightness {
+                self.write(Cmd.brightness(min(1.0, max(0.05, smoothV * 1.3))))
+            }
         }
     }
 
@@ -358,8 +371,13 @@ final class LightBLEManager: NSObject {
             guard now - lastWrite >= 1.0 / 30.0 else { return }
             lastWrite = now
 
+            // Beat detection using configurable flux threshold:
+            // sensitivity 0.5 → threshold 0.60 (default), 1.0 → 0.20 (very sensitive)
+            let beatThreshold = 1.0 - self.beatSensitivity * 0.8
+            let isBeat = bands.flux > beatThreshold && bands.rms > 0.03
+
             if self.syncMode == .combined {
-                if bands.isBeat {
+                if isBeat {
                     self.flashLevel = 1.0
                     self.write(Cmd.hue(self.lastScreenH, saturation: min(1.0, self.lastScreenS * 1.3 + 0.15)))
                 } else {
@@ -372,7 +390,7 @@ final class LightBLEManager: NSObject {
 
             switch self.audioSyncMode {
             case .rainbow:
-                if bands.isBeat {
+                if isBeat {
                     self.beatHue = (self.beatHue + 1.0/12.0).truncatingRemainder(dividingBy: 1.0)
                 } else {
                     self.beatHue = (self.beatHue + bands.high * 0.006).truncatingRemainder(dividingBy: 1.0)

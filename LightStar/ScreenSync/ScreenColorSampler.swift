@@ -45,7 +45,7 @@ final class ScreenColorSampler: NSObject {
             display = first
         }
         let cfg = SCStreamConfiguration()
-        cfg.width = 16; cfg.height = 9
+        cfg.width = 48; cfg.height = 27
         cfg.pixelFormat = kCVPixelFormatType_32BGRA
         cfg.minimumFrameInterval = CMTime(value: 1, timescale: 60)
         cfg.capturesAudio = false

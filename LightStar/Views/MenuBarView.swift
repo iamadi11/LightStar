@@ -318,6 +318,17 @@ private struct SyncControlView: View {
                 }
                 .pickerStyle(.segmented)
                 .controlSize(.mini)
+
+                HStack {
+                    Text("Beat sensitivity")
+                        .font(.system(size: 9))
+                        .foregroundStyle(.secondary)
+                    Slider(value: Binding(
+                        get: { ble.beatSensitivity },
+                        set: { ble.beatSensitivity = $0 }
+                    ), in: 0...1)
+                    .controlSize(.mini)
+                }
             }
 
             Text(modeDescription)
@@ -353,6 +364,14 @@ private struct SyncControlView: View {
                     ), in: 0.1...1.0)
                     .controlSize(.mini)
                 }
+
+                Toggle("Follow screen brightness", isOn: Binding(
+                    get: { ble.videoSyncBrightness },
+                    set: { ble.videoSyncBrightness = $0 }
+                ))
+                .font(.system(size: 9))
+                .toggleStyle(.checkbox)
+                .help("Strip brightness tracks average screen brightness")
             }
         }
     }
@@ -360,7 +379,7 @@ private struct SyncControlView: View {
     private var modeDescription: String {
         switch ble.syncMode {
         case .off:      return "No sync — color picker and presets above are active"
-        case .video:    return "Edges weighted 3× · brightness stays at slider · 20 Hz"
+        case .video:    return ble.videoSyncBrightness ? "Edges weighted 3× · screen brightness → strip · 20 Hz" : "Edges weighted 3× · brightness stays at slider · 20 Hz"
         case .audio:
             switch ble.audioSyncMode {
             case .rainbow:   return "Beats → hue · treble → drift · bass → brightness"
