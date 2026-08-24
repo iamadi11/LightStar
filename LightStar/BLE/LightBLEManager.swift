@@ -30,6 +30,7 @@ final class LightBLEManager: NSObject {
     // Sync state machine
     var syncMode: SyncMode = .off
     var syncError: String?
+    var syncNeedsPermission = false   // true when syncError is a Screen Recording denial
     var syncTransitioning = false
     enum AudioSyncMode: String, CaseIterable { case rainbow = "Rainbow"; case pulse = "Pulse"; case frequency = "Frequency" }
     var audioSyncMode: AudioSyncMode = .rainbow
@@ -216,6 +217,7 @@ final class LightBLEManager: NSObject {
         transitionTask?.cancel()
         syncTransitioning = true
         syncError = nil
+        syncNeedsPermission = false
         transitionTask = Task { @MainActor in
             await self.teardownSync()
             guard !Task.isCancelled else {
@@ -257,7 +259,7 @@ final class LightBLEManager: NSObject {
             } catch {
                 screenSampler.onColor = nil
                 syncMode = .off
-                syncError = error.localizedDescription
+                setSyncError(error)
                 restoreSteadyState()
             }
 
@@ -272,7 +274,7 @@ final class LightBLEManager: NSObject {
             } catch {
                 systemAudio.onBands = nil
                 syncMode = .off
-                syncError = error.localizedDescription
+                setSyncError(error)
                 restoreSteadyState()
             }
 
@@ -280,25 +282,21 @@ final class LightBLEManager: NSObject {
             setupScreenCallback()
             setupAudioCallback()
             screenSampler.selectedDisplayID = selectedDisplayID
-            var errors: [String] = []
+            var screenErr: Error? = nil
+            var audioErr:  Error? = nil
             // Start both streams concurrently — total latency = max(screen, audio)
             async let screenStart: () = screenSampler.start()
             async let audioStart: () = systemAudio.start()
-            do { try await screenStart } catch {
-                screenSampler.onColor = nil
-                errors.append("Screen: \(error.localizedDescription)")
-            }
-            do { try await audioStart } catch {
-                systemAudio.onBands = nil
-                errors.append("Audio: \(error.localizedDescription)")
-            }
+            do { try await screenStart } catch { screenSampler.onColor = nil; screenErr = error }
+            do { try await audioStart  } catch { systemAudio.onBands  = nil; audioErr  = error }
             let screenOk = screenSampler.onColor != nil
-            let audioOk  = systemAudio.onBands != nil
+            let audioOk  = systemAudio.onBands  != nil
             syncMode = screenOk && audioOk ? .combined
                      : screenOk           ? .video
                      : audioOk            ? .audio
                      :                     .off
-            if !errors.isEmpty { syncError = errors.joined(separator: "; ") }
+            // Prefer permission error so UI shows "Open Settings"
+            if let e = screenErr ?? audioErr { setSyncError(e) }
             if syncMode == .off { restoreSteadyState() }
         }
     }
@@ -362,6 +360,17 @@ final class LightBLEManager: NSObject {
                 self.write(Cmd.brightness(min(1.0, max(0.05, (bands.bass + bands.mid + bands.high) / 3 * 1.5 + bands.rms * 0.2))))
             }
         }
+    }
+
+    private func setSyncError(_ error: Error) {
+        let nsErr = error as NSError
+        // SCStreamError.userDeclined = -3801; also catches .notEntitled (-3827)
+        let isPermission = nsErr.code == -3801 || nsErr.code == -3827
+            || nsErr.domain.contains("ScreenCaptureKit")
+        syncNeedsPermission = isPermission
+        syncError = isPermission
+            ? "Screen Recording access required"
+            : error.localizedDescription
     }
 
     private func restoreSteadyState() {

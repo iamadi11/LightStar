@@ -5,6 +5,8 @@ struct MenuBarView: View {
     @Environment(LightBLEManager.self) private var ble
     @Environment(PresetStore.self) private var presets
     @State private var selectedTab = 0
+    @State private var showSaveSheet = false
+    @State private var newPresetName = ""
 
     var body: some View {
         VStack(spacing: 0) {
@@ -105,9 +107,21 @@ struct MenuBarView: View {
 
             // Presets
             VStack(alignment: .leading, spacing: 8) {
-                Text("Presets")
+                HStack {
+                    Text("Presets")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Button {
+                        newPresetName = "Custom"
+                        showSaveSheet = true
+                    } label: {
+                        Image(systemName: "plus")
+                    }
+                    .buttonStyle(.plain)
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .help("Save current color as preset")
+                }
                 LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
                     ForEach(presets.presets) { preset in
                         Button {
@@ -124,7 +138,18 @@ struct MenuBarView: View {
                         }
                         .buttonStyle(.bordered)
                         .controlSize(.small)
+                        .contextMenu {
+                            Button("Delete", role: .destructive) {
+                                presets.presets.removeAll { $0.id == preset.id }
+                                presets.save()
+                            }
+                        }
                     }
+                }
+            }
+            .sheet(isPresented: $showSaveSheet) {
+                SavePresetSheet(name: $newPresetName) { name in
+                    saveCurrentAsPreset(named: name)
                 }
             }
 
@@ -194,6 +219,14 @@ private struct SyncControlView: View {
                     .font(.system(size: 9))
                     .foregroundStyle(ble.syncMode == .off ? .red : .orange)
                     .fixedSize(horizontal: false, vertical: true)
+                if ble.syncNeedsPermission {
+                    Button("Open Screen Recording Settings") {
+                        NSWorkspace.shared.open(
+                            URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture")!)
+                    }
+                    .font(.system(size: 10))
+                    .buttonStyle(.link)
+                }
             }
 
             if ble.syncMode == .audio {
@@ -259,6 +292,16 @@ private extension MenuBarView {
         ble.setBrightness(preset.brightness)
     }
 
+    func saveCurrentAsPreset(named name: String) {
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        (NSColor(ble.color).usingColorSpace(.sRGB) ?? NSColor(ble.color))
+            .getRed(&r, green: &g, blue: &b, alpha: &a)
+        let p = Preset(name: name, red: Double(r), green: Double(g),
+                       blue: Double(b), brightness: ble.brightness)
+        presets.presets.append(p)
+        presets.save()
+    }
+
     var stateIcon: String {
         switch ble.connectionState {
         case .disconnected: return "wifi.slash"
@@ -284,5 +327,33 @@ private extension MenuBarView {
         case .connecting:   return "Cancel"
         case .connected:    return "Disconnect"
         }
+    }
+}
+
+private struct SavePresetSheet: View {
+    @Binding var name: String
+    let onSave: (String) -> Void
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        VStack(spacing: 16) {
+            Text("Save Preset").font(.headline)
+            TextField("Name", text: $name)
+                .textFieldStyle(.roundedBorder)
+                .frame(width: 200)
+            HStack {
+                Button("Cancel") { dismiss() }
+                Button("Save") {
+                    let trimmed = name.trimmingCharacters(in: .whitespaces)
+                    guard !trimmed.isEmpty else { return }
+                    onSave(trimmed)
+                    dismiss()
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
+                .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(24)
     }
 }
