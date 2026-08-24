@@ -68,7 +68,10 @@ final class LightBLEManager: NSObject {
     private var writeChar: CBCharacteristic?
     private var reconnectTask: Task<Void, Never>?
     private var probeTask: Task<Void, Never>?
-    private var connectWhenReady = false   // deferred connect until BT powered on
+    private var connectSequenceTask: Task<Void, Never>?
+    private var connectWhenReady = false       // deferred connect until BT powered on
+    private var shouldAutoReconnect = false    // true on unexpected drop; false on manual disconnect
+    private var lastSyncMode: SyncMode = .off  // restored after reconnect
     private var colorDebounce: Task<Void, Never>?
     private var reconnectAttempts = 0
     private let maxReconnectAttempts = 5
@@ -115,7 +118,11 @@ final class LightBLEManager: NSObject {
         reconnectTask = nil
         probeTask?.cancel()
         probeTask = nil
+        connectSequenceTask?.cancel()
+        connectSequenceTask = nil
         connectWhenReady = false
+        shouldAutoReconnect = false
+        lastSyncMode = .off
         reconnectAttempts = maxReconnectAttempts
         coalescer.flush()
         if probeRunning {
@@ -1103,9 +1110,20 @@ extension LightBLEManager: CBCentralManagerDelegate {
     nonisolated func centralManagerDidUpdateState(_ central: CBCentralManager) {
         guard central.state == .poweredOn else { return }
         Task { @MainActor in
-            guard self.connectWhenReady else { return }
-            self.connectWhenReady = false
-            self.startScan()
+            if self.connectWhenReady {
+                self.connectWhenReady = false
+                self.startScan()
+            } else if self.shouldAutoReconnect && self.connectionState == .disconnected {
+                // BT came back on (wake-from-sleep) after an unexpected drop — reconnect
+                self.shouldAutoReconnect = false
+                self.reconnectAttempts = 0
+                if let p = self.peripheral {
+                    self.connectionState = .connecting
+                    self.central.connect(p, options: nil)
+                } else {
+                    self.startScan()
+                }
+            }
         }
     }
 
@@ -1161,13 +1179,20 @@ extension LightBLEManager: CBCentralManagerDelegate {
             self.connectionState = .disconnected
             self.coalescer.flush()
             self.transitionTask?.cancel()
+            self.connectSequenceTask?.cancel()
+            self.connectSequenceTask = nil
             self.systemAudio.onBands = nil
             self.screenSampler.onColor = nil
+            // Save active sync mode before clearing — restored on reconnect
+            self.lastSyncMode = self.syncMode
             self.syncMode = .off
             self.syncTransitioning = false
             Task { await self.systemAudio.stop() }
             Task { await self.screenSampler.stop() }
-            if error != nil { self.scheduleReconnect() }
+            if error != nil {
+                self.shouldAutoReconnect = true
+                self.scheduleReconnect()
+            }
         }
     }
 }
@@ -1223,14 +1248,20 @@ extension LightBLEManager: CBPeripheralDelegate {
                 self.connectionState = .connected
                 self.isOn = true
                 // Power-cycle on connect (mirrors OEM app init), then clear animation
-                Task { @MainActor in
+                self.connectSequenceTask = Task { @MainActor in
                     self.write(Cmd.powerOff)
-                    try? await Task.sleep(nanoseconds: 500_000_000)
+                    do { try await Task.sleep(nanoseconds: 500_000_000) } catch { return }
                     self.write(Cmd.powerOn)
-                    try? await Task.sleep(nanoseconds: 500_000_000)
+                    do { try await Task.sleep(nanoseconds: 500_000_000) } catch { return }
                     let (h, s, _) = self.color.hsvComponents
                     self.write(Cmd.hue(h, saturation: s))
                     self.write(Cmd.brightness(self.brightness))
+                    // Restore the sync mode that was active before disconnect (e.g. after sleep)
+                    let modeToRestore = self.lastSyncMode
+                    self.lastSyncMode = .off
+                    if modeToRestore != .off {
+                        self.setSyncMode(modeToRestore)
+                    }
                 }
             }
         }
