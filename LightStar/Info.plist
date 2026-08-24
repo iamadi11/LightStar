@@ -17,7 +17,7 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>1.0.0</string>
+	<string>1.0</string>
 	<key>CFBundleVersion</key>
 	<string>1</string>
 	<key>LSMinimumSystemVersion</key>
@@ -28,9 +28,5 @@
 	<string>LightStar needs Bluetooth to connect to your LED light.</string>
 	<key>NSBluetoothPeripheralUsageDescription</key>
 	<string>LightStar needs Bluetooth to connect to your LED light.</string>
-	<key>NSCameraUsageDescription</key>
-	<string>LightStar uses the camera to detect light changes during protocol probing.</string>
-	<key>NSMicrophoneUsageDescription</key>
-	<string>LightStar uses the microphone to sync your light to music and sound.</string>
 </dict>
 </plist>

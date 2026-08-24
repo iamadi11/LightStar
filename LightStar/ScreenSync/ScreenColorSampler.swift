@@ -19,7 +19,12 @@ final class ScreenColorSampler: NSObject {
     @MainActor
     static func availableDisplays() async -> [(id: CGDirectDisplayID, name: String)] {
         guard let content = try? await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true) else { return [] }
-        return content.displays.map { ($0.displayID, $0.localizedName ?? "Display \($0.displayID)") }
+        // SCDisplay has no localizedName — match via NSScreen by displayID
+        let nameByID = Dictionary(uniqueKeysWithValues: NSScreen.screens.compactMap { screen -> (CGDirectDisplayID, String)? in
+            guard let id = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID else { return nil }
+            return (id, screen.localizedName)
+        })
+        return content.displays.map { ($0.displayID, nameByID[$0.displayID] ?? "Display \($0.displayID)") }
     }
 
     func start() async throws {

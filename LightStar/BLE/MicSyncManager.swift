@@ -1,13 +1,7 @@
 import AVFoundation
 import Accelerate
 
-struct FrequencyBands: Sendable {
-    var bass: Double    // 20–200 Hz  — normalised 0–1 against rolling max
-    var mid:  Double    // 200–2000 Hz
-    var high: Double    // 2000–8000 Hz
-    var rms:  Double    // overall loudness
-    var isBeat: Bool    // spectral flux onset
-}
+// FrequencyBands defined in Models/FrequencyBands.swift
 
 // Fires onBands at audio buffer rate (~90 Hz / 512 frames at 44100).
 // Uses adaptive per-band normalisation so scale is mic-independent.
