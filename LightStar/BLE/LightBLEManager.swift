@@ -1164,21 +1164,34 @@ final class LightBLEManager: NSObject {
 extension LightBLEManager: CBCentralManagerDelegate {
 
     nonisolated func centralManagerDidUpdateState(_ central: CBCentralManager) {
-        guard central.state == .poweredOn else { return }
         Task { @MainActor in
-            if self.connectWhenReady {
-                self.connectWhenReady = false
-                self.startScan()
-            } else if self.shouldAutoReconnect && self.connectionState == .disconnected {
-                // BT came back on (wake-from-sleep) after an unexpected drop — reconnect
-                self.shouldAutoReconnect = false
-                self.reconnectAttempts = 0
-                if let p = self.peripheral {
-                    self.connectionState = .connecting
-                    self.central.connect(p, options: nil)
-                } else {
+            switch central.state {
+            case .poweredOn:
+                if self.connectWhenReady {
+                    self.connectWhenReady = false
                     self.startScan()
+                } else if self.shouldAutoReconnect && self.connectionState == .disconnected {
+                    // BT came back on (wake-from-sleep) after an unexpected drop — reconnect
+                    self.shouldAutoReconnect = false
+                    self.reconnectAttempts = 0
+                    if let p = self.peripheral {
+                        self.connectionState = .connecting
+                        self.central.connect(p, options: nil)
+                    } else {
+                        self.startScan()
+                    }
                 }
+            case .poweredOff:
+                if self.connectionState == .scanning || self.connectionState == .connecting {
+                    self.central.stopScan()
+                    self.connectionState = .disconnected
+                    self.connectionError = "Bluetooth is off — turn it on to connect"
+                }
+            case .unauthorized:
+                self.connectionState = .disconnected
+                self.connectionError = "Bluetooth access denied — check Privacy & Security settings"
+            default:
+                break
             }
         }
     }

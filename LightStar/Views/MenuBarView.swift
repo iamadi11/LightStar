@@ -38,13 +38,16 @@ struct MenuBarView: View {
                 if selectedTab == 0 {
                     if ble.connectionState == .connected {
                         controlsSection
+                            .transition(.opacity)
                     } else {
                         statusSection
+                            .transition(.opacity)
                     }
                 } else {
                     DebugTabView()
                 }
             }
+            .animation(.easeInOut(duration: 0.2), value: ble.connectionState)
         }
         .frame(width: 320)
     }
