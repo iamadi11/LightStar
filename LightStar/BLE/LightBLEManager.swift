@@ -67,6 +67,7 @@ final class LightBLEManager: NSObject {
     private var peripheral: CBPeripheral?
     private var writeChar: CBCharacteristic?
     private var reconnectTask: Task<Void, Never>?
+    private var probeTask: Task<Void, Never>?
     private var connectWhenReady = false   // deferred connect until BT powered on
     private var colorDebounce: Task<Void, Never>?
     private var reconnectAttempts = 0
@@ -112,8 +113,15 @@ final class LightBLEManager: NSObject {
     func disconnect() {
         reconnectTask?.cancel()
         reconnectTask = nil
+        probeTask?.cancel()
+        probeTask = nil
+        connectWhenReady = false
         reconnectAttempts = maxReconnectAttempts
         coalescer.flush()
+        if probeRunning {
+            probeRunning = false
+            camera.stop()
+        }
         if let p = peripheral { central.cancelPeripheralConnection(p) }
         connectionState = .disconnected
     }
@@ -362,20 +370,23 @@ final class LightBLEManager: NSObject {
         // Pick start values from the last-known live strip state
         let startH: Double
         let startS: Double
+        let startBri: Double
         switch prevMode {
         case .video, .combined:
             startH = lastScreenH
             startS = lastScreenS
+            startBri = targetBri  // video doesn't drive brightness; slider value unchanged
         case .audio:
             startH = audioPulseH
             startS = 0.9
+            startBri = 1.0  // audio sync drives brightness high on beats
         case .off:
             restoreSteadyState(); return
         }
 
         // Skip fade if strip is already close to target
         let hueDist = min(abs(startH - targetH), 1.0 - abs(startH - targetH))
-        guard hueDist > 0.02 || abs(startS - targetS) > 0.05 || abs(brightness - targetBri) > 0.05 else {
+        guard hueDist > 0.02 || abs(startS - targetS) > 0.05 || abs(startBri - targetBri) > 0.05 else {
             restoreSteadyState(); return
         }
 
@@ -392,7 +403,7 @@ final class LightBLEManager: NSObject {
                 var h = (startH + dH * e).truncatingRemainder(dividingBy: 1.0)
                 if h < 0 { h += 1.0 }
                 let s = max(0, min(1, startS + (targetS - startS) * e))
-                let bri = max(0, min(1, brightness + (targetBri - brightness) * e))
+                let bri = max(0, min(1, startBri + (targetBri - startBri) * e))
 
                 self.write(Cmd.hue(h, saturation: s))
                 self.write(Cmd.brightness(bri))
@@ -572,7 +583,7 @@ final class LightBLEManager: NSObject {
             "Starting camera…"
         ]
 
-        Task { @MainActor in
+        probeTask = Task { @MainActor in
             guard self.connectionState == .connected else {
                 self.probeLog.append("❌ Not connected — connect to strip first")
                 self.probeRunning = false; return
@@ -777,7 +788,7 @@ final class LightBLEManager: NSObject {
             ("White (S=0)", -1),
         ]
         probeLog = ["=== COLOR PALETTE SWEEP ==="]
-        Task { @MainActor in
+        probeTask = Task { @MainActor in
             for (name, h) in hues {
                 let hue = h < 0 ? 0.0 : h
                 let sat = h < 0 ? 0.0 : 1.0
@@ -799,7 +810,7 @@ final class LightBLEManager: NSObject {
         probeRunning = true
         let usingCamera = cameraProbeEnabled
         probeLog = ["=== PROBE START — camera:\(usingCamera ? "ON" : "OFF") ==="]
-        Task { @MainActor in
+        probeTask = Task { @MainActor in
             if usingCamera {
                 do {
                     try await self.camera.start(preferredDeviceID: self.selectedCameraID)
@@ -867,7 +878,7 @@ final class LightBLEManager: NSObject {
             (0x13, "BC13", "all 3 payloads cause bri+hue shift — completely unknown"),
         ]
 
-        Task { @MainActor in
+        probeTask = Task { @MainActor in
             do { try await self.camera.start() } catch {
                 self.probeLog.append("Camera failed: \(error.localizedDescription)")
                 self.probeRunning = false; return

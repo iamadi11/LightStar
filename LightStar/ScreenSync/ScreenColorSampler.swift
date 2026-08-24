@@ -15,6 +15,7 @@ final class ScreenColorSampler: NSObject {
     private(set) var isRunning = false
     private var stream: SCStream?
     private let queue = DispatchQueue(label: "screen.sample", qos: .userInteractive)
+    private var generation = 0  // guards against start() committing after a concurrent stop()
 
     @MainActor
     static func availableDisplays() async -> [(id: CGDirectDisplayID, name: String)] {
@@ -29,6 +30,8 @@ final class ScreenColorSampler: NSObject {
 
     func start() async throws {
         guard !isRunning else { return }
+        generation &+= 1
+        let gen = generation
         let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
         let display: SCDisplay
         if let id = selectedDisplayID,
@@ -51,12 +54,18 @@ final class ScreenColorSampler: NSObject {
         let s = SCStream(filter: filter, configuration: cfg, delegate: nil)
         try s.addStreamOutput(self, type: .screen, sampleHandlerQueue: queue)
         try await s.startCapture()
+        guard generation == gen else {
+            // stop() ran while startCapture was pending — discard
+            try? await s.stopCapture()
+            return
+        }
         stream = s
         isRunning = true
     }
 
     func stop() async {
         guard isRunning else { return }
+        generation &+= 1  // invalidate any concurrent start()
         try? await stream?.stopCapture()
         stream = nil
         isRunning = false

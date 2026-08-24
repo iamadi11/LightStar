@@ -20,9 +20,14 @@ final class SystemAudioSampler: NSObject {
     nonisolated(unsafe) private var maxBass = 0.001, maxMid = 0.001, maxHigh = 0.001, maxFlux = 0.001
     nonisolated(unsafe) private var accumulator: [Float] = []
     private let fftN = 512
+    // Generation counter prevents start() from committing after a concurrent stop() has run.
+    // @MainActor so no extra synchronization needed between start/stop.
+    private var generation = 0
 
     func start() async throws {
         guard !isRunning else { return }
+        generation &+= 1
+        let gen = generation
 
         let content = try await SCShareableContent.excludingDesktopWindows(
             false, onScreenWindowsOnly: true)
@@ -46,19 +51,38 @@ final class SystemAudioSampler: NSObject {
         let s = SCStream(filter: filter, configuration: cfg, delegate: nil)
         try s.addStreamOutput(self, type: .audio, sampleHandlerQueue: queue)
         try await s.startCapture()
+
+        guard generation == gen else {
+            // stop() ran while startCapture was pending — discard and clean up
+            try? await s.stopCapture()
+            await cleanupFFTOnQueue()
+            return
+        }
         stream = s
         isRunning = true
     }
 
     func stop() async {
         guard isRunning else { return }
+        generation &+= 1  // invalidate any concurrent start()
+        isRunning = false
         try? await stream?.stopCapture()
         stream = nil
-        isRunning = false
-        if let s = fftSetup { vDSP_DFT_DestroySetup(s); fftSetup = nil }
         onBands = nil
-        prevMags = []; accumulator = []
-        maxBass = 0.001; maxMid = 0.001; maxHigh = 0.001; maxFlux = 0.001
+        // Drain the serial queue THEN destroy FFT resources — prevents use-after-free
+        // if analyze() callbacks were dispatched before stopCapture() returned.
+        await cleanupFFTOnQueue()
+    }
+
+    private func cleanupFFTOnQueue() async {
+        await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+            queue.async {
+                if let s = self.fftSetup { vDSP_DFT_DestroySetup(s); self.fftSetup = nil }
+                self.prevMags = []; self.accumulator = []
+                self.maxBass = 0.001; self.maxMid = 0.001; self.maxHigh = 0.001; self.maxFlux = 0.001
+                cont.resume()
+            }
+        }
     }
 }
 
