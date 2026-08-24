@@ -365,9 +365,26 @@ final class LightBLEManager: NSObject {
 
     private func setupAudioCallback() {
         var lastWrite: Double = 0
+        var silenceStart: Double = 0   // CACurrentMediaTime() when silence began (0 = not silent)
         systemAudio.onBands = { [weak self] (bands: FrequencyBands) in
             guard let self, self.isSyncingAudio, self.isOn else { return }
             let now = CACurrentMediaTime()
+
+            // Silence detection: fade to steady state after 2 s of quiet
+            if bands.rms < 0.01 {
+                if silenceStart == 0 { silenceStart = now }
+                if now - silenceStart >= 2.0 {
+                    silenceStart = 0
+                    Task { @MainActor [weak self] in
+                        guard let self, self.isSyncingAudio else { return }
+                        self.setSyncMode(.off)
+                    }
+                    return
+                }
+            } else {
+                silenceStart = 0
+            }
+
             guard now - lastWrite >= 1.0 / 30.0 else { return }
             lastWrite = now
 
