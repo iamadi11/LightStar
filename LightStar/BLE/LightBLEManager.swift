@@ -22,7 +22,9 @@ final class LightBLEManager: NSObject {
 
     var connectionState: ConnectionState = .disconnected
     var connectionError: String?   // set on scan timeout or reconnect exhaustion
-    var isOn = false
+    var isOn: Bool = UserDefaults.standard.object(forKey: "lastPowerState") as? Bool ?? false {
+        didSet { UserDefaults.standard.set(isOn, forKey: "lastPowerState") }
+    }
     var color: Color = .white
     var brightness: Double = 1.0
     var effectID: UInt8 = 0x01
@@ -37,7 +39,12 @@ final class LightBLEManager: NSObject {
     var audioSyncMode: AudioSyncMode = .rainbow
     // Display picker
     var availableDisplays: [(id: CGDirectDisplayID, name: String)] = []
-    var selectedDisplayID: CGDirectDisplayID? = nil
+    var selectedDisplayID: CGDirectDisplayID? = nil {
+        didSet {
+            guard isSyncingVideo, oldValue != selectedDisplayID else { return }
+            setSyncMode(syncMode)  // restart with the new display
+        }
+    }
     var syncResponsiveness: Double = UserDefaults.standard.object(forKey: "syncResponsiveness") as? Double ?? 0.7 {
         didSet { UserDefaults.standard.set(syncResponsiveness, forKey: "syncResponsiveness") }
     }
@@ -1342,13 +1349,16 @@ extension LightBLEManager: CBPeripheralDelegate {
             }
             if self.writeChar != nil {
                 self.connectionState = .connected
-                self.isOn = true
+                let targetOn = self.isOn  // respect persisted power state from before disconnect
                 // Power-cycle on connect (mirrors OEM app init), then clear animation
                 self.connectSequenceTask = Task { @MainActor in
                     self.write(Cmd.powerOff)
                     do { try await Task.sleep(nanoseconds: 500_000_000) } catch { return }
-                    self.write(Cmd.powerOn)
-                    do { try await Task.sleep(nanoseconds: 500_000_000) } catch { return }
+                    if targetOn {
+                        self.write(Cmd.powerOn)
+                        do { try await Task.sleep(nanoseconds: 500_000_000) } catch { return }
+                    }
+                    self.isOn = targetOn
                     let (h, s, _) = self.color.hsvComponents
                     self.write(Cmd.hue(h, saturation: s))
                     self.write(Cmd.brightness(self.brightness))

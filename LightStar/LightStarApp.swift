@@ -71,6 +71,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             _ = ble.color
             _ = ble.isOn
             _ = ble.connectionState
+            _ = ble.syncMode
             updateIcon()
         } onChange: {
             Task { @MainActor in self.startObservingBLE() }
@@ -79,16 +80,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func updateIcon() {
         guard let button = statusItem?.button else { return }
+        let syncing = ble.syncMode != .off
         let color: NSColor? = (ble.connectionState == .connected && ble.isOn)
             ? NSColor(ble.color) : nil
-        button.image = iconImage(color: color, isOn: ble.isOn)
+        button.image = iconImage(color: color, isOn: ble.isOn, syncing: syncing)
     }
 
-    // Draws a colored lightbulb; falls back to gray when off/disconnected.
-    private func iconImage(color: NSColor?, isOn: Bool) -> NSImage {
+    // Draws a colored lightbulb (syncing → waveform overlay); gray when off/disconnected.
+    private func iconImage(color: NSColor?, isOn: Bool, syncing: Bool = false) -> NSImage {
         let size = NSSize(width: 18, height: 18)
+        let symbolName = syncing ? "waveform" : "lightbulb.fill"
         let img = NSImage(size: size, flipped: false) { rect in
-            guard let sym = NSImage(systemSymbolName: "lightbulb.fill",
+            guard let sym = NSImage(systemSymbolName: symbolName,
                                     accessibilityDescription: nil) else { return false }
             let cfg = NSImage.SymbolConfiguration(pointSize: 14, weight: .medium)
             let tinted = sym.withSymbolConfiguration(cfg) ?? sym

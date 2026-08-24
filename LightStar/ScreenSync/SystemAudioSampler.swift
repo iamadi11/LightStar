@@ -138,7 +138,7 @@ extension SystemAudioSampler {
         let rms = min(1.0, Double(rmsVal) * 8.0)  // system audio is louder than mic
 
         guard let setup = fftSetup else {
-            return FrequencyBands(bass: 0, mid: 0, high: 0, rms: rms, isBeat: false, flux: 0)
+            return FrequencyBands(bass: 0, mid: 0, high: 0, rms: rms, flux: 0)
         }
 
         var windowed = [Float](repeating: 0, count: n)
@@ -185,9 +185,8 @@ extension SystemAudioSampler {
         prevMags = mags
         maxFlux = max(maxFlux * 0.99, flux + 1e-9)
         let normFlux = min(1.0, flux / maxFlux)
-        let isBeat = normFlux > 0.60 && rms > 0.03
 
-        return FrequencyBands(bass: bass, mid: mid, high: high, rms: rms, isBeat: isBeat, flux: normFlux)
+        return FrequencyBands(bass: bass, mid: mid, high: high, rms: rms, flux: normFlux)
     }
 
     nonisolated private func bandRMS(_ mags: [Float], lo: Double, hi: Double, binHz: Double) -> Double {
