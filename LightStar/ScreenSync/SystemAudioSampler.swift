@@ -119,12 +119,14 @@ extension SystemAudioSampler: SCStreamOutput {
 
         // Accumulate until we have a full FFT window
         accumulator.append(contentsOf: mono)
-        while accumulator.count >= fftN {
-            let window = Array(accumulator.prefix(fftN))
-            accumulator.removeFirst(fftN)
+        var offset = 0
+        while accumulator.count - offset >= fftN {
+            let window = Array(accumulator[offset ..< offset + fftN])
+            offset += fftN
             let bands = analyze(window, sampleRate: 44100)
             DispatchQueue.main.async { [weak self] in self?.onBands?(bands) }
         }
+        if offset > 0 { accumulator = Array(accumulator[offset...]) }  // ponytail: one O(n) copy instead of N O(n) shifts
     }
 }
 

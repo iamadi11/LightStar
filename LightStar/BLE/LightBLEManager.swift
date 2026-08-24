@@ -153,6 +153,7 @@ final class LightBLEManager: NSObject {
 
     // Preferred over setColor — avoids lossy Color→NSColor→getHue round-trip.
     func setHue(_ h: Double, saturation s: Double) {
+        if syncMode != .off { setSyncMode(.off) }  // manual color overrides sync
         color = Color(hue: h, saturation: s, brightness: 1)
         audioPulseH = h
         effectModeActive = false

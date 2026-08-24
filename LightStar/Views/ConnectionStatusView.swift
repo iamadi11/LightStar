@@ -2,6 +2,12 @@ import SwiftUI
 
 struct ConnectionStatusView: View {
     let connectionState: LightBLEManager.ConnectionState
+    let onConnect: (() -> Void)?
+
+    init(connectionState: LightBLEManager.ConnectionState, onConnect: (() -> Void)? = nil) {
+        self.connectionState = connectionState
+        self.onConnect = onConnect
+    }
 
     var body: some View {
         VStack(spacing: 8) {
@@ -11,6 +17,12 @@ struct ConnectionStatusView: View {
             Text(label)
                 .foregroundStyle(.secondary)
                 .font(.subheadline)
+            if connectionState == .disconnected, let onConnect {
+                Button("Connect", action: onConnect)
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+                    .padding(.top, 4)
+            }
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 40)

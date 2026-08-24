@@ -70,6 +70,12 @@ struct MenuBarView: View {
             Text(stateLabel)
                 .foregroundStyle(.secondary)
                 .font(.subheadline)
+            if ble.connectionState == .disconnected {
+                Button("Connect") { ble.connect() }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+                    .padding(.top, 4)
+            }
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 40)
