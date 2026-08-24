@@ -1,4 +1,5 @@
 import AVFoundation
+import AVFAudio
 import Accelerate
 
 // Captures microphone input via AVAudioEngine.
@@ -20,8 +21,24 @@ final class MicAudioSampler {
     nonisolated(unsafe) private var maxBass = 0.001, maxMid = 0.001, maxHigh = 0.001, maxFlux = 0.001
     nonisolated(unsafe) private var accumulator: [Float] = []
 
-    func start() throws {
+    static let micDeniedError = NSError(
+        domain: "MicAudio", code: -5001,
+        userInfo: [NSLocalizedDescriptionKey: "Microphone access required"])
+
+    func start() async throws {
         guard !isRunning else { return }
+
+        // Check / request mic permission before touching AVAudioEngine
+        let status = AVCaptureDevice.authorizationStatus(for: .audio)
+        if status == .denied || status == .restricted {
+            throw Self.micDeniedError
+        }
+        if status == .notDetermined {
+            let granted = await withCheckedContinuation { cont in
+                AVCaptureDevice.requestAccess(for: .audio) { cont.resume(returning: $0) }
+            }
+            if !granted { throw Self.micDeniedError }
+        }
 
         let eng = AVAudioEngine()
         let input = eng.inputNode

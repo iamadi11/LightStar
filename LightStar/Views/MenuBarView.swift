@@ -306,9 +306,12 @@ private struct SyncControlView: View {
                     .foregroundStyle(ble.syncMode == .off ? .red : .orange)
                     .fixedSize(horizontal: false, vertical: true)
                 if ble.syncNeedsPermission {
-                    Button("Open Screen Recording Settings") {
-                        NSWorkspace.shared.open(
-                            URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture")!)
+                    let isMicError = ble.syncError?.contains("Microphone") == true
+                    Button(isMicError ? "Open Microphone Settings" : "Open Screen Recording Settings") {
+                        let url = isMicError
+                            ? "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone"
+                            : "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture"
+                        NSWorkspace.shared.open(URL(string: url)!)
                     }
                     .font(.system(size: 10))
                     .buttonStyle(.link)

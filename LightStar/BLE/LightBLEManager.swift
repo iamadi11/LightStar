@@ -44,7 +44,17 @@ final class LightBLEManager: NSObject {
     enum AudioSyncMode: String, CaseIterable { case rainbow = "Rainbow"; case pulse = "Pulse"; case frequency = "Frequency" }
     var audioSyncMode: AudioSyncMode = .rainbow
     enum AudioInputSource: String, CaseIterable { case system = "System Audio"; case mic = "Microphone" }
-    var audioInputSource: AudioInputSource = .system
+    var audioInputSource: AudioInputSource = {
+        guard let raw = UserDefaults.standard.string(forKey: "audioInputSource"),
+              let v = AudioInputSource(rawValue: raw) else { return .system }
+        return v
+    }() {
+        didSet {
+            UserDefaults.standard.set(audioInputSource.rawValue, forKey: "audioInputSource")
+            guard syncMode == .audio, oldValue != audioInputSource else { return }
+            setSyncMode(.audio)  // restart with the new input source
+        }
+    }
     // Display picker
     var availableDisplays: [(id: CGDirectDisplayID, name: String)] = []
     var selectedDisplayID: CGDirectDisplayID? = nil {
@@ -321,7 +331,7 @@ final class LightBLEManager: NSObject {
             let useMic = audioInputSource == .mic
             setupAudioCallback(useMic: useMic)
             do {
-                if useMic { try micAudio.start() } else { try await systemAudio.start() }
+                if useMic { try await micAudio.start() } else { try await systemAudio.start() }
                 syncMode = .audio
             } catch {
                 if useMic { micAudio.onBands = nil } else { systemAudio.onBands = nil }
@@ -453,6 +463,12 @@ final class LightBLEManager: NSObject {
 
     private func setSyncError(_ error: Error) {
         let nsErr = error as NSError
+        // Mic denial from MicAudioSampler
+        if nsErr.domain == "MicAudio" && nsErr.code == -5001 {
+            syncNeedsPermission = true
+            syncError = "Microphone access required"
+            return
+        }
         // SCStreamError.userDeclined = -3801; also catches .notEntitled (-3827)
         let isPermission = nsErr.code == -3801 || nsErr.code == -3827
             || nsErr.domain.contains("ScreenCaptureKit")
