@@ -186,5 +186,5 @@ jobs:
 
       # ── Cleanup keychain ─────────────────────────────────────────────────────
       - name: Delete keychain
-        if: always() && ${{ secrets.APPLE_CERTIFICATE != '' }}
+        if: always() && secrets.APPLE_CERTIFICATE != ''
         run: security delete-keychain "$RUNNER_TEMP/build.keychain" || true
