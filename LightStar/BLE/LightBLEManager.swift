@@ -21,6 +21,7 @@ final class LightBLEManager: NSObject {
     // MARK: - Observable state
 
     var connectionState: ConnectionState = .disconnected
+    var connectionError: String?   // set on scan timeout or reconnect exhaustion
     var isOn = false
     var color: Color = .white
     var brightness: Double = 1.0
@@ -108,6 +109,7 @@ final class LightBLEManager: NSObject {
     func connect() {
         guard connectionState == .disconnected else { return }
         reconnectAttempts = 0
+        connectionError = nil
         if central.state == .poweredOn {
             startScan()
         } else {
@@ -1121,6 +1123,7 @@ final class LightBLEManager: NSObject {
 
     private func startScan() {
         guard central.state == .poweredOn else { return }
+        connectionError = nil
         connectionState = .scanning
         central.scanForPeripherals(withServices: [Self.advertisedUUID], options: nil)
         Task { @MainActor in
@@ -1128,6 +1131,7 @@ final class LightBLEManager: NSObject {
             guard self.connectionState == .scanning else { return }
             self.central.stopScan()
             self.connectionState = .disconnected
+            self.connectionError = "Device not found — make sure it's powered on"
         }
     }
 
@@ -1137,6 +1141,7 @@ final class LightBLEManager: NSObject {
     private func scheduleReconnect() {
         guard reconnectAttempts < maxReconnectAttempts else {
             connectionState = .disconnected
+            connectionError = "Could not reconnect — tap Connect to retry"
             return
         }
         reconnectAttempts += 1

@@ -66,12 +66,25 @@ struct MenuBarView: View {
 
     private var statusSection: some View {
         VStack(spacing: 8) {
-            Image(systemName: stateIcon)
-                .font(.system(size: 32))
-                .foregroundStyle(.secondary)
+            if ble.connectionState == .scanning {
+                ProgressView()
+                    .controlSize(.large)
+                    .padding(.bottom, 4)
+            } else {
+                Image(systemName: stateIcon)
+                    .font(.system(size: 32))
+                    .foregroundStyle(.secondary)
+            }
             Text(stateLabel)
                 .foregroundStyle(.secondary)
                 .font(.subheadline)
+            if let err = ble.connectionError {
+                Text(err)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.red)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             if ble.connectionState == .disconnected {
                 Button("Connect") { ble.connect() }
                     .buttonStyle(.borderedProminent)
