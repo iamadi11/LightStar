@@ -25,3 +25,4 @@ Packages/
 # Credentials / local config
 *.pem
 *.p12
+.claude/worktrees/
