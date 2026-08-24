@@ -8,6 +8,7 @@ struct MenuBarView: View {
     @State private var selectedTab = 0
     @State private var showSaveSheet = false
     @State private var newPresetName = ""
+    @State private var renamingPreset: Preset?
     @AppStorage("launchAtLogin") private var launchAtLogin = false
 
     var body: some View {
@@ -171,6 +172,10 @@ struct MenuBarView: View {
                         .buttonStyle(.bordered)
                         .controlSize(.small)
                         .contextMenu {
+                            Button("Rename…") {
+                                renamingPreset = preset
+                                newPresetName = preset.name
+                            }
                             Button("Delete", role: .destructive) {
                                 presets.presets.removeAll { $0.id == preset.id }
                                 presets.save()
@@ -182,6 +187,14 @@ struct MenuBarView: View {
             .sheet(isPresented: $showSaveSheet) {
                 SavePresetSheet(name: $newPresetName) { name in
                     saveCurrentAsPreset(named: name)
+                }
+            }
+            .sheet(item: $renamingPreset) { preset in
+                SavePresetSheet(name: $newPresetName) { name in
+                    if let idx = presets.presets.firstIndex(where: { $0.id == preset.id }) {
+                        presets.presets[idx].name = name
+                        presets.save()
+                    }
                 }
             }
 
