@@ -28,5 +28,9 @@
 	<string>LightStar needs Bluetooth to connect to your LED light.</string>
 	<key>NSBluetoothPeripheralUsageDescription</key>
 	<string>LightStar needs Bluetooth to connect to your LED light.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>LightStar uses the camera to detect ambient color in debug mode.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>LightStar listens to audio to sync the light to music beats.</string>
 </dict>
 </plist>

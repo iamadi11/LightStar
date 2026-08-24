@@ -41,11 +41,14 @@ targets:
         LSUIElement: true
         NSBluetoothAlwaysUsageDescription: "LightStar needs Bluetooth to connect to your LED light."
         NSBluetoothPeripheralUsageDescription: "LightStar needs Bluetooth to connect to your LED light."
-        LSMinimumSystemVersion: "14.0"
+        NSCameraUsageDescription: "LightStar uses the camera to detect ambient color for debug mode."
+        NSMicrophoneUsageDescription: "LightStar listens to audio to sync the light to music beats."
+LSMinimumSystemVersion: "14.0"
     entitlements:
       path: LightStar/LightStar.entitlements
       properties:
         com.apple.security.app-sandbox: false
+        com.apple.security.device.bluetooth: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.adityaraj.LightStar

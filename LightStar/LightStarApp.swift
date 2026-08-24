@@ -89,15 +89,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                                     accessibilityDescription: nil) else { return false }
             let cfg = NSImage.SymbolConfiguration(pointSize: 14, weight: .medium)
             let tinted = sym.withSymbolConfiguration(cfg) ?? sym
-            if let c = color {
-                c.setFill()
-            } else {
-                (isOn ? NSColor.secondaryLabelColor : NSColor.tertiaryLabelColor).setFill()
-            }
-            // Draw symbol as mask then fill with color
-            let ctx = NSGraphicsContext.current!.cgContext
-            ctx.clip(to: rect, mask: tinted.cgImage(forProposedRect: nil, context: nil, hints: nil)!)
+            let tintColor = color ?? (isOn ? NSColor.secondaryLabelColor : NSColor.tertiaryLabelColor)
+            // Fill with tint, then composite symbol as alpha mask — avoids cgImage nil crash
+            tintColor.setFill()
             rect.fill()
+            tinted.draw(in: rect, from: NSRect(origin: .zero, size: tinted.size),
+                        operation: .destinationIn, fraction: 1.0)
             return true
         }
         img.isTemplate = false
