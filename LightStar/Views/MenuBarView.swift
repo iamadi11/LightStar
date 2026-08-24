@@ -10,6 +10,7 @@ struct MenuBarView: View {
     @State private var newPresetName = ""
     @State private var renamingPreset: Preset?
     @AppStorage("launchAtLogin") private var launchAtLogin = false
+    @AppStorage("autoConnectOnLaunch") private var autoConnectOnLaunch = true
 
     var body: some View {
         VStack(spacing: 0) {
@@ -214,7 +215,7 @@ struct MenuBarView: View {
 
             Divider()
 
-            HStack {
+            VStack(alignment: .leading, spacing: 6) {
                 Toggle("Launch at Login", isOn: $launchAtLogin)
                     .font(.caption)
                     .toggleStyle(.checkbox)
@@ -228,11 +229,16 @@ struct MenuBarView: View {
                             try? SMAppService.mainApp.unregister()
                         }
                     }
-                Spacer()
-                Button("Quit") { NSApp.terminate(nil) }
+                Toggle("Auto-connect on Launch", isOn: $autoConnectOnLaunch)
                     .font(.caption)
-                    .buttonStyle(.link)
-                    .foregroundStyle(.secondary)
+                    .toggleStyle(.checkbox)
+                HStack {
+                    Spacer()
+                    Button("Quit") { NSApp.terminate(nil) }
+                        .font(.caption)
+                        .buttonStyle(.link)
+                        .foregroundStyle(.secondary)
+                }
             }
         }
         .padding(16)

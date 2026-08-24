@@ -26,7 +26,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
         setupMenuBar()
-        ble.connect()
+        if UserDefaults.standard.object(forKey: "autoConnectOnLaunch") as? Bool ?? true {
+            ble.connect()
+        }
         startObservingBLE()
         setupGlobalHotKey()
         Task { await requestAllPermissions() }
