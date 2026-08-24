@@ -43,6 +43,8 @@ final class LightBLEManager: NSObject {
     var syncTransitioning = false
     enum AudioSyncMode: String, CaseIterable { case rainbow = "Rainbow"; case pulse = "Pulse"; case frequency = "Frequency" }
     var audioSyncMode: AudioSyncMode = .rainbow
+    enum AudioInputSource: String, CaseIterable { case system = "System Audio"; case mic = "Microphone" }
+    var audioInputSource: AudioInputSource = .system
     // Display picker
     var availableDisplays: [(id: CGDirectDisplayID, name: String)] = []
     var selectedDisplayID: CGDirectDisplayID? = nil {
@@ -102,6 +104,7 @@ final class LightBLEManager: NSObject {
     private var reconnectAttempts = 0
     private let maxReconnectAttempts = 5
     private let systemAudio = SystemAudioSampler()
+    private let micAudio = MicAudioSampler()
     private var transitionTask: Task<Void, Never>?
     private var fadeTask: Task<Void, Never>?
     private var coalescer: BLEWriteCoalescer!
@@ -265,9 +268,11 @@ final class LightBLEManager: NSObject {
     private func teardownSync() async {
         fadeTask?.cancel()
         systemAudio.onBands = nil
+        micAudio.onBands = nil
         screenSampler.onColor = nil
         flashLevel = 0
         await systemAudio.stop()
+        await micAudio.stop()
         await screenSampler.stop()
     }
 
@@ -277,10 +282,11 @@ final class LightBLEManager: NSObject {
         probeTask?.cancel(); probeTask = nil
         syncTransitioning = false
         systemAudio.onBands = nil
+        micAudio.onBands = nil
         screenSampler.onColor = nil
         flashLevel = 0
         syncMode = .off
-        Task { await self.systemAudio.stop(); await self.screenSampler.stop() }
+        Task { await self.systemAudio.stop(); await self.micAudio.stop(); await self.screenSampler.stop() }
     }
 
     private func buildSync(_ mode: SyncMode, previousMode: SyncMode = .off) async {
@@ -312,12 +318,13 @@ final class LightBLEManager: NSObject {
             let (h, _, _) = color.hsvComponents
             beatHue = h
             audioPulseH = h
-            setupAudioCallback()
+            let useMic = audioInputSource == .mic
+            setupAudioCallback(useMic: useMic)
             do {
-                try await systemAudio.start()
+                if useMic { try micAudio.start() } else { try await systemAudio.start() }
                 syncMode = .audio
             } catch {
-                systemAudio.onBands = nil
+                if useMic { micAudio.onBands = nil } else { systemAudio.onBands = nil }
                 syncMode = .off
                 setSyncError(error)
                 restoreSteadyState()
@@ -378,10 +385,10 @@ final class LightBLEManager: NSObject {
         }
     }
 
-    private func setupAudioCallback() {
+    private func setupAudioCallback(useMic: Bool = false) {
         var lastWrite: Double = 0
         var silenceStart: Double = 0   // CACurrentMediaTime() when silence began (0 = not silent)
-        systemAudio.onBands = { [weak self] (bands: FrequencyBands) in
+        let callback: (FrequencyBands) -> Void = { [weak self] (bands: FrequencyBands) in
             guard let self, self.isSyncingAudio, self.isOn else { return }
             let now = CACurrentMediaTime()
 
@@ -441,6 +448,7 @@ final class LightBLEManager: NSObject {
                 self.write(Cmd.brightness(min(1.0, max(0.05, (bands.bass + bands.mid + bands.high) / 3 * 1.5 + bands.rms * 0.2))))
             }
         }
+        if useMic { micAudio.onBands = callback } else { systemAudio.onBands = callback }
     }
 
     private func setSyncError(_ error: Error) {

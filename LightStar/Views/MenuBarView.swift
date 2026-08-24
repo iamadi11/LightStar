@@ -150,6 +150,14 @@ struct MenuBarView: View {
                         .font(.system(size: 10))
                         .buttonStyle(.link)
                     }
+                    Button { presets.importFromFile() } label: {
+                        Image(systemName: "square.and.arrow.down")
+                    }
+                    .buttonStyle(.plain).font(.caption).help("Import presets from JSON")
+                    Button { presets.exportToFile() } label: {
+                        Image(systemName: "square.and.arrow.up")
+                    }
+                    .buttonStyle(.plain).font(.caption).help("Export presets to JSON")
                     Button {
                         newPresetName = "Custom"
                         showSaveSheet = true
@@ -313,6 +321,17 @@ private struct SyncControlView: View {
                     set: { ble.audioSyncMode = $0 }
                 )) {
                     ForEach(LightBLEManager.AudioSyncMode.allCases, id: \.self) {
+                        Text($0.rawValue).tag($0)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .controlSize(.mini)
+
+                Picker("", selection: Binding(
+                    get: { ble.audioInputSource },
+                    set: { ble.audioInputSource = $0 }
+                )) {
+                    ForEach(LightBLEManager.AudioInputSource.allCases, id: \.self) {
                         Text($0.rawValue).tag($0)
                     }
                 }

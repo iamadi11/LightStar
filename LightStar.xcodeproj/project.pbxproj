@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		143A26B8D7AF992296B0B052 /* SystemAudioSampler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A846385662EA04F32B021F2 /* SystemAudioSampler.swift */; };
+		AA11223344556677889900AB /* MicAudioSampler.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA11223344556677889900CD /* MicAudioSampler.swift */; };
 		3860E4D6B0597A480CA3F968 /* EffectGridView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1B8D14D767F5753CFF45B59 /* EffectGridView.swift */; };
 		494FAD89C737703809B25B9E /* SyncModePickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 654A30636DC7A820E73B4D74 /* SyncModePickerView.swift */; };
 		561068AF5802496A5B7B109E /* BLEWriteCoalescer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48AED48F7B52F06CFC569869 /* BLEWriteCoalescer.swift */; };
@@ -31,6 +32,7 @@
 		0E14A2153AEDB323F83BE4C8 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		351F6724302A2A9C8F8FBF29 /* LightStarApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LightStarApp.swift; sourceTree = "<group>"; };
 		3A846385662EA04F32B021F2 /* SystemAudioSampler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemAudioSampler.swift; sourceTree = "<group>"; };
+		AA11223344556677889900CD /* MicAudioSampler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MicAudioSampler.swift; sourceTree = "<group>"; };
 		48AED48F7B52F06CFC569869 /* BLEWriteCoalescer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BLEWriteCoalescer.swift; sourceTree = "<group>"; };
 		51E681E3A27EAC1A70BDD0FE /* BLEProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BLEProtocol.swift; sourceTree = "<group>"; };
 		53F50B77BEC004F04F88246F /* PresetStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PresetStore.swift; sourceTree = "<group>"; };
@@ -96,6 +98,7 @@
 			children = (
 				BB9D1B8B90BD87EC4053F0BA /* ScreenColorSampler.swift */,
 				3A846385662EA04F32B021F2 /* SystemAudioSampler.swift */,
+				AA11223344556677889900CD /* MicAudioSampler.swift */,
 			);
 			path = ScreenSync;
 			sourceTree = "<group>";
@@ -211,6 +214,7 @@
 				C850434E407C3455814F3185 /* ScreenColorSampler.swift in Sources */,
 				494FAD89C737703809B25B9E /* SyncModePickerView.swift in Sources */,
 				143A26B8D7AF992296B0B052 /* SystemAudioSampler.swift in Sources */,
+				AA11223344556677889900AB /* MicAudioSampler.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
