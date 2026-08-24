@@ -365,13 +365,15 @@ private struct SyncControlView: View {
                     .controlSize(.mini)
                 }
 
-                Toggle("Follow screen brightness", isOn: Binding(
-                    get: { ble.videoSyncBrightness },
-                    set: { ble.videoSyncBrightness = $0 }
-                ))
-                .font(.system(size: 9))
-                .toggleStyle(.checkbox)
-                .help("Strip brightness tracks average screen brightness")
+                if ble.syncMode == .video {
+                    Toggle("Follow screen brightness", isOn: Binding(
+                        get: { ble.videoSyncBrightness },
+                        set: { ble.videoSyncBrightness = $0 }
+                    ))
+                    .font(.system(size: 9))
+                    .toggleStyle(.checkbox)
+                    .help("Strip brightness tracks average screen brightness (not available in Combined — audio drives brightness there)")
+                }
             }
         }
     }

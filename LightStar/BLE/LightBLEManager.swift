@@ -25,8 +25,14 @@ final class LightBLEManager: NSObject {
     var isOn: Bool = UserDefaults.standard.object(forKey: "lastPowerState") as? Bool ?? false {
         didSet { UserDefaults.standard.set(isOn, forKey: "lastPowerState") }
     }
-    var color: Color = .white
-    var brightness: Double = 1.0
+    var color: Color = {
+        guard let h = UserDefaults.standard.object(forKey: "colorHue") as? Double,
+              let s = UserDefaults.standard.object(forKey: "colorSat") as? Double else { return .white }
+        return Color(hue: h, saturation: s, brightness: 1)
+    }()
+    var brightness: Double = UserDefaults.standard.object(forKey: "brightness") as? Double ?? 1.0 {
+        didSet { UserDefaults.standard.set(brightness, forKey: "brightness") }
+    }
     var effectID: UInt8 = 0x01
     var effectSpeed: Double = 0.5   // 0–1 mapped to 0–100
     var effectModeActive = false
@@ -184,6 +190,8 @@ final class LightBLEManager: NSObject {
     func setHue(_ h: Double, saturation s: Double) {
         if syncMode != .off { stopSyncInline() }
         color = Color(hue: h, saturation: s, brightness: 1)
+        UserDefaults.standard.set(h, forKey: "colorHue")
+        UserDefaults.standard.set(s, forKey: "colorSat")
         audioPulseH = h
         effectModeActive = false
         fadeTask?.cancel()
