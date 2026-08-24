@@ -1258,7 +1258,8 @@ extension LightBLEManager: CBCentralManagerDelegate {
             self.syncTransitioning = false
             Task { await self.systemAudio.stop() }
             Task { await self.screenSampler.stop() }
-            if error != nil {
+            // reconnectAttempts == maxReconnectAttempts means user called disconnect() — skip auto-reconnect
+            if error != nil && self.reconnectAttempts < self.maxReconnectAttempts {
                 self.shouldAutoReconnect = true
                 self.scheduleReconnect()
             }

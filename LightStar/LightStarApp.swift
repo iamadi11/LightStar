@@ -49,6 +49,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard let button = statusItem?.button else { return }
         button.image = iconImage(color: nil, isOn: false)
         button.action = #selector(togglePopover)
+        button.sendAction(on: [.leftMouseUp, .rightMouseUp])
         button.target = self
 
         let popover = NSPopover()
@@ -103,6 +104,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func togglePopover() {
         guard let button = statusItem?.button, let popover else { return }
+        // Right-click → context menu with Quit; left-click → toggle popover
+        if NSApp.currentEvent?.type == .rightMouseUp {
+            popover.performClose(nil)
+            let menu = NSMenu()
+            menu.addItem(NSMenuItem(title: "Quit LightStar", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
+            statusItem?.popUpMenu(menu)
+            return
+        }
         if popover.isShown {
             popover.performClose(nil)
         } else {

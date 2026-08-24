@@ -201,21 +201,26 @@ struct MenuBarView: View {
 
             Divider()
 
-            Toggle("Launch at Login", isOn: $launchAtLogin)
-                .font(.caption)
-                .toggleStyle(.checkbox)
-                .onAppear {
-                    // Sync with real system state — AppStorage can drift if user
-                    // manually removes the login item or app was force-quit.
-                    launchAtLogin = SMAppService.mainApp.status == .enabled
-                }
-                .onChange(of: launchAtLogin) { _, enabled in
-                    if enabled {
-                        try? SMAppService.mainApp.register()
-                    } else {
-                        try? SMAppService.mainApp.unregister()
+            HStack {
+                Toggle("Launch at Login", isOn: $launchAtLogin)
+                    .font(.caption)
+                    .toggleStyle(.checkbox)
+                    .onAppear {
+                        launchAtLogin = SMAppService.mainApp.status == .enabled
                     }
-                }
+                    .onChange(of: launchAtLogin) { _, enabled in
+                        if enabled {
+                            try? SMAppService.mainApp.register()
+                        } else {
+                            try? SMAppService.mainApp.unregister()
+                        }
+                    }
+                Spacer()
+                Button("Quit") { NSApp.terminate(nil) }
+                    .font(.caption)
+                    .buttonStyle(.link)
+                    .foregroundStyle(.secondary)
+            }
         }
         .padding(16)
     }
