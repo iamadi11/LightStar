@@ -114,6 +114,10 @@ struct MenuBarView: View {
                 Text(ble.isOn ? "On" : "Off")
                     .frame(width: 24, alignment: .leading)
                 Spacer()
+                Text("⌘⇧L")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                    .help("Global shortcut: ⌘⇧L toggles power")
             }
 
             ColorControlView()
@@ -372,7 +376,9 @@ private struct SyncControlView: View {
 private extension MenuBarView {
     func applyPreset(_ preset: Preset) {
         if !ble.isOn { ble.setPower(on: true) }
-        ble.setSyncMode(.off)
+        // setColor → setHue already calls stopSyncInline() when sync is active.
+        // Calling setSyncMode(.off) first would queue a fade that competes with
+        // the incoming preset color (fade writes old color for 300ms).
         ble.setColor(preset.color)
         ble.setBrightness(preset.brightness)
     }

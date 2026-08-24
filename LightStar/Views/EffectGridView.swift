@@ -35,9 +35,16 @@ struct EffectsView: View {
 
             if ble.effectModeActive {
                 VStack(alignment: .leading, spacing: 4) {
-                    Label("Speed", systemImage: "hare")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    HStack {
+                        Label("Speed", systemImage: "hare")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Text("\(Int(ble.effectSpeed * 100))%")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .monospacedDigit()
+                    }
                     Slider(value: Binding(
                         get: { ble.effectSpeed },
                         set: { ble.setEffectSpeed($0) }
