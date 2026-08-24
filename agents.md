@@ -47,8 +47,7 @@ LightStar/
 ├── BLE/
 │   ├── BLEProtocol.swift       — Cmd builders + HueLUT + Color.hsvComponents
 │   ├── BLEWriteCoalescer.swift — 20ms drain timer, per-command-byte dedup (key = bytes[1])
-│   ├── LightBLEManager.swift   — @MainActor @Observable coordinator (~900 lines)
-│   ├── MicSyncManager.swift    — Mic FFT → FrequencyBands (uses AVAudioEngine)
+│   ├── LightBLEManager.swift   — @MainActor @Observable coordinator (~1250 lines)
 │   └── CameraChangeDetector.swift — AVCaptureSession camera color sampling
 ├── Models/
 │   ├── FrequencyBands.swift    — Shared audio analysis struct (Sendable)
@@ -106,6 +105,10 @@ buildSync(mode, previousMode:)                   │
 | Strip stuck on wrong color after mode exit | `try? await Task.sleep` swallows cancel | Use `do/catch` so restoreSteadyState always runs |
 | `NSScreen.screens` crash off main thread | NSScreen is MainActor-only | Mark callers `@MainActor` |
 | `SCDisplay.localizedName` compile error | SCDisplay has no such property | Match CGDirectDisplayID via NSScreen.screens |
+| SIGABRT on first BLE scan (TCC) | `com.apple.security.device.bluetooth` entitlement missing from `.entitlements` file | Add it — required under hardened runtime even for non-sandboxed apps |
+| SIGABRT on camera access (TCC) | `NSCameraUsageDescription` / `NSMicrophoneUsageDescription` absent from Info.plist | xcodegen does NOT rewrite existing Info.plist on re-runs; edit the file directly |
+| Icon instruction abort (menu bar) | `NSImage.cgImage(forProposedRect:)` returns nil for SF Symbol vector images; force-unwrap crashes | Use `fill() + draw(operation: .destinationIn)` compositing instead |
+| Worktrees committed as git submodules | `git add -A` picks up nested `.git` dirs | `.claude/worktrees/` is in `.gitignore`; use `git add -u` or explicit paths |
 
 ---
 
