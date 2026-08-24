@@ -37,7 +37,9 @@ final class LightBLEManager: NSObject {
     // Display picker
     var availableDisplays: [(id: CGDirectDisplayID, name: String)] = []
     var selectedDisplayID: CGDirectDisplayID? = nil
-    var syncResponsiveness: Double = 0.7  // EMA alpha for screen color (0 = sluggish, 1 = instant)
+    var syncResponsiveness: Double = UserDefaults.standard.object(forKey: "syncResponsiveness") as? Double ?? 0.7 {
+        didSet { UserDefaults.standard.set(syncResponsiveness, forKey: "syncResponsiveness") }
+    }
 
     var isSyncingVideo: Bool { syncMode == .video || syncMode == .combined }
     var isSyncingAudio: Bool { syncMode == .audio || syncMode == .combined }
@@ -141,6 +143,7 @@ final class LightBLEManager: NSObject {
             // Cancel ALL pending async work before powerOff — any hue/brightness
             // packet arriving after powerOff wakes the BC/55 strip back up.
             transitionTask?.cancel(); transitionTask = nil
+            connectSequenceTask?.cancel(); connectSequenceTask = nil
             fadeTask?.cancel(); fadeTask = nil
             colorDebounce?.cancel(); colorDebounce = nil
             syncTransitioning = false
@@ -191,6 +194,17 @@ final class LightBLEManager: NSObject {
     }
 
     func setBrightness(_ value: Double) {
+        if syncMode != .off {
+            // Same inline teardown as setHue — audio writes brightness at 30Hz,
+            // slider would fight it and lose every frame.
+            transitionTask?.cancel(); transitionTask = nil
+            syncTransitioning = false
+            systemAudio.onBands = nil
+            screenSampler.onColor = nil
+            flashLevel = 0
+            syncMode = .off
+            Task { await self.systemAudio.stop(); await self.screenSampler.stop() }
+        }
         brightness = value
         write(Cmd.brightness(value))
     }

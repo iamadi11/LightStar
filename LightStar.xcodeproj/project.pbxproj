@@ -10,7 +10,6 @@
 		143A26B8D7AF992296B0B052 /* SystemAudioSampler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A846385662EA04F32B021F2 /* SystemAudioSampler.swift */; };
 		3860E4D6B0597A480CA3F968 /* EffectGridView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1B8D14D767F5753CFF45B59 /* EffectGridView.swift */; };
 		494FAD89C737703809B25B9E /* SyncModePickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 654A30636DC7A820E73B4D74 /* SyncModePickerView.swift */; };
-		4C39F74E8D51814121AE7F72 /* ConnectionStatusView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2964D322563EB182C8BAE1A /* ConnectionStatusView.swift */; };
 		561068AF5802496A5B7B109E /* BLEWriteCoalescer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48AED48F7B52F06CFC569869 /* BLEWriteCoalescer.swift */; };
 		7884A1F9031CF65BF2A6B9ED /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 0E14A2153AEDB323F83BE4C8 /* Assets.xcassets */; };
 		9C78623959FACEB9DFC79323 /* ColorControlsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AEEA1DDB60C4C39D16DE58CC /* ColorControlsView.swift */; };
@@ -48,7 +47,6 @@
 		BD4AC3D3F3191CB3A7F42B05 /* LightStar.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = LightStar.entitlements; sourceTree = "<group>"; };
 		DA2EBC32F42356487D6B6268 /* PresetsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PresetsView.swift; sourceTree = "<group>"; };
 		E9DC2781CB0C341C52ED5B29 /* FrequencyBands.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrequencyBands.swift; sourceTree = "<group>"; };
-		F2964D322563EB182C8BAE1A /* ConnectionStatusView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionStatusView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -106,7 +104,6 @@
 			isa = PBXGroup;
 			children = (
 				AEEA1DDB60C4C39D16DE58CC /* ColorControlsView.swift */,
-				F2964D322563EB182C8BAE1A /* ConnectionStatusView.swift */,
 				7BAA50072DD434393913B565 /* DebugView.swift */,
 				B1B8D14D767F5753CFF45B59 /* EffectGridView.swift */,
 				8584E39FD808B45A57E6E9CD /* MenuBarView.swift */,
@@ -202,7 +199,6 @@
 				561068AF5802496A5B7B109E /* BLEWriteCoalescer.swift in Sources */,
 				FC5412ECC1D727B39494F459 /* CameraChangeDetector.swift in Sources */,
 				9C78623959FACEB9DFC79323 /* ColorControlsView.swift in Sources */,
-				4C39F74E8D51814121AE7F72 /* ConnectionStatusView.swift in Sources */,
 				EDACBA4677EB646BF52E9696 /* DebugView.swift in Sources */,
 				3860E4D6B0597A480CA3F968 /* EffectGridView.swift in Sources */,
 				D3996D85126574A7C7323EEB /* FrequencyBands.swift in Sources */,

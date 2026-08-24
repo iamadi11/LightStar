@@ -120,6 +120,14 @@ struct MenuBarView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     Spacer()
+                    if presets.presets.isEmpty {
+                        Button("Restore Defaults") {
+                            presets.presets = Preset.defaults
+                            presets.save()
+                        }
+                        .font(.system(size: 10))
+                        .buttonStyle(.link)
+                    }
                     Button {
                         newPresetName = "Custom"
                         showSaveSheet = true
@@ -180,6 +188,11 @@ struct MenuBarView: View {
             Toggle("Launch at Login", isOn: $launchAtLogin)
                 .font(.caption)
                 .toggleStyle(.checkbox)
+                .onAppear {
+                    // Sync with real system state — AppStorage can drift if user
+                    // manually removes the login item or app was force-quit.
+                    launchAtLogin = SMAppService.mainApp.status == .enabled
+                }
                 .onChange(of: launchAtLogin) { _, enabled in
                     if enabled {
                         try? SMAppService.mainApp.register()
@@ -366,6 +379,7 @@ private struct SavePresetSheet: View {
     @Binding var name: String
     let onSave: (String) -> Void
     @Environment(\.dismiss) private var dismiss
+    @FocusState private var focused: Bool
 
     var body: some View {
         VStack(spacing: 16) {
@@ -373,6 +387,8 @@ private struct SavePresetSheet: View {
             TextField("Name", text: $name)
                 .textFieldStyle(.roundedBorder)
                 .frame(width: 200)
+                .focused($focused)
+                .onAppear { focused = true }
             HStack {
                 Button("Cancel") { dismiss() }
                 Button("Save") {
