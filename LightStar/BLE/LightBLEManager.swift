@@ -138,11 +138,18 @@ final class LightBLEManager: NSObject {
     func setPower(on: Bool) {
         isOn = on
         if !on {
-            // Nil closures synchronously so no callbacks fire after powerOff
+            // Cancel ALL pending async work before powerOff — any hue/brightness
+            // packet arriving after powerOff wakes the BC/55 strip back up.
+            transitionTask?.cancel(); transitionTask = nil
+            fadeTask?.cancel(); fadeTask = nil
+            colorDebounce?.cancel(); colorDebounce = nil
+            syncTransitioning = false
             systemAudio.onBands = nil
             screenSampler.onColor = nil
             flashLevel = 0
-            setSyncMode(.off)
+            syncMode = .off
+            // Stop samplers async — no fade, nothing writes after powerOff
+            Task { await self.systemAudio.stop(); await self.screenSampler.stop() }
         }
         write(on ? Cmd.powerOn : Cmd.powerOff)
     }
@@ -154,7 +161,17 @@ final class LightBLEManager: NSObject {
 
     // Preferred over setColor — avoids lossy Color→NSColor→getHue round-trip.
     func setHue(_ h: Double, saturation s: Double) {
-        if syncMode != .off { setSyncMode(.off) }  // manual color overrides sync
+        if syncMode != .off {
+            // Inline teardown — no fade. setSyncMode would queue a fadeToSteadyState
+            // that races with colorDebounce and sends old sync colors over the new pick.
+            transitionTask?.cancel(); transitionTask = nil
+            syncTransitioning = false
+            systemAudio.onBands = nil
+            screenSampler.onColor = nil
+            flashLevel = 0
+            syncMode = .off
+            Task { await self.systemAudio.stop(); await self.screenSampler.stop() }
+        }
         color = Color(hue: h, saturation: s, brightness: 1)
         audioPulseH = h
         effectModeActive = false
