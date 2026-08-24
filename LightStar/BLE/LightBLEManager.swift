@@ -109,7 +109,12 @@ final class LightBLEManager: NSObject {
     private var connectSequenceTask: Task<Void, Never>?
     private var connectWhenReady = false       // deferred connect until BT powered on
     private var shouldAutoReconnect = false    // true on unexpected drop; false on manual disconnect
-    private var lastSyncMode: SyncMode = .off  // restored after reconnect
+    // Restored after reconnect and after full app restart
+    private var lastSyncMode: SyncMode = {
+        guard let raw = UserDefaults.standard.string(forKey: "lastSyncMode"),
+              let v = SyncMode(rawValue: raw) else { return .off }
+        return v
+    }()
     private var colorDebounce: Task<Void, Never>?
     private var reconnectAttempts = 0
     private let maxReconnectAttempts = 5
@@ -1317,8 +1322,9 @@ extension LightBLEManager: CBCentralManagerDelegate {
             self.probeTask = nil
             self.systemAudio.onBands = nil
             self.screenSampler.onColor = nil
-            // Save active sync mode before clearing — restored on reconnect
+            // Save active sync mode before clearing — restored on reconnect and next app launch
             self.lastSyncMode = self.syncMode
+            UserDefaults.standard.set(self.syncMode.rawValue, forKey: "lastSyncMode")
             self.syncMode = .off
             self.syncTransitioning = false
             Task { await self.systemAudio.stop() }

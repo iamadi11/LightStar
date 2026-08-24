@@ -341,15 +341,22 @@ private struct SyncControlView: View {
                 .pickerStyle(.segmented)
                 .controlSize(.mini)
 
-                HStack {
-                    Text("Beat sensitivity")
-                        .font(.system(size: 9))
-                        .foregroundStyle(.secondary)
-                    Slider(value: Binding(
-                        get: { ble.beatSensitivity },
-                        set: { ble.beatSensitivity = $0 }
-                    ), in: 0...1)
-                    .controlSize(.mini)
+                if ble.audioSyncMode == .rainbow || ble.syncMode == .combined {
+                    HStack {
+                        Text("Beat sensitivity")
+                            .font(.system(size: 9))
+                            .foregroundStyle(.secondary)
+                        Slider(value: Binding(
+                            get: { ble.beatSensitivity },
+                            set: { ble.beatSensitivity = $0 }
+                        ), in: 0...1)
+                        .controlSize(.mini)
+                        Text("\(Int(ble.beatSensitivity * 100))%")
+                            .font(.system(size: 9))
+                            .foregroundStyle(.secondary)
+                            .monospacedDigit()
+                            .frame(width: 28, alignment: .trailing)
+                    }
                 }
             }
 
