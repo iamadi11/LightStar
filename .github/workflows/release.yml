@@ -15,6 +15,12 @@ jobs:
     permissions:
       contents: write
 
+    # Hoist secret existence checks to env — secrets.* in if: conditions is
+    # rejected by GitHub's workflow validator since late 2024.
+    env:
+      HAS_CERT: ${{ secrets.APPLE_CERTIFICATE != '' }}
+      HAS_NOTARY: ${{ secrets.APPLE_ID != '' }}
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -30,7 +36,6 @@ jobs:
         run: |
           SHORT_SHA="${GITHUB_SHA::7}"
           COMMIT_COUNT=$(git rev-list --count HEAD)
-          # Use latest semver tag as marketing version, fall back to 0.0.1
           LATEST_TAG=$(git tag --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1)
           MARKETING="${LATEST_TAG#v}"
           MARKETING="${MARKETING:-0.0.1}"
@@ -41,19 +46,18 @@ jobs:
 
       # ── Code signing (Developer ID) ──────────────────────────────────────────
       # Set up these secrets in Settings → Secrets → Actions:
-      #   APPLE_CERTIFICATE        — base64-encoded Developer ID Application .p12
+      #   APPLE_CERTIFICATE          — base64-encoded Developer ID Application .p12
       #   APPLE_CERTIFICATE_PASSWORD — passphrase for the .p12
-      #   APPLE_TEAM_ID            — 10-char team ID (e.g. ABC123DEF4)
+      #   APPLE_TEAM_ID              — 10-char team ID (e.g. ABC123DEF4)
       # Leave secrets empty to build unsigned (works for personal use / testing).
       - name: Import signing certificate
-        if: ${{ secrets.APPLE_CERTIFICATE != '' }}
+        if: env.HAS_CERT == 'true'
         env:
           CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE }}
           CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
         run: |
           KEYCHAIN_PATH="$RUNNER_TEMP/build.keychain"
           CERT_PATH="$RUNNER_TEMP/certificate.p12"
-
           echo "$CERTIFICATE_BASE64" | base64 --decode > "$CERT_PATH"
           security create-keychain -p "ci" "$KEYCHAIN_PATH"
           security default-keychain -s "$KEYCHAIN_PATH"
@@ -65,7 +69,7 @@ jobs:
 
       # ── Archive ──────────────────────────────────────────────────────────────
       - name: Archive (signed)
-        if: ${{ secrets.APPLE_CERTIFICATE != '' }}
+        if: env.HAS_CERT == 'true'
         run: |
           xcodebuild archive \
             -project LightStar.xcodeproj \
@@ -76,11 +80,10 @@ jobs:
             CURRENT_PROJECT_VERSION="${{ steps.version.outputs.build }}" \
             DEVELOPMENT_TEAM="${{ secrets.APPLE_TEAM_ID }}" \
             CODE_SIGN_STYLE=Manual \
-            CODE_SIGN_IDENTITY="Developer ID Application" \
-            | xcpretty
+            CODE_SIGN_IDENTITY="Developer ID Application"
 
       - name: Archive (unsigned)
-        if: ${{ secrets.APPLE_CERTIFICATE == '' }}
+        if: env.HAS_CERT != 'true'
         run: |
           xcodebuild archive \
             -project LightStar.xcodeproj \
@@ -91,12 +94,11 @@ jobs:
             CURRENT_PROJECT_VERSION="${{ steps.version.outputs.build }}" \
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGNING_ALLOWED=NO \
-            | xcpretty
+            CODE_SIGNING_ALLOWED=NO
 
       # ── Export .app ──────────────────────────────────────────────────────────
       - name: Write export options (signed)
-        if: ${{ secrets.APPLE_CERTIFICATE != '' }}
+        if: env.HAS_CERT == 'true'
         run: |
           cat > "$RUNNER_TEMP/ExportOptions.plist" <<'PLIST'
           <?xml version="1.0" encoding="UTF-8"?>
@@ -112,16 +114,15 @@ jobs:
           PLIST
 
       - name: Export .app (signed)
-        if: ${{ secrets.APPLE_CERTIFICATE != '' }}
+        if: env.HAS_CERT == 'true'
         run: |
           xcodebuild -exportArchive \
             -archivePath "$RUNNER_TEMP/LightStar.xcarchive" \
             -exportPath "$RUNNER_TEMP/export" \
-            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist" \
-            | xcpretty
+            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist"
 
       - name: Copy .app (unsigned)
-        if: ${{ secrets.APPLE_CERTIFICATE == '' }}
+        if: env.HAS_CERT != 'true'
         run: |
           mkdir -p "$RUNNER_TEMP/export"
           cp -R "$RUNNER_TEMP/LightStar.xcarchive/Products/Applications/LightStar.app" \
@@ -129,37 +130,31 @@ jobs:
 
       # ── Notarize ─────────────────────────────────────────────────────────────
       # Secrets needed:
-      #   APPLE_ID              — your Apple ID email
-      #   APPLE_APP_PASSWORD    — app-specific password (appleid.apple.com)
+      #   APPLE_ID           — your Apple ID email
+      #   APPLE_APP_PASSWORD — app-specific password (appleid.apple.com)
       - name: Notarize
-        if: ${{ secrets.APPLE_CERTIFICATE != '' && secrets.APPLE_ID != '' }}
+        if: env.HAS_CERT == 'true' && env.HAS_NOTARY == 'true'
         run: |
           ditto -c -k --sequesterRsrc --keepParent \
             "$RUNNER_TEMP/export/LightStar.app" \
             "$RUNNER_TEMP/LightStar-notarize.zip"
-
           xcrun notarytool submit "$RUNNER_TEMP/LightStar-notarize.zip" \
             --apple-id "${{ secrets.APPLE_ID }}" \
             --password "${{ secrets.APPLE_APP_PASSWORD }}" \
             --team-id "${{ secrets.APPLE_TEAM_ID }}" \
             --wait
-
           xcrun stapler staple "$RUNNER_TEMP/export/LightStar.app"
 
       # ── Package DMG ──────────────────────────────────────────────────────────
       - name: Create DMG
         run: |
-          APP="$RUNNER_TEMP/export/LightStar.app"
           DMG_NAME="LightStar-${{ steps.version.outputs.marketing }}-${{ steps.version.outputs.sha }}.dmg"
           DMG_PATH="$RUNNER_TEMP/$DMG_NAME"
-
           hdiutil create -volname "LightStar" \
-            -srcfolder "$APP" \
+            -srcfolder "$RUNNER_TEMP/export/LightStar.app" \
             -ov -format UDZO \
             "$DMG_PATH"
-
-          echo "DMG_PATH=$DMG_PATH"   >> "$GITHUB_ENV"
-          echo "DMG_NAME=$DMG_NAME"   >> "$GITHUB_ENV"
+          echo "DMG_PATH=$DMG_PATH" >> "$GITHUB_ENV"
 
       # ── GitHub Release ───────────────────────────────────────────────────────
       - name: Create Release
@@ -176,8 +171,6 @@ jobs:
             2. Open it and drag **LightStar.app** to Applications
             3. On first launch: right-click → Open (bypasses Gatekeeper on unsigned builds)
             4. Grant **Screen Recording** permission when prompted — covers system audio capture too
-
-            ${{ secrets.APPLE_CERTIFICATE == '' && '> ⚠️ **Unsigned build** — add `APPLE_CERTIFICATE` secrets to enable code signing + notarization.' || '' }}
           draft: false
           prerelease: false
           files: ${{ env.DMG_PATH }}
@@ -186,5 +179,5 @@ jobs:
 
       # ── Cleanup keychain ─────────────────────────────────────────────────────
       - name: Delete keychain
-        if: always() && secrets.APPLE_CERTIFICATE != ''
+        if: ${{ always() && env.HAS_CERT == 'true' }}
         run: security delete-keychain "$RUNNER_TEMP/build.keychain" || true
