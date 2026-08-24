@@ -43,7 +43,7 @@ targets:
         NSBluetoothPeripheralUsageDescription: "LightStar needs Bluetooth to connect to your LED light."
         NSCameraUsageDescription: "LightStar uses the camera to detect ambient color for debug mode."
         NSMicrophoneUsageDescription: "LightStar listens to audio to sync the light to music beats."
-LSMinimumSystemVersion: "14.0"
+        LSMinimumSystemVersion: "14.0"
     entitlements:
       path: LightStar/LightStar.entitlements
       properties:

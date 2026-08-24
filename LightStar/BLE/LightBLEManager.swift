@@ -446,7 +446,7 @@ final class LightBLEManager: NSObject {
     func saveDeviceLog() {
         guard !deviceLog.isEmpty else { return }
         let ts = Int(Date().timeIntervalSince1970)
-        let url = URL(fileURLWithPath: "/Users/adityaraj/Desktop/lightstar-device-info-\(ts).txt")
+        let url = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Desktop/lightstar-device-info-\(ts).txt")
         let content = "=== LightStar Device Info ===\n" + deviceLog.joined(separator: "\n")
         try? content.write(to: url, atomically: true, encoding: .utf8)
         deviceLog.append("Saved → \(url.lastPathComponent)")
@@ -456,7 +456,8 @@ final class LightBLEManager: NSObject {
     // Saves human-readable .txt and machine-readable .json to Desktop.
     func saveFullBackup() {
         let ts = Int(Date().timeIntervalSince1970)
-        let base = "/Users/adityaraj/Desktop/lightstar-backup-\(ts)"
+        let desktop = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Desktop")
+        let base = desktop.appendingPathComponent("lightstar-backup-\(ts)").path
 
         // ── Human-readable text ──────────────────────────────────────────
         var txt = """
@@ -547,7 +548,7 @@ final class LightBLEManager: NSObject {
     func saveDeviceInfoIfComplete() {
         // Auto-save once all readable chars have been read (heuristic: log has a READ line)
         guard deviceLog.contains(where: { $0.hasPrefix("  READ") }) else { return }
-        let dir = URL(fileURLWithPath: "/Users/adityaraj/Desktop/")
+        let dir = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Desktop")
         let existing = (try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil))?
             .filter { $0.lastPathComponent.hasPrefix("lightstar-device-info-") } ?? []
         guard existing.isEmpty else { return }
