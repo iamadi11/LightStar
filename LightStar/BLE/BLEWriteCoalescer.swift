@@ -4,7 +4,7 @@ import Foundation
 // Drains one entry per 20ms tick so the ATT stack always has headroom.
 @MainActor final class BLEWriteCoalescer {
     private var queue: [UInt8: Data] = [:]
-    private var timer: Timer?
+    nonisolated(unsafe) private var timer: Timer?
     private let send: @MainActor (Data) -> Void
     private let isConnected: @MainActor () -> Bool
 
@@ -14,8 +14,10 @@ import Foundation
         self.isConnected = isConnected
     }
 
+    deinit { timer?.invalidate() }
+
     func enqueue(_ bytes: [UInt8]) {
-        guard isConnected() else { return }
+        guard isConnected(), bytes.count >= 2 else { return }
         queue[bytes[1]] = Data(bytes)
         guard timer == nil else { return }
         // Use a repeating Task instead of Timer+assumeIsolated to avoid

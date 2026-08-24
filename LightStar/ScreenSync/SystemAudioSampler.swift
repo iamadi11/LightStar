@@ -45,8 +45,6 @@ final class SystemAudioSampler: NSObject {
         cfg.minimumFrameInterval = CMTime(value: 1, timescale: 1)  // 1 fps video (ignored)
         cfg.pixelFormat = kCVPixelFormatType_32BGRA
 
-        fftSetup = vDSP_DFT_zop_CreateSetup(nil, vDSP_Length(fftN), .FORWARD)
-
         let filter = SCContentFilter(display: display, excludingWindows: [])
         let s = SCStream(filter: filter, configuration: cfg, delegate: nil)
         try s.addStreamOutput(self, type: .audio, sampleHandlerQueue: queue)
@@ -55,9 +53,9 @@ final class SystemAudioSampler: NSObject {
         guard generation == gen else {
             // stop() ran while startCapture was pending — discard and clean up
             try? await s.stopCapture()
-            await cleanupFFTOnQueue()
             return
         }
+        fftSetup = vDSP_DFT_zop_CreateSetup(nil, vDSP_Length(fftN), .FORWARD)
         stream = s
         isRunning = true
     }

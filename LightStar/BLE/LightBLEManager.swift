@@ -146,6 +146,7 @@ final class LightBLEManager: NSObject {
             // packet arriving after powerOff wakes the BC/55 strip back up.
             transitionTask?.cancel(); transitionTask = nil
             connectSequenceTask?.cancel(); connectSequenceTask = nil
+            probeTask?.cancel(); probeTask = nil
             fadeTask?.cancel(); fadeTask = nil
             colorDebounce?.cancel(); colorDebounce = nil
             syncTransitioning = false
@@ -166,17 +167,7 @@ final class LightBLEManager: NSObject {
 
     // Preferred over setColor — avoids lossy Color→NSColor→getHue round-trip.
     func setHue(_ h: Double, saturation s: Double) {
-        if syncMode != .off {
-            // Inline teardown — no fade. setSyncMode would queue a fadeToSteadyState
-            // that races with colorDebounce and sends old sync colors over the new pick.
-            transitionTask?.cancel(); transitionTask = nil
-            syncTransitioning = false
-            systemAudio.onBands = nil
-            screenSampler.onColor = nil
-            flashLevel = 0
-            syncMode = .off
-            Task { await self.systemAudio.stop(); await self.screenSampler.stop() }
-        }
+        if syncMode != .off { stopSyncInline() }
         color = Color(hue: h, saturation: s, brightness: 1)
         audioPulseH = h
         effectModeActive = false
@@ -196,29 +187,13 @@ final class LightBLEManager: NSObject {
     }
 
     func setBrightness(_ value: Double) {
-        if syncMode != .off {
-            // Same inline teardown as setHue — audio writes brightness at 30Hz,
-            // slider would fight it and lose every frame.
-            transitionTask?.cancel(); transitionTask = nil
-            syncTransitioning = false
-            systemAudio.onBands = nil
-            screenSampler.onColor = nil
-            flashLevel = 0
-            syncMode = .off
-            Task { await self.systemAudio.stop(); await self.screenSampler.stop() }
-        }
+        if syncMode != .off { stopSyncInline() }
         brightness = value
         write(Cmd.brightness(value))
     }
 
     func setEffect(id: UInt8) {
-        // Nil closures synchronously so async teardown can't overwrite the effect packet
-        systemAudio.onBands = nil
-        screenSampler.onColor = nil
-        flashLevel = 0
-        transitionTask?.cancel()
-        syncMode = .off
-        syncTransitioning = false
+        stopSyncInline()
         effectID = id
         effectModeActive = true
         write(Cmd.effect(id: id))
@@ -271,6 +246,18 @@ final class LightBLEManager: NSObject {
         flashLevel = 0
         await systemAudio.stop()
         await screenSampler.stop()
+    }
+
+    // Synchronously tears down all sync state — safe to call from non-async context.
+    private func stopSyncInline() {
+        transitionTask?.cancel(); transitionTask = nil
+        probeTask?.cancel(); probeTask = nil
+        syncTransitioning = false
+        systemAudio.onBands = nil
+        screenSampler.onColor = nil
+        flashLevel = 0
+        syncMode = .off
+        Task { await self.systemAudio.stop(); await self.screenSampler.stop() }
     }
 
     private func buildSync(_ mode: SyncMode, previousMode: SyncMode = .off) async {
@@ -418,12 +405,14 @@ final class LightBLEManager: NSObject {
     }
 
     private func restoreSteadyState() {
+        guard isOn else { return }
         let (h, s, _) = color.hsvComponents
         write(Cmd.hue(h, saturation: s))
         write(Cmd.brightness(brightness))
     }
 
     private func fadeToSteadyState(from prevMode: SyncMode) {
+        guard isOn else { return }
         let (targetH, targetS, _) = color.hsvComponents
         let targetBri = brightness
 
@@ -1250,6 +1239,8 @@ extension LightBLEManager: CBCentralManagerDelegate {
             self.transitionTask?.cancel()
             self.connectSequenceTask?.cancel()
             self.connectSequenceTask = nil
+            self.probeTask?.cancel()
+            self.probeTask = nil
             self.systemAudio.onBands = nil
             self.screenSampler.onColor = nil
             // Save active sync mode before clearing — restored on reconnect
