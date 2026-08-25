@@ -187,6 +187,8 @@ final class LightBLEManager: NSObject {
     private var extraLights: [(peripheral: CBPeripheral, writeChar: CBCharacteristic?)] = []
     private var reconnectTask: Task<Void, Never>?
     private var probeTask: Task<Void, Never>?
+    // Set during probe sweeps to mirror BLE notifications into probeLog
+    var notifyTapHandler: ((Data) -> Void)?
     private var connectSequenceTask: Task<Void, Never>?
     private var connectWhenReady = false       // deferred connect until BT powered on
     private var shouldAutoReconnect = false    // true on unexpected drop; false on manual disconnect
@@ -1396,10 +1398,18 @@ final class LightBLEManager: NSObject {
         ]
 
         probeTask = Task { @MainActor in
+            // Mirror all BLE notifications into probeLog during sweep
+            self.notifyTapHandler = { [weak self] data in
+                guard let self else { return }
+                let rx = data.map { String(format: "%02X", $0) }.joined(separator: " ")
+                self.probeLog.append("  ← RX: \(rx)")
+            }
+
             self.write(Cmd.powerOn)
             self.write(Cmd.brightness(1.0))
-            // Also try enabling mic mode before sweep
-            self.write([0xBC, 0x0F, 0x02, 0x00, 0x01, 0x55])
+            // Query device state first to see what it responds with
+            self.write([0xBC, 0x00, 0x00, 0x55])       // generic state query attempt
+            self.write([0xBC, 0x06, 0x00, 0x55])       // status query (seen in other captures)
             try? await Task.sleep(nanoseconds: 500_000_000)
 
             var id = startID
@@ -1407,16 +1417,19 @@ final class LightBLEManager: NSObject {
                 if Task.isCancelled { break }
                 let frame: [UInt8] = [0xBC, 0x13, 0x02, 0x00, id, 0x55]
                 let hex = frame.map { String(format: "%02X", $0) }.joined(separator: " ")
-                self.probeLog.append(String(format: "→ ID 0x%02X: %@", id, hex))
+                self.probeLog.append(String(format: "→ 0x%02X  %@", id, hex))
                 self.write(frame)
-                try? await Task.sleep(nanoseconds: UInt64(holdSeconds * 1_000_000_000))
+                // Short pause then query — solicits a response so we can read device state
+                try? await Task.sleep(nanoseconds: 300_000_000)
+                self.write([0xBC, 0x06, 0x00, 0x55])
+                try? await Task.sleep(nanoseconds: UInt64((holdSeconds - 0.3) * 1_000_000_000))
                 if id == endID || id == 0xFF { break }
                 id &+= 1
             }
 
-            // Also try BC0F variants we haven't tested
+            // BC0F mic-mode variants
             self.probeLog.append("")
-            self.probeLog.append("BC0F mic-mode variants (2-byte payload):")
+            self.probeLog.append("BC0F mic-mode variants:")
             let micModes: [(UInt8, UInt8, String)] = [
                 (0x00, 0x01, "mic on, mode 1"),
                 (0x00, 0x02, "mic on, mode 2"),
@@ -1425,14 +1438,17 @@ final class LightBLEManager: NSObject {
             ]
             for (b1, b2, label) in micModes {
                 let cmd: [UInt8] = [0xBC, 0x0F, 0x02, b1, b2, 0x55]
-                self.probeLog.append("  \(label): \(cmd.map { String(format: "%02X", $0) }.joined(separator: " "))")
+                self.probeLog.append("→ \(label): \(cmd.map { String(format: "%02X", $0) }.joined(separator: " "))")
                 self.write(cmd)
-                try? await Task.sleep(nanoseconds: UInt64(holdSeconds * 1_000_000_000))
+                try? await Task.sleep(nanoseconds: 300_000_000)
+                self.write([0xBC, 0x06, 0x00, 0x55])
+                try? await Task.sleep(nanoseconds: UInt64((holdSeconds - 0.3) * 1_000_000_000))
             }
 
+            self.notifyTapHandler = nil
             self.probeLog.append("")
-            self.probeLog.append("Done. Which ID showed the audio beam?")
-            self.probeLog.append("Use raw hex sender to replay: BC 13 02 00 [ID] 55")
+            self.probeLog.append("Done. RX lines show device responses.")
+            self.probeLog.append("Replay any ID: BC 13 02 00 [ID] 55")
             self.probeRunning = false
         }
     }
@@ -1847,6 +1863,7 @@ extension LightBLEManager: CBPeripheralDelegate {
         Task { @MainActor in
             self.deviceLog.append(line)
             self.saveDeviceInfoIfComplete()
+            self.notifyTapHandler?(data)
         }
     }
 }
