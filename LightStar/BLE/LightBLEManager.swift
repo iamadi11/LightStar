@@ -1379,6 +1379,151 @@ final class LightBLEManager: NSObject {
     // FFF3 supports write-with-response (.write) — CB queues internally, ACK guaranteed.
     private func write(_ bytes: [UInt8]) { coalescer.enqueue(bytes) }
 
+    // MARK: - Per-LED / Segment Probe
+
+    // Probes whether the strip supports per-LED or per-segment color control.
+    // Camera not needed — watch the strip visually during each 2.5s window.
+    // Key hypotheses:
+    //   H1: BC04 bytes 8-9 (currently 0x00 0x00) are a zone/segment selector
+    //   H2: BC02 is an undiscovered per-segment color command
+    //   H3: BC21/BC22 define and color independent segments (Tuya pattern)
+    //   H4: BC14 / BC2A carry per-LED RGB arrays (addressable strip pixel data)
+    func probeSegments() {
+        guard !probeRunning, connectionState == .connected else { return }
+        probeRunning = true
+        probeLog = [
+            "=== PER-LED / SEGMENT PROBE ===",
+            "Watch the strip. Goal: part turns red while rest stays blue.",
+            "Camera not needed — observe visually.",
+            "",
+        ]
+
+        let ns: UInt64 = 1_000_000_000
+        let blueHi: UInt8 = 0x00; let blueLo: UInt8 = 0xF0  // hue 240°
+        let redHi:  UInt8 = 0x00; let redLo:  UInt8 = 0x00  // hue 0°
+        let satHi:  UInt8 = 0x03; let satLo:  UInt8 = 0xE8  // sat 1000
+
+        func allBlue() { write([0xBC, 0x04, 0x06, blueHi, blueLo, satHi, satLo, 0x00, 0x00, 0x55]) }
+        func allRed()  { write([0xBC, 0x04, 0x06, redHi,  redLo,  satHi, satLo, 0x00, 0x00, 0x55]) }
+
+        probeTask = Task { @MainActor in
+            // Baseline
+            self.write(Cmd.powerOn)
+            self.write(Cmd.brightness(1.0))
+            allBlue()
+            self.probeLog.append("Baseline set: full strip blue.")
+            try? await Task.sleep(nanoseconds: 2 * ns)
+
+            // ── H1: BC04 zone bytes ─────────────────────────────────────────
+            self.probeLog.append("")
+            self.probeLog.append("H1: BC04 mystery bytes (pos 8-9) as zone selector")
+            self.probeLog.append("     Normal: BC 04 06 .. .. .. .. 00 00 55")
+            let zones: [(hi: UInt8, lo: UInt8, label: String)] = [
+                (0x00, 0x01, "zone=0x0001"),
+                (0x00, 0x02, "zone=0x0002"),
+                (0x00, 0x03, "zone=0x0003"),
+                (0x01, 0x00, "zone=0x0100"),
+                (0x01, 0x01, "zone=0x0101"),
+                (0xFF, 0xFF, "zone=0xFFFF"),
+            ]
+            for z in zones {
+                allBlue(); try? await Task.sleep(nanoseconds: ns)
+                let cmd: [UInt8] = [0xBC, 0x04, 0x06, redHi, redLo, satHi, satLo, z.hi, z.lo, 0x55]
+                let hex = cmd.map { String(format: "%02X", $0) }.joined(separator: " ")
+                self.probeLog.append("  → \(z.label): \(hex)")
+                self.write(cmd)
+                try? await Task.sleep(nanoseconds: UInt64(2.5 * Double(ns)))
+            }
+
+            allBlue(); try? await Task.sleep(nanoseconds: ns)
+
+            // ── H2: BC02 as segment color command ──────────────────────────
+            self.probeLog.append("")
+            self.probeLog.append("H2: BC02 as segment-color command (completely unknown)")
+            let bc02: [([UInt8], String)] = [
+                ([0xBC, 0x02, 0x06, redHi, redLo, satHi, satLo, 0x00, 0x00, 0x55], "BC02 like BC04 seg=0"),
+                ([0xBC, 0x02, 0x06, redHi, redLo, satHi, satLo, 0x00, 0x01, 0x55], "BC02 seg=1"),
+                ([0xBC, 0x02, 0x04, 0x00, 0x00, 0x03, 0xE8, 0xFF, 0x55],           "BC02 4-byte"),
+                ([0xBC, 0x02, 0x01, 0x01, 0x55],                                   "BC02 1-byte 0x01"),
+            ]
+            for (cmd, label) in bc02 {
+                allBlue(); try? await Task.sleep(nanoseconds: ns)
+                let hex = cmd.map { String(format: "%02X", $0) }.joined(separator: " ")
+                self.probeLog.append("  → \(label): \(hex)")
+                self.write(cmd)
+                try? await Task.sleep(nanoseconds: UInt64(2.5 * Double(ns)))
+            }
+
+            allBlue(); try? await Task.sleep(nanoseconds: ns)
+
+            // ── H3: BC21/BC22 segment definition (Tuya/Miracles Star pattern) ─
+            self.probeLog.append("")
+            self.probeLog.append("H3: BC21 (define segments) + BC22 (segment color)")
+            // BC21: configure 2 segments
+            let bc21: [UInt8] = [0xBC, 0x21, 0x02, 0x00, 0x02, 0x55]
+            self.probeLog.append("  → BC21 define 2 segments: \(bc21.map { String(format: "%02X", $0) }.joined(separator: " "))")
+            self.write(bc21)
+            try? await Task.sleep(nanoseconds: ns / 2)
+            // BC22: set segment 0 to red
+            let bc22r: [UInt8] = [0xBC, 0x22, 0x06, redHi, redLo, satHi, satLo, 0x00, 0x00, 0x55]
+            self.probeLog.append("  → BC22 seg0 red: \(bc22r.map { String(format: "%02X", $0) }.joined(separator: " "))")
+            self.write(bc22r)
+            try? await Task.sleep(nanoseconds: UInt64(2.5 * Double(ns)))
+            // BC22: set segment 1 to green
+            let bc22g: [UInt8] = [0xBC, 0x22, 0x06, 0x00, 0x78, satHi, satLo, 0x00, 0x01, 0x55]
+            self.probeLog.append("  → BC22 seg1 green: \(bc22g.map { String(format: "%02X", $0) }.joined(separator: " "))")
+            self.write(bc22g)
+            try? await Task.sleep(nanoseconds: UInt64(2.5 * Double(ns)))
+
+            allBlue(); try? await Task.sleep(nanoseconds: ns)
+
+            // ── H4: Per-LED RGB pixel array ────────────────────────────────
+            self.probeLog.append("")
+            self.probeLog.append("H4: Per-LED RGB arrays — addressable pixel data")
+
+            // Some firmware needs a mode switch first (pixel mode)
+            self.probeLog.append("  → BC0D 01 01: attempt pixel-mode switch")
+            self.write([0xBC, 0x0D, 0x01, 0x01, 0x55])
+            try? await Task.sleep(nanoseconds: ns / 2)
+
+            // BC14: first 5 LEDs = alternating red/blue
+            let bc14: [UInt8] = [0xBC, 0x14, 0x0F,
+                                  0xFF, 0x00, 0x00,  // LED 0 red
+                                  0x00, 0x00, 0xFF,  // LED 1 blue
+                                  0xFF, 0x00, 0x00,  // LED 2 red
+                                  0x00, 0x00, 0xFF,  // LED 3 blue
+                                  0xFF, 0x00, 0x00,  // LED 4 red
+                                  0x55]
+            self.probeLog.append("  → BC14 LED0-4 alternating R/B: \(bc14.map { String(format: "%02X", $0) }.joined(separator: " "))")
+            self.write(bc14)
+            try? await Task.sleep(nanoseconds: UInt64(3 * Double(ns)))
+
+            allBlue(); try? await Task.sleep(nanoseconds: ns / 2)
+
+            // BC2A: pixel data starting at index 0
+            let bc2a: [UInt8] = [0xBC, 0x2A, 0x0B,
+                                  0x00, 0x00,        // start LED index
+                                  0xFF, 0x00, 0x00,  // LED 0 red
+                                  0x00, 0xFF, 0x00,  // LED 1 green
+                                  0xFF, 0x00, 0x00,  // LED 2 red
+                                  0x00, 0xFF, 0x00,  // LED 3 green
+                                  0x55]
+            self.probeLog.append("  → BC2A from idx 0, R/G/R/G: \(bc2a.map { String(format: "%02X", $0) }.joined(separator: " "))")
+            self.write(bc2a)
+            try? await Task.sleep(nanoseconds: UInt64(3 * Double(ns)))
+
+            // Restore mode + blue
+            self.write([0xBC, 0x0D, 0x01, 0x00, 0x55])  // exit pixel mode if it was entered
+            allBlue()
+
+            self.probeLog.append("")
+            self.probeLog.append("=== DONE ===")
+            self.probeLog.append("Report which tests (if any) showed partial color change.")
+            self.probeLog.append("Copy the hex from above and retry with the raw sender.")
+            self.probeRunning = false
+        }
+    }
+
     private func scheduleReconnect() {
         guard reconnectAttempts < maxReconnectAttempts else {
             connectionState = .disconnected

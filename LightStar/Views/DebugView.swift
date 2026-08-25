@@ -85,6 +85,12 @@ struct DebugTabView: View {
                     }
                     .disabled(ble.probeRunning)
                     .help("Full BC sweep ~5 min")
+                    Button(ble.probeRunning ? "…" : "Segments") {
+                        ble.probeSegments()
+                    }
+                    .disabled(ble.probeRunning)
+                    .tint(.purple)
+                    .help("Test per-LED / per-segment color — watch strip visually")
                     if !ble.probeLog.isEmpty && !ble.probeRunning {
                         Spacer()
                         Button("Clear") { ble.probeLog = [] }
