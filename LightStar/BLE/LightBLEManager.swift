@@ -145,17 +145,11 @@ final class LightBLEManager: NSObject {
     // MARK: - Protocol probe
     var probeLog: [String] = []
     var probeRunning = false
-    var cameraProbeEnabled = false
-    var selectedCameraID: String? = nil   // nil = auto (iPhone first, then built-in)
 
     // MARK: - Device discovery log
     var deviceLog: [String] = []
     var capturedAdvertisementStrings: [String: String] = [:]
     var capturedRSSI: Int = 0
-    // Live camera reading for debug tab (hue 0-1, brightness 0-1, -1 = no camera)
-    var liveHue: Double = -1
-    var liveBrightness: Double = -1
-
     // MARK: - BLE UUIDs
 
     nonisolated(unsafe) private static let serviceUUID    = CBUUID(string: "FFF0")
@@ -186,7 +180,7 @@ final class LightBLEManager: NSObject {
     private var writeChar: CBCharacteristic?
     private var extraLights: [(peripheral: CBPeripheral, writeChar: CBCharacteristic?)] = []
     private var reconnectTask: Task<Void, Never>?
-    private var probeTask: Task<Void, Never>?
+    var probeTask: Task<Void, Never>?
     // Set during probe sweeps to mirror BLE notifications into probeLog
     var notifyTapHandler: ((Data) -> Void)?
     private var connectSequenceTask: Task<Void, Never>?
@@ -211,7 +205,6 @@ final class LightBLEManager: NSObject {
     private var lastScreenH: Double = 0
     private var lastScreenS: Double = 1
     private var audioPulseH: Double = 0   // cached hue for pulse mode — avoids 30Hz hsvComponents
-    private let camera = CameraChangeDetector()
     private let screenSampler = ScreenColorSampler()
 
     override init() {
@@ -284,7 +277,7 @@ final class LightBLEManager: NSObject {
         coalescer.flush()
         if probeRunning {
             probeRunning = false
-            camera.stop()
+            notifyTapHandler = nil
         }
         if let p = peripheral { central.cancelPeripheralConnection(p) }
         disconnectExtraLights()
@@ -719,36 +712,7 @@ final class LightBLEManager: NSObject {
         }
     }
 
-    // MARK: - Live camera for debug tab
-
-    private var liveCameraActive = false
-    private var liveCameraTimer: Task<Void, Never>?
-
-    func startLiveCamera() {
-        guard !liveCameraActive else { return }
-        liveCameraActive = true
-        liveCameraTimer = Task { @MainActor in
-            do {
-                try await camera.start(preferredDeviceID: selectedCameraID)
-                while liveCameraActive {
-                    let s = await camera.snapshot(afterMs: 0)
-                    self.liveHue = s.hue
-                    self.liveBrightness = s.brightness
-                    try? await Task.sleep(nanoseconds: 200_000_000)
-                }
-            } catch {
-                liveHue = -1; liveBrightness = -1
-            }
-        }
-    }
-
-    func stopLiveCamera() {
-        liveCameraActive = false
-        liveCameraTimer?.cancel()
-        liveCameraTimer = nil
-        camera.stop()
-        liveHue = -1; liveBrightness = -1
-    }
+    // MARK: - Protocol dump (debug)
 
     // MARK: - Device info save
 
@@ -864,498 +828,123 @@ final class LightBLEManager: NSObject {
         saveDeviceLog()
     }
 
-    // Comprehensive color mapping test:
-    //   Phase 1 — full hue sweep 0–350° every 10°, S=100% (36 points)
-    //   Phase 2 — saturation linearity: 6 hues × S=25/50/75/100% (24 points)
-    //   Phase 3 — white (S=0)
-    // Total ~63 tests, ~65 seconds. Point iPhone at strip, dim room lights first.
-    func testColorMapping() {
+    // Single comprehensive protocol dump:
+    //   1. Device state queries (BC06, BC00, BC02)
+    //   2. BC00–BC1F command sweep (0-byte + 1-byte payloads)
+    //   3. BC0F mic-mode sweep (b1 0-3, b2 0-8)
+    //   4. BC13 animation sweep (ID 0x01-0x3C, 3s each)
+    //   5. BC11 sub-param sweep
+    //   All TX and RX logged to probeLog; auto-saved to Desktop on finish.
+    func protocolDump() {
         guard !probeRunning, connectionState == .connected else { return }
         probeRunning = true
-        setSyncMode(.off); effectModeActive = false
+        notifyTapHandler = nil
 
+        let ts = Date()
+        let fmt = DateFormatter(); fmt.dateFormat = "yyyy-MM-dd HH:mm:ss"
         probeLog = [
-            "=== COMPREHENSIVE COLOR MAPPING TEST ===",
-            "63 test points — ~90 seconds (each point sent twice to survive BLE drops)",
-            "Point iPhone camera at strip, 20-30cm away, dim ambient light.",
-            "Starting camera…"
+            "╔══════════════════════════════════════╗",
+            "║   LightStar — Protocol Dump          ║",
+            "╚══════════════════════════════════════╝",
+            "Started: \(fmt.string(from: ts))",
+            "→ TX  ← RX",
+            "",
         ]
 
         probeTask = Task { @MainActor in
-            guard self.connectionState == .connected else {
-                self.probeLog.append("❌ Not connected — connect to strip first")
-                self.probeRunning = false; return
+            // Mirror all BLE notifications into probeLog
+            self.notifyTapHandler = { [weak self] data in
+                guard let self else { return }
+                let rx = data.map { String(format: "%02X", $0) }.joined(separator: " ")
+                self.probeLog.append("  ← \(rx)")
             }
 
-            do { try await self.camera.start(preferredDeviceID: self.selectedCameraID) }
-            catch {
-                self.probeLog.append("❌ Camera: \(error.localizedDescription)")
-                self.probeRunning = false; return
+            let tx: ([UInt8], String) -> Void = { bytes, label in
+                let hex = bytes.map { String(format: "%02X", $0) }.joined(separator: " ")
+                self.probeLog.append("→ [\(label)] \(hex)")
+                self.write(bytes)
             }
-            self.probeLog.append("Camera: \(self.camera.activeCameraName)  Warm-up 2s…")
-            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            func ms(_ n: Int) async { try? await Task.sleep(nanoseconds: UInt64(n) * 1_000_000) }
 
-            // Try static mode without power-cycling first — power cycles can re-trigger
-            // BC13 animations saved in flash. Only cycle if verify step fails.
-            self.probeLog.append("Clearing effect mode…")
-            self.write(Cmd.effect(id: 0x00))
-            try? await Task.sleep(nanoseconds: 300_000_000)
-
-            // Verify: retry up to 5× until strip actually shows red (hue within 40°)
-            // Brightness-only check let prior tests proceed with wrong color.
-            var verified = false
-            for attempt in 1...5 {
-                self.write(Cmd.hue(0, saturation: 1.0))
-                self.write(Cmd.brightness(1.0))
-                try? await Task.sleep(nanoseconds: 150_000_000)
-                self.write(Cmd.hue(0, saturation: 1.0))
-                self.write(Cmd.brightness(1.0))
-                let snap = await self.camera.snapshot(afterMs: 1000)
-                let hueDelta = min(abs(snap.hue - 0.0), 1.0 - abs(snap.hue - 0.0))
-                self.probeLog.append(String(format: "Verify attempt %d: got %.0f° (Δ%.0f°) bri=%.2f",
-                    attempt, snap.hue * 360, hueDelta * 360, snap.brightness))
-                if snap.brightness < 0.05 {
-                    self.probeLog.append("❌ Strip not visible — point camera closer and retry")
-                    self.camera.stop(); self.probeRunning = false; return
-                }
-                if hueDelta < 0.111 {   // within 40°
-                    self.probeLog.append("✓ Strip showing red — BC04 responding")
-                    verified = true; break
-                }
-                // Not red yet — power-cycle again and retry
-                if attempt < 5 {
-                    self.probeLog.append("  Strip not red yet, power-cycling again…")
-                    self.write(Cmd.powerOff)
-                    try? await Task.sleep(nanoseconds: 1_500_000_000)
-                    self.write(Cmd.powerOn)
-                    try? await Task.sleep(nanoseconds: 800_000_000)
-                    self.write(Cmd.effect(id: 0x00))
-                    try? await Task.sleep(nanoseconds: 200_000_000)
-                }
-            }
-            if !verified {
-                self.probeLog.append("❌ Strip won't show red after 5 attempts — BC04 not working, aborting")
-                self.camera.stop(); self.probeRunning = false; return
+            // ── 1. Device state queries ─────────────────────────────────────
+            self.probeLog.append("── 1. State queries ────────────────────────────────────────")
+            self.write(Cmd.powerOn)
+            self.write(Cmd.brightness(1.0))
+            await ms(400)
+            for (cmd, label) in [(([0xBC, 0x06, 0x00, 0x55] as [UInt8]), "status?"),
+                                  ([0xBC, 0x00, 0x00, 0x55], "ping?"),
+                                  ([0xBC, 0x02, 0x00, 0x55], "query02?"),
+                                  ([0xBC, 0x08, 0x00, 0x55], "query08?")] {
+                if Task.isCancelled { break }
+                tx(cmd, label)
+                await ms(600)
             }
 
-            struct Row {
-                let phase: String; let label: String
-                let sentH: Double; let sentS: Double
-                let obsH: Double;  let obsBri: Double
-                var hueDelta: Double {
-                    min(abs(sentH - obsH), 1.0 - abs(sentH - obsH))
-                }
-            }
-            var rows: [Row] = []
-
-            // Helper — send color twice (100ms apart) to survive BLE TX drops, then snapshot
-            let measure = { @MainActor [self] (phase: String, label: String, h: Double, s: Double) async -> Row in
-                self.write(Cmd.hue(h, saturation: s))
-                self.write(Cmd.brightness(1.0))
-                try? await Task.sleep(nanoseconds: 120_000_000)  // let BLE stack flush
-                self.write(Cmd.hue(h, saturation: s))            // send again — strip drops ~10%
-                self.write(Cmd.brightness(1.0))
-                let obs = await self.camera.snapshot(afterMs: 1200)
-                return Row(phase: phase, label: label, sentH: h, sentS: s,
-                           obsH: obs.hue, obsBri: obs.brightness)
-            }
-
-            // ── PHASE 1: Full hue sweep every 10° at S=100% ──────────────
+            // ── 2. BC00–BC1F command sweep ──────────────────────────────────
             self.probeLog.append("")
-            self.probeLog.append("PHASE 1 — Hue sweep 0°–350° (S=100%) — 36 points")
-            self.probeLog.append("  \("Label".padding(toLength: 18, withPad: " ", startingAt: 0))  Sent    Got   Δ")
-            for deg in stride(from: 0, through: 350, by: 10) {
-                let h = Double(deg) / 360.0
-                let name = "\(deg)°"
-                let row = await measure("HueSweep", name, h, 1.0)
-                rows.append(row)
-                let ok = row.hueDelta < 0.083
-                let pad = name.padding(toLength: 18, withPad: " ", startingAt: 0)
-                self.probeLog.append(String(format: "  %@  %5.1f°  %5.1f°  %3.0f°  %@",
-                    pad, h * 360, row.obsH * 360, row.hueDelta * 360, ok ? "✓" : "⚠"))
+            self.probeLog.append("── 2. BC00–BC1F sweep (0-byte + 1-byte payload) ─────────────")
+            let knownCmds: Set<UInt8> = [0x01, 0x04, 0x05, 0x06, 0x07, 0x0B, 0x0F, 0x11, 0x13]
+            for cmd: UInt8 in 0x00...0x1F {
+                if Task.isCancelled { break }
+                let tag = knownCmds.contains(cmd) ? "KNOWN" : "?"
+                tx([0xBC, cmd, 0x00, 0x55], String(format: "BC%02X 0b[%@]", cmd, tag))
+                await ms(200)
+                tx([0xBC, 0x06, 0x00, 0x55], "status?")
+                await ms(300)
+                tx([0xBC, cmd, 0x01, 0x01, 0x55], String(format: "BC%02X b=01", cmd))
+                await ms(200)
+                tx([0xBC, 0x06, 0x00, 0x55], "status?")
+                await ms(300)
             }
 
-            // ── PHASE 2: Saturation linearity at 6 key hues ──────────────
+            // ── 3. BC0F mic-mode sweep ──────────────────────────────────────
             self.probeLog.append("")
-            self.probeLog.append("PHASE 2 — Saturation linearity (6 hues × S=25/50/75/100%) — 24 points")
-            self.probeLog.append("  Label                   SentS   ObsH  ObsBri")
-            let keyHues: [(String, Double)] = [
-                ("Red",     0/360.0), ("Yellow", 60/360.0), ("Green", 120/360.0),
-                ("Cyan",  180/360.0), ("Blue",  240/360.0), ("Magenta", 300/360.0)
-            ]
-            for (hueName, h) in keyHues {
-                for s in [0.25, 0.50, 0.75, 1.00] {
-                    let label = "\(hueName) S=\(Int(s*100))%"
-                    let row = await measure("SatTest", label, h, s)
-                    rows.append(row)
-                    let pad = label.padding(toLength: 22, withPad: " ", startingAt: 0)
-                    self.probeLog.append(String(format: "  %@  %3.0f%%  %5.1f°  %.2f",
-                        pad, s * 100, row.obsH * 360, row.obsBri))
+            self.probeLog.append("── 3. BC0F mic-mode sweep (b1 0x00–0x03, b2 0x00–0x08) ─────")
+            for b1: UInt8 in 0x00...0x03 {
+                for b2: UInt8 in 0x00...0x08 {
+                    if Task.isCancelled { break }
+                    tx([0xBC, 0x0F, 0x02, b1, b2, 0x55], String(format: "BC0F b1=%02X b2=%02X", b1, b2))
+                    await ms(200)
+                    tx([0xBC, 0x06, 0x00, 0x55], "status?")
+                    await ms(400)
                 }
             }
 
-            // ── PHASE 3: White ────────────────────────────────────────────
+            // ── 4. BC13 animation sweep ─────────────────────────────────────
             self.probeLog.append("")
-            self.probeLog.append("PHASE 3 — White (S=0)")
-            let white = await measure("White", "White S=0", 0, 0)
-            rows.append(white)
-            let whiteOk = white.obsBri > 0.25
-            self.probeLog.append(String(format: "  White  bri=%.2f  %@",
-                white.obsBri, whiteOk ? "✓" : "⚠ TOO DIM"))
+            self.probeLog.append("── 4. BC13 animation sweep (ID 0x01–0x3C, 3s each) ──────────")
+            self.probeLog.append("   !! Play music near strip — watch for audio beam !!")
+            self.write(Cmd.powerOn)
+            self.write(Cmd.brightness(1.0))
+            await ms(500)
+            for id: UInt8 in 0x01...0x3C {
+                if Task.isCancelled { break }
+                tx([0xBC, 0x13, 0x02, 0x00, id, 0x55], String(format: "anim ID=0x%02X", id))
+                await ms(300)
+                tx([0xBC, 0x06, 0x00, 0x55], "status?")
+                await ms(2700)
+            }
 
-            self.camera.stop()
-
-            // ── ANALYSIS ─────────────────────────────────────────────────
+            // ── 5. BC11 sub-param sweep ─────────────────────────────────────
             self.probeLog.append("")
-            self.probeLog.append("══════════════════════════════════════")
-            self.probeLog.append("ANALYSIS")
-
-            let hueSweep = rows.filter { $0.phase == "HueSweep" }
-            let mismatches = hueSweep.filter { $0.hueDelta >= 0.083 }
-            let avgDelta = hueSweep.map { $0.hueDelta * 360 }.reduce(0, +) / Double(hueSweep.count)
-            let maxRow = hueSweep.max(by: { $0.hueDelta < $1.hueDelta })
-
-            self.probeLog.append(String(format: "Hue sweep:  avg error %.1f°  max error %.1f° @ %@",
-                avgDelta, (maxRow?.hueDelta ?? 0) * 360, maxRow?.label ?? "?"))
-            self.probeLog.append("Mismatches (>30°): \(mismatches.count)/36")
-
-            if !mismatches.isEmpty {
-                self.probeLog.append("  Affected hues:")
-                for m in mismatches {
-                    self.probeLog.append(String(format: "    %@  sent %.0f°  got %.0f°  Δ%.0f°",
-                        m.label, m.sentH * 360, m.obsH * 360, m.hueDelta * 360))
-                }
+            self.probeLog.append("── 5. BC11 sub-param sweep (0x01–0x06) ──────────────────────")
+            for v: UInt8 in 0x01...0x06 {
+                if Task.isCancelled { break }
+                tx([0xBC, 0x11, 0x01, v, 0x55], String(format: "BC11 val=0x%02X", v))
+                await ms(300)
+                tx([0xBC, 0x06, 0x00, 0x55], "status?")
+                await ms(600)
             }
 
-            // Detect systematic offset
-            let offsets = hueSweep.map { r -> Double in
-                var d = r.obsH - r.sentH
-                if d >  0.5 { d -= 1 }
-                if d < -0.5 { d += 1 }
-                return d * 360
-            }
-            let medianOffset = offsets.sorted()[offsets.count / 2]
-            if abs(medianOffset) > 10 {
-                self.probeLog.append(String(format: "⚠ SYSTEMATIC HUE OFFSET detected: %.0f°", medianOffset))
-                self.probeLog.append("  → Cmd.hue() needs correction: H_sent = H_wanted - \(Int(medianOffset.rounded()))°")
-            } else {
-                self.probeLog.append(String(format: "✓ No systematic offset (median %.1f°)", medianOffset))
-            }
-
-            // Saturation check
+            self.notifyTapHandler = nil
             self.probeLog.append("")
-            self.probeLog.append("Saturation linearity: check if brightness drops as S decreases")
-            let satRows = rows.filter { $0.phase == "SatTest" && $0.label.hasPrefix("Red") }
-            for r in satRows {
-                self.probeLog.append(String(format: "  %@  bri=%.2f", r.label, r.obsBri))
-            }
-
-            // Save full CSV + report
-            var csv = "phase,label,sentH_deg,sentS_pct,obsH_deg,obsBri,hueDelta_deg\n"
-            for r in rows {
-                csv += String(format: "%@,%@,%.1f,%.0f,%.1f,%.3f,%.1f\n",
-                    r.phase, r.label, r.sentH * 360, r.sentS * 100,
-                    r.obsH * 360, r.obsBri, r.hueDelta * 360)
-            }
-            let ts = Int(Date().timeIntervalSince1970)
-            let desktop = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Desktop")
-            let txtFile = desktop.appendingPathComponent("lightstar-color-test-\(ts).txt")
-            let csvFile = desktop.appendingPathComponent("lightstar-color-test-\(ts).csv")
-            try? (self.probeLog.joined(separator: "\n")).write(to: txtFile, atomically: true, encoding: .utf8)
-            try? csv.write(to: csvFile, atomically: true, encoding: .utf8)
-
-            self.probeLog.append("")
-            self.probeLog.append("Saved → lightstar-color-test-\(ts).txt")
-            self.probeLog.append("Saved → lightstar-color-test-\(ts).csv  (open in Excel/Numbers)")
-            self.probeLog.append("=== DONE ===")
-            self.probeRunning = false
-        }
-    }
-
-    // Steps through 12 hues at full saturation so user can see which colors
-    // the strip actually renders. 1 second per hue, resets to white when done.
-    func sweepColorPalette() {
-        guard connectionState == .connected, !probeRunning else { return }
-        probeRunning = true
-        setSyncMode(.off); effectModeActive = false
-        let hues: [(String, Double)] = [
-            ("Red", 0/12.0), ("Orange", 1/12.0), ("Yellow", 2/12.0),
-            ("Chartreuse", 3/12.0), ("Green", 4/12.0), ("Spring", 5/12.0),
-            ("Cyan", 6/12.0), ("Azure", 7/12.0), ("Blue", 8/12.0),
-            ("Violet", 9/12.0), ("Magenta", 10/12.0), ("Rose", 11/12.0),
-            ("White (S=0)", -1),
-        ]
-        probeLog = ["=== COLOR PALETTE SWEEP ==="]
-        probeTask = Task { @MainActor in
-            for (name, h) in hues {
-                let hue = h < 0 ? 0.0 : h
-                let sat = h < 0 ? 0.0 : 1.0
-                self.write(Cmd.hue(hue, saturation: sat))
-                self.write(Cmd.brightness(1.0))
-                self.probeLog.append("→ \(name)  H=\(Int(hue*360))  S=\(Int(sat*1000))")
-                try? await Task.sleep(nanoseconds: 1_200_000_000)
-            }
-            self.probeLog.append("=== DONE — note any missing/wrong colors ===")
-            self.probeRunning = false
-        }
-    }
-
-    // Probes BC00–BC3F. With cameraProbeEnabled=true, samples the MacBook
-    // camera before/after each command and marks visual changes automatically.
-    // Point camera at the light bar before running.
-    func probeProtocol() {
-        guard !probeRunning, connectionState == .connected else { return }
-        probeRunning = true
-        let usingCamera = cameraProbeEnabled
-        probeLog = ["=== PROBE START — camera:\(usingCamera ? "ON" : "OFF") ==="]
-        probeTask = Task { @MainActor in
-            if usingCamera {
-                do {
-                    try await self.camera.start(preferredDeviceID: self.selectedCameraID)
-                    self.probeLog.append("Camera started — point it at the light bar")
-                    // Warm-up: let camera auto-expose
-                    try? await Task.sleep(nanoseconds: 1_500_000_000)
-                } catch {
-                    self.probeLog.append("Camera failed: \(error.localizedDescription) — running without detection")
-                }
-            }
-
-            self.probeLog.append("--- Round 1: query (0-byte) BC00–BC3F ---")
-            for cmd in UInt8(0x00)...UInt8(0x3F) {
-                let frame: [UInt8] = [0xBC, cmd, 0x00, 0x55]
-                let hex = frame.map { String(format: "%02X", $0) }.joined(separator: " ")
-                let before = usingCamera ? await self.camera.snapshot(afterMs: 0) : (0.0, 0.0)
-                self.write(frame)
-                let after = usingCamera ? await self.camera.snapshot(afterMs: 400) : (0.0, 0.0)
-                let change = usingCamera ? Self.visualChange(before, after) : ""
-                let line = "TX BC\(String(format: "%02X", cmd)) (query) → \(hex)\(change)"
-                self.probeLog.append(line)
-                print("[Probe] \(line)")
-                if !usingCamera { try? await Task.sleep(nanoseconds: 300_000_000) }
-            }
-
-            self.probeLog.append("--- Round 2: write (1-byte) BC00–BC3F ---")
-            for cmd in UInt8(0x00)...UInt8(0x3F) {
-                for payload: [UInt8] in [[0x00], [0x01], [0x64]] {
-                    let frame: [UInt8] = [0xBC, cmd, UInt8(payload.count)] + payload + [0x55]
-                    let hex = frame.map { String(format: "%02X", $0) }.joined(separator: " ")
-                    let payHex = payload.map { String(format: "%02X", $0) }.joined()
-                    let before = usingCamera ? await self.camera.snapshot(afterMs: 0) : (0.0, 0.0)
-                    self.write(frame)
-                    let after = usingCamera ? await self.camera.snapshot(afterMs: 400) : (0.0, 0.0)
-                    let change = usingCamera ? Self.visualChange(before, after) : ""
-                    let line = "TX BC\(String(format: "%02X", cmd)) \(payHex) → \(hex)\(change)"
-                    self.probeLog.append(line)
-                    print("[Probe] \(line)")
-                    if !usingCamera { try? await Task.sleep(nanoseconds: 300_000_000) }
-                }
-            }
-
-            if usingCamera { self.camera.stop() }
-            self.probeLog.append("=== PROBE DONE ===")
-            print("[Probe] DONE")
-            self.probeRunning = false
+            self.probeLog.append("═══════════════════════════════════════════════════════════")
+            self.probeLog.append("Finished: \(fmt.string(from: Date()))")
             self.saveProbeLog()
-        }
-    }
-
-    // One-shot deep analysis of specific commands discovered in broad probe.
-    // Sweeps each target with 0x00–0xFF, resets device between commands,
-    // writes a complete analysis doc to Desktop. ~5 min with camera.
-    func probeDeep() {
-        guard !probeRunning, connectionState == .connected else { return }
-        probeRunning = true
-        probeLog = ["=== DEEP PROBE START ==="]
-
-        // Commands to analyse: (cmd, name, known_context)
-        let targets: [(UInt8, String, String)] = [
-            (0x03, "BC03", "1-byte write 01 caused minor change — unknown"),
-            (0x07, "BC07", "query + 1-byte 00 cause brightness shift — unknown"),
-            (0x10, "BC10", "all 3 payloads cause big hue cycle — suspected color/effect"),
-            (0x11, "BC11", "known mic sub-param; independent effect confirmed"),
-            (0x13, "BC13", "all 3 payloads cause bri+hue shift — completely unknown"),
-        ]
-
-        probeTask = Task { @MainActor in
-            do { try await self.camera.start() } catch {
-                self.probeLog.append("Camera failed: \(error.localizedDescription)")
-                self.probeRunning = false; return
-            }
-            self.probeLog.append("Camera warm-up…")
-            try? await Task.sleep(nanoseconds: 1_500_000_000)
-
-            // Per-command result storage
-            struct Hit { var payload: UInt8; var dBri: Double; var dHue: Double }
-            var results: [(cmd: UInt8, name: String, context: String, hits: [Hit])] = []
-
-            for (cmd, name, context) in targets {
-                self.probeLog.append("")
-                self.probeLog.append("━━━ \(name) — \(context) ━━━")
-                self.probeLog.append("Resetting device to known state…")
-
-                // Reset: power ON, solid red, medium brightness
-                self.write(Cmd.powerOn)
-                try? await Task.sleep(nanoseconds: 200_000_000)
-                self.write(Cmd.hue(0.0, saturation: 1.0))   // red
-                try? await Task.sleep(nanoseconds: 200_000_000)
-                self.write(Cmd.brightness(0.5))
-                try? await Task.sleep(nanoseconds: 600_000_000) // let it settle
-
-                var hits: [Hit] = []
-
-                for payload in UInt8(0x00)...UInt8(0xFF) {
-                    let frame: [UInt8] = [0xBC, cmd, 0x01, payload, 0x55]
-                    let hex = frame.map { String(format: "%02X", $0) }.joined(separator: " ")
-                    let before = await self.camera.snapshot(afterMs: 0)
-                    self.write(frame)
-                    let after = await self.camera.snapshot(afterMs: 250)
-                    let dBri = after.brightness - before.brightness
-                    let dHue = abs(after.hue - before.hue)
-                    let changed = abs(dBri) > 0.04 || dHue > 0.04
-                    if changed {
-                        hits.append(Hit(payload: payload, dBri: dBri, dHue: dHue))
-                        let mark = String(format: "  ★ %02X bri%+.2f hue Δ%.2f", payload, dBri, dHue)
-                        self.probeLog.append("TX \(hex)\(mark)")
-                        print("[Deep] \(name) \(mark)")
-                    }
-                    // Progress every 16 payloads
-                    if payload % 16 == 15 {
-                        self.probeLog.append("  … scanned 0x\(String(format: "%02X", payload - 14))–0x\(String(format: "%02X", payload)) (\(hits.count) hits so far)")
-                    }
-                    if payload == 0xFF { break } // avoid overflow
-                }
-
-                results.append((cmd, name, context, hits))
-                self.probeLog.append("Done: \(hits.count)/256 payloads triggered change.")
-            }
-
-            self.camera.stop()
-            self.probeLog.append("")
-            self.probeLog.append("=== ANALYSIS ===")
-
-            // Build analysis report
-            var report: [String] = [
-                "LightStar Deep Protocol Analysis",
-                "Generated: \(Date())",
-                "Target commands: BC03 BC07 BC10 BC11 BC13",
-                "",
-            ]
-
-            for r in results {
-                report.append("══════════════════════════════════════")
-                report.append("Command: \(r.name)  (0x\(String(format: "%02X", r.cmd)))")
-                report.append("Prior context: \(r.context)")
-                report.append("Responding payloads: \(r.hits.count)/256")
-                report.append("")
-
-                if r.hits.isEmpty {
-                    report.append("  → NO visual change detected for any payload.")
-                    report.append("  → Hypothesis: command requires different frame structure (>1 byte payload)")
-                    report.append("    or operates in a mode not currently active.")
-                } else {
-                    // Characterise change type
-                    let briOnly  = r.hits.filter { abs($0.dBri) > 0.04 && abs($0.dHue) <= 0.04 }
-                    let hueOnly  = r.hits.filter { abs($0.dBri) <= 0.04 && abs($0.dHue) > 0.04 }
-                    let both     = r.hits.filter { abs($0.dBri) > 0.04 && abs($0.dHue) > 0.04 }
-
-                    report.append("  Change breakdown:")
-                    report.append("    Brightness-only: \(briOnly.count)")
-                    report.append("    Hue-only:        \(hueOnly.count)")
-                    report.append("    Both:            \(both.count)")
-                    report.append("")
-
-                    // Find contiguous ranges
-                    let payloads = r.hits.map { Int($0.payload) }.sorted()
-                    var ranges: [(Int, Int)] = []
-                    var start = payloads[0], prev = payloads[0]
-                    for p in payloads.dropFirst() {
-                        if p == prev + 1 { prev = p }
-                        else { ranges.append((start, prev)); start = p; prev = p }
-                    }
-                    ranges.append((start, prev))
-
-                    report.append("  Responding payload ranges:")
-                    for (lo, hi) in ranges {
-                        if lo == hi { report.append("    0x\(String(format: "%02X", lo))") }
-                        else { report.append("    0x\(String(format: "%02X", lo))–0x\(String(format: "%02X", hi)) (\(hi-lo+1) values)") }
-                    }
-                    report.append("")
-
-                    // Hypothesis
-                    let coverage = Double(r.hits.count) / 256.0
-                    var hypothesis = ""
-                    if coverage > 0.7 {
-                        hypothesis = "Continuous range parameter (>70% coverage). "
-                        if briOnly.count > hueOnly.count { hypothesis += "Primarily affects brightness — likely intensity/dimmer control." }
-                        else if hueOnly.count > briOnly.count { hypothesis += "Primarily affects hue — likely color temperature or zone color." }
-                        else { hypothesis += "Affects both bri+hue — may be combined color+mode selector." }
-                    } else if coverage < 0.1 {
-                        hypothesis = "Sparse hits (<10%) — likely enum selector. "
-                        hypothesis += "Valid values: \(payloads.map { String(format: "0x%02X", $0) }.joined(separator: ", "))"
-                    } else {
-                        hypothesis = "Partial coverage (\(Int(coverage*100))%). "
-                        if ranges.count <= 4 { hypothesis += "Possible stepped enum or mode-gated range." }
-                        else { hypothesis += "Multiple active ranges — may encode sub-command + value." }
-                    }
-                    report.append("  Hypothesis: \(hypothesis)")
-                    report.append("")
-
-                    // Recommended frame for confirmed behavior
-                    if let first = r.hits.first {
-                        report.append("  Confirmed working frame:")
-                        let frame: [UInt8] = [0xBC, r.cmd, 0x01, first.payload, 0x55]
-                        report.append("    \(frame.map { String(format: "%02X", $0) }.joined(separator: " "))")
-                    }
-
-                    // Full hit table
-                    report.append("")
-                    report.append("  Full hit table (payload → ΔBri  ΔHue):")
-                    for h in r.hits {
-                        report.append(String(format: "    0x%02X → bri%+.3f  hue Δ%.3f", h.payload, h.dBri, h.dHue))
-                    }
-                }
-                report.append("")
-            }
-
-            report.append("══════════════════════════════════════")
-            report.append("SUMMARY — commands to add to protocol-confirmed.md:")
-            for r in results where !r.hits.isEmpty {
-                let payloads = r.hits.map { Int($0.payload) }.sorted()
-                let min = payloads.first!, max = payloads.last!
-                report.append("  \(r.name): payload range 0x\(String(format: "%02X", min))–0x\(String(format: "%02X", max)), \(r.hits.count) active values")
-            }
-
-            let content = report.joined(separator: "\n")
-            let desktop = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Desktop")
-            let file = desktop.appendingPathComponent("lightstar-deep-analysis-\(Int(Date().timeIntervalSince1970)).txt")
-            try? content.write(to: file, atomically: true, encoding: .utf8)
-
-            self.probeLog.append("Analysis saved → \(file.path)")
-            self.probeLog.append("=== DEEP PROBE DONE ===")
             self.probeRunning = false
-            self.saveProbeLog()
         }
     }
 
-    // Returns "  ★ CHANGE bri 0.30→0.45 hue 0.12→0.15" or "" if no change.
-    private static func visualChange(_ before: (brightness: Double, hue: Double),
-                                     _ after: (brightness: Double, hue: Double)) -> String {
-        let dBri = abs(after.brightness - before.brightness)
-        let dHue = abs(after.hue - before.hue)
-        guard dBri > 0.04 || dHue > 0.04 else { return "" }
-        return String(format: "  ★ CHANGE bri %.2f→%.2f hue %.2f→%.2f",
-                      before.brightness, after.brightness, before.hue, after.hue)
-    }
-
-    private func saveProbeLog() {
-        let desktop = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("Desktop")
-        let file = desktop.appendingPathComponent("lightstar-probe-\(Int(Date().timeIntervalSince1970)).txt")
-        let content = probeLog.joined(separator: "\n")
-        try? content.write(to: file, atomically: true, encoding: .utf8)
-        print("[Probe] saved → \(file.path)")
-        probeLog.append("Saved → \(file.path)")
-    }
 
     // MARK: - Private helpers
 
@@ -1381,221 +970,15 @@ final class LightBLEManager: NSObject {
     // FFF3 supports write-with-response (.write) — CB queues internally, ACK guaranteed.
     private func write(_ bytes: [UInt8]) { coalescer.enqueue(bytes) }
 
-    // MARK: - Animation ID Sweep
-
-    // Cycles through BC13 2-byte animation IDs so user can identify the audio beam.
-    // Each animation plays for 'holdSeconds' then moves on.
-    // Watch the strip — note ID when the moving-beam audio effect appears.
-    func sweepAnimations(from startID: UInt8 = 0x01, to endID: UInt8 = 0x3C, holdSeconds: Double = 3) {
-        guard !probeRunning, connectionState == .connected else { return }
-        probeRunning = true
-        probeLog = [
-            "=== BC13 ANIMATION SWEEP ===",
-            "Watch the strip. Note the ID when the audio beam appears.",
-            "Mic on strip must pick up sound — play music or clap.",
-            String(format: "IDs 0x%02X–0x%02X, %.0fs each", startID, endID, holdSeconds),
-            "",
-        ]
-
-        probeTask = Task { @MainActor in
-            // Mirror all BLE notifications into probeLog during sweep
-            self.notifyTapHandler = { [weak self] data in
-                guard let self else { return }
-                let rx = data.map { String(format: "%02X", $0) }.joined(separator: " ")
-                self.probeLog.append("  ← RX: \(rx)")
-            }
-
-            self.write(Cmd.powerOn)
-            self.write(Cmd.brightness(1.0))
-            // Query device state first to see what it responds with
-            self.write([0xBC, 0x00, 0x00, 0x55])       // generic state query attempt
-            self.write([0xBC, 0x06, 0x00, 0x55])       // status query (seen in other captures)
-            try? await Task.sleep(nanoseconds: 500_000_000)
-
-            var id = startID
-            while true {
-                if Task.isCancelled { break }
-                let frame: [UInt8] = [0xBC, 0x13, 0x02, 0x00, id, 0x55]
-                let hex = frame.map { String(format: "%02X", $0) }.joined(separator: " ")
-                self.probeLog.append(String(format: "→ 0x%02X  %@", id, hex))
-                self.write(frame)
-                // Short pause then query — solicits a response so we can read device state
-                try? await Task.sleep(nanoseconds: 300_000_000)
-                self.write([0xBC, 0x06, 0x00, 0x55])
-                try? await Task.sleep(nanoseconds: UInt64((holdSeconds - 0.3) * 1_000_000_000))
-                if id == endID || id == 0xFF { break }
-                id &+= 1
-            }
-
-            // BC0F mic-mode variants
-            self.probeLog.append("")
-            self.probeLog.append("BC0F mic-mode variants:")
-            let micModes: [(UInt8, UInt8, String)] = [
-                (0x00, 0x01, "mic on, mode 1"),
-                (0x00, 0x02, "mic on, mode 2"),
-                (0x01, 0x01, "mic variant"),
-                (0x01, 0x00, "mic variant 2"),
-            ]
-            for (b1, b2, label) in micModes {
-                let cmd: [UInt8] = [0xBC, 0x0F, 0x02, b1, b2, 0x55]
-                self.probeLog.append("→ \(label): \(cmd.map { String(format: "%02X", $0) }.joined(separator: " "))")
-                self.write(cmd)
-                try? await Task.sleep(nanoseconds: 300_000_000)
-                self.write([0xBC, 0x06, 0x00, 0x55])
-                try? await Task.sleep(nanoseconds: UInt64((holdSeconds - 0.3) * 1_000_000_000))
-            }
-
-            self.notifyTapHandler = nil
-            self.probeLog.append("")
-            self.probeLog.append("Done. RX lines show device responses.")
-            self.probeLog.append("Replay any ID: BC 13 02 00 [ID] 55")
-            self.probeRunning = false
-        }
-    }
-
-    // MARK: - Per-LED / Segment Probe
-
-    // Probes whether the strip supports per-LED or per-segment color control.
-    // Camera not needed — watch the strip visually during each 2.5s window.
-    // Key hypotheses:
-    //   H1: BC04 bytes 8-9 (currently 0x00 0x00) are a zone/segment selector
-    //   H2: BC02 is an undiscovered per-segment color command
-    //   H3: BC21/BC22 define and color independent segments (Tuya pattern)
-    //   H4: BC14 / BC2A carry per-LED RGB arrays (addressable strip pixel data)
-    func probeSegments() {
-        guard !probeRunning, connectionState == .connected else { return }
-        probeRunning = true
-        probeLog = [
-            "=== PER-LED / SEGMENT PROBE ===",
-            "Watch the strip. Goal: part turns red while rest stays blue.",
-            "Camera not needed — observe visually.",
-            "",
-        ]
-
-        let ns: UInt64 = 1_000_000_000
-        let blueHi: UInt8 = 0x00; let blueLo: UInt8 = 0xF0  // hue 240°
-        let redHi:  UInt8 = 0x00; let redLo:  UInt8 = 0x00  // hue 0°
-        let satHi:  UInt8 = 0x03; let satLo:  UInt8 = 0xE8  // sat 1000
-
-        func allBlue() { write([0xBC, 0x04, 0x06, blueHi, blueLo, satHi, satLo, 0x00, 0x00, 0x55]) }
-        func allRed()  { write([0xBC, 0x04, 0x06, redHi,  redLo,  satHi, satLo, 0x00, 0x00, 0x55]) }
-
-        probeTask = Task { @MainActor in
-            // Baseline
-            self.write(Cmd.powerOn)
-            self.write(Cmd.brightness(1.0))
-            allBlue()
-            self.probeLog.append("Baseline set: full strip blue.")
-            try? await Task.sleep(nanoseconds: 2 * ns)
-
-            // ── H1: BC04 zone bytes ─────────────────────────────────────────
-            self.probeLog.append("")
-            self.probeLog.append("H1: BC04 mystery bytes (pos 8-9) as zone selector")
-            self.probeLog.append("     Normal: BC 04 06 .. .. .. .. 00 00 55")
-            let zones: [(hi: UInt8, lo: UInt8, label: String)] = [
-                (0x00, 0x01, "zone=0x0001"),
-                (0x00, 0x02, "zone=0x0002"),
-                (0x00, 0x03, "zone=0x0003"),
-                (0x01, 0x00, "zone=0x0100"),
-                (0x01, 0x01, "zone=0x0101"),
-                (0xFF, 0xFF, "zone=0xFFFF"),
-            ]
-            for z in zones {
-                allBlue(); try? await Task.sleep(nanoseconds: ns)
-                let cmd: [UInt8] = [0xBC, 0x04, 0x06, redHi, redLo, satHi, satLo, z.hi, z.lo, 0x55]
-                let hex = cmd.map { String(format: "%02X", $0) }.joined(separator: " ")
-                self.probeLog.append("  → \(z.label): \(hex)")
-                self.write(cmd)
-                try? await Task.sleep(nanoseconds: UInt64(2.5 * Double(ns)))
-            }
-
-            allBlue(); try? await Task.sleep(nanoseconds: ns)
-
-            // ── H2: BC02 as segment color command ──────────────────────────
-            self.probeLog.append("")
-            self.probeLog.append("H2: BC02 as segment-color command (completely unknown)")
-            let bc02: [([UInt8], String)] = [
-                ([0xBC, 0x02, 0x06, redHi, redLo, satHi, satLo, 0x00, 0x00, 0x55], "BC02 like BC04 seg=0"),
-                ([0xBC, 0x02, 0x06, redHi, redLo, satHi, satLo, 0x00, 0x01, 0x55], "BC02 seg=1"),
-                ([0xBC, 0x02, 0x04, 0x00, 0x00, 0x03, 0xE8, 0xFF, 0x55],           "BC02 4-byte"),
-                ([0xBC, 0x02, 0x01, 0x01, 0x55],                                   "BC02 1-byte 0x01"),
-            ]
-            for (cmd, label) in bc02 {
-                allBlue(); try? await Task.sleep(nanoseconds: ns)
-                let hex = cmd.map { String(format: "%02X", $0) }.joined(separator: " ")
-                self.probeLog.append("  → \(label): \(hex)")
-                self.write(cmd)
-                try? await Task.sleep(nanoseconds: UInt64(2.5 * Double(ns)))
-            }
-
-            allBlue(); try? await Task.sleep(nanoseconds: ns)
-
-            // ── H3: BC21/BC22 segment definition (Tuya/Miracles Star pattern) ─
-            self.probeLog.append("")
-            self.probeLog.append("H3: BC21 (define segments) + BC22 (segment color)")
-            // BC21: configure 2 segments
-            let bc21: [UInt8] = [0xBC, 0x21, 0x02, 0x00, 0x02, 0x55]
-            self.probeLog.append("  → BC21 define 2 segments: \(bc21.map { String(format: "%02X", $0) }.joined(separator: " "))")
-            self.write(bc21)
-            try? await Task.sleep(nanoseconds: ns / 2)
-            // BC22: set segment 0 to red
-            let bc22r: [UInt8] = [0xBC, 0x22, 0x06, redHi, redLo, satHi, satLo, 0x00, 0x00, 0x55]
-            self.probeLog.append("  → BC22 seg0 red: \(bc22r.map { String(format: "%02X", $0) }.joined(separator: " "))")
-            self.write(bc22r)
-            try? await Task.sleep(nanoseconds: UInt64(2.5 * Double(ns)))
-            // BC22: set segment 1 to green
-            let bc22g: [UInt8] = [0xBC, 0x22, 0x06, 0x00, 0x78, satHi, satLo, 0x00, 0x01, 0x55]
-            self.probeLog.append("  → BC22 seg1 green: \(bc22g.map { String(format: "%02X", $0) }.joined(separator: " "))")
-            self.write(bc22g)
-            try? await Task.sleep(nanoseconds: UInt64(2.5 * Double(ns)))
-
-            allBlue(); try? await Task.sleep(nanoseconds: ns)
-
-            // ── H4: Per-LED RGB pixel array ────────────────────────────────
-            self.probeLog.append("")
-            self.probeLog.append("H4: Per-LED RGB arrays — addressable pixel data")
-
-            // Some firmware needs a mode switch first (pixel mode)
-            self.probeLog.append("  → BC0D 01 01: attempt pixel-mode switch")
-            self.write([0xBC, 0x0D, 0x01, 0x01, 0x55])
-            try? await Task.sleep(nanoseconds: ns / 2)
-
-            // BC14: first 5 LEDs = alternating red/blue
-            let bc14: [UInt8] = [0xBC, 0x14, 0x0F,
-                                  0xFF, 0x00, 0x00,  // LED 0 red
-                                  0x00, 0x00, 0xFF,  // LED 1 blue
-                                  0xFF, 0x00, 0x00,  // LED 2 red
-                                  0x00, 0x00, 0xFF,  // LED 3 blue
-                                  0xFF, 0x00, 0x00,  // LED 4 red
-                                  0x55]
-            self.probeLog.append("  → BC14 LED0-4 alternating R/B: \(bc14.map { String(format: "%02X", $0) }.joined(separator: " "))")
-            self.write(bc14)
-            try? await Task.sleep(nanoseconds: UInt64(3 * Double(ns)))
-
-            allBlue(); try? await Task.sleep(nanoseconds: ns / 2)
-
-            // BC2A: pixel data starting at index 0
-            let bc2a: [UInt8] = [0xBC, 0x2A, 0x0B,
-                                  0x00, 0x00,        // start LED index
-                                  0xFF, 0x00, 0x00,  // LED 0 red
-                                  0x00, 0xFF, 0x00,  // LED 1 green
-                                  0xFF, 0x00, 0x00,  // LED 2 red
-                                  0x00, 0xFF, 0x00,  // LED 3 green
-                                  0x55]
-            self.probeLog.append("  → BC2A from idx 0, R/G/R/G: \(bc2a.map { String(format: "%02X", $0) }.joined(separator: " "))")
-            self.write(bc2a)
-            try? await Task.sleep(nanoseconds: UInt64(3 * Double(ns)))
-
-            // Restore mode + blue
-            self.write([0xBC, 0x0D, 0x01, 0x00, 0x55])  // exit pixel mode if it was entered
-            allBlue()
-
-            self.probeLog.append("")
-            self.probeLog.append("=== DONE ===")
-            self.probeLog.append("Report which tests (if any) showed partial color change.")
-            self.probeLog.append("Copy the hex from above and retry with the raw sender.")
-            self.probeRunning = false
-        }
+    private func saveProbeLog() {
+        let desktop = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Desktop")
+        let ts = Int(Date().timeIntervalSince1970)
+        let file = desktop.appendingPathComponent("lightstar-protocol-\(ts).txt")
+        let content = probeLog.joined(separator: "\n")
+        try? content.write(to: file, atomically: true, encoding: .utf8)
+        print("[Probe] saved → \(file.path)")
+        probeLog.append("Saved → \(file.lastPathComponent)")
     }
 
     private func scheduleReconnect() {
