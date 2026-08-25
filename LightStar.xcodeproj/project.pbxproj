@@ -27,6 +27,7 @@
 		F6C3E7E3CC19332F82A2A9F8 /* LightBLEManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 72339CFCC9EFADD4D0CB2469 /* LightBLEManager.swift */; };
 		FC5412ECC1D727B39494F459 /* CameraChangeDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0684CC78893F15A979D23057 /* CameraChangeDetector.swift */; };
 		FE0EC53441B7F6561EF584DC /* PresetStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53F50B77BEC004F04F88246F /* PresetStore.swift */; };
+		DD00112233445566778899AA /* LightStarIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD00112233445566778899BB /* LightStarIntents.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -53,6 +54,7 @@
 		BD4AC3D3F3191CB3A7F42B05 /* LightStar.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = LightStar.entitlements; sourceTree = "<group>"; };
 		DA2EBC32F42356487D6B6268 /* PresetsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PresetsView.swift; sourceTree = "<group>"; };
 		E9DC2781CB0C341C52ED5B29 /* FrequencyBands.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrequencyBands.swift; sourceTree = "<group>"; };
+		DD00112233445566778899BB /* LightStarIntents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LightStarIntents.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -94,6 +96,7 @@
 				59C313B960E5BBCD917BE314 /* Info.plist */,
 				BD4AC3D3F3191CB3A7F42B05 /* LightStar.entitlements */,
 				351F6724302A2A9C8F8FBF29 /* LightStarApp.swift */,
+				DD00112233445566778899BB /* LightStarIntents.swift */,
 			);
 			path = LightStar;
 			sourceTree = "<group>";
@@ -213,6 +216,7 @@
 				D3996D85126574A7C7323EEB /* FrequencyBands.swift in Sources */,
 				F6C3E7E3CC19332F82A2A9F8 /* LightBLEManager.swift in Sources */,
 				EBBACD224CBCE8EDF326097A /* LightStarApp.swift in Sources */,
+				DD00112233445566778899AA /* LightStarIntents.swift in Sources */,
 				B4C3D8703B2DCC52DC779715 /* LightState.swift in Sources */,
 				A3956EA2931DD57FFE98BE83 /* MenuBarView.swift in Sources */,
 				FE0EC53441B7F6561EF584DC /* PresetStore.swift in Sources */,

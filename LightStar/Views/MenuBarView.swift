@@ -267,6 +267,17 @@ struct MenuBarView: View {
                 Toggle("Auto-connect on Launch", isOn: $autoConnectOnLaunch)
                     .font(.caption)
                     .toggleStyle(.checkbox)
+                Toggle("Multi-light (connect all nearby bars)", isOn: Binding(
+                    get: { ble.multiLightEnabled },
+                    set: { ble.multiLightEnabled = $0 }
+                ))
+                .font(.caption)
+                .toggleStyle(.checkbox)
+                if ble.multiLightEnabled && ble.connectedLightNames.count > 1 {
+                    Text(ble.connectedLightNames.joined(separator: ", "))
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
                 if presets.iCloudAvailable {
                     Toggle("Sync Presets via iCloud", isOn: Binding(
                         get: { presets.iCloudEnabled },

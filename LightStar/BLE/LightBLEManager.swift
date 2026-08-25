@@ -104,11 +104,28 @@ final class LightBLEManager: NSObject {
     nonisolated(unsafe) private static let notifyCharUUID = CBUUID(string: "FFF4")
     nonisolated(unsafe) private static let advertisedUUID = CBUUID(string: "2022")
 
+    // MARK: - Multi-light
+
+    var multiLightEnabled: Bool = UserDefaults.standard.bool(forKey: "multiLightEnabled") {
+        didSet {
+            UserDefaults.standard.set(multiLightEnabled, forKey: "multiLightEnabled")
+            if !multiLightEnabled { disconnectExtraLights() }
+        }
+    }
+    // Names of all connected lights (primary first, then extras)
+    var connectedLightNames: [String] {
+        var names: [String] = []
+        if let n = peripheral?.name { names.append(n) }
+        names += extraLights.compactMap { $0.peripheral.name }
+        return names
+    }
+
     // MARK: - Private state
 
     private var central: CBCentralManager!
     private var peripheral: CBPeripheral?
     private var writeChar: CBCharacteristic?
+    private var extraLights: [(peripheral: CBPeripheral, writeChar: CBCharacteristic?)] = []
     private var reconnectTask: Task<Void, Never>?
     private var probeTask: Task<Void, Never>?
     private var connectSequenceTask: Task<Void, Never>?
@@ -141,8 +158,14 @@ final class LightBLEManager: NSObject {
         central = CBCentralManager(delegate: self, queue: .main)
         coalescer = BLEWriteCoalescer(
             send: { [weak self] data in
-                guard let self, let p = self.peripheral, let ch = self.writeChar else { return }
-                p.writeValue(data, for: ch, type: .withResponse)
+                guard let self else { return }
+                if let p = self.peripheral, let ch = self.writeChar {
+                    p.writeValue(data, for: ch, type: .withResponse)
+                }
+                for light in self.extraLights {
+                    guard let ch = light.writeChar else { continue }
+                    light.peripheral.writeValue(data, for: ch, type: .withResponse)
+                }
             },
             isConnected: { [weak self] in self?.connectionState == .connected }
         )
@@ -202,6 +225,7 @@ final class LightBLEManager: NSObject {
             camera.stop()
         }
         if let p = peripheral { central.cancelPeripheralConnection(p) }
+        disconnectExtraLights()
         connectionState = .disconnected
     }
 
@@ -1272,6 +1296,11 @@ final class LightBLEManager: NSObject {
 
     // MARK: - Private helpers
 
+    private func disconnectExtraLights() {
+        for light in extraLights { central.cancelPeripheralConnection(light.peripheral) }
+        extraLights.removeAll()
+    }
+
     private func startScan() {
         guard central.state == .poweredOn else { return }
         connectionError = nil
@@ -1380,6 +1409,15 @@ extension LightBLEManager: CBCentralManagerDelegate {
         }
         let rssi = RSSI.intValue
         Task { @MainActor in
+            if self.multiLightEnabled && self.peripheral != nil {
+                // Extra light — connect without stopping scan (more may appear)
+                guard peripheral !== self.peripheral else { return }
+                guard !self.extraLights.contains(where: { $0.peripheral === peripheral }) else { return }
+                peripheral.delegate = self
+                self.extraLights.append((peripheral: peripheral, writeChar: nil))
+                central.connect(peripheral, options: nil)
+                return
+            }
             central.stopScan()
             self.peripheral = peripheral
             self.capturedAdvertisementStrings = advStrings
@@ -1410,6 +1448,11 @@ extension LightBLEManager: CBCentralManagerDelegate {
                                     didDisconnectPeripheral peripheral: CBPeripheral,
                                     error: (any Error)?) {
         Task { @MainActor in
+            // Extra light drop — just remove it, don't affect primary connection state
+            if let idx = self.extraLights.firstIndex(where: { $0.peripheral === peripheral }) {
+                self.extraLights.remove(at: idx)
+                return
+            }
             self.writeChar = nil
             self.connectionState = .disconnected
             self.coalescer.flush()
@@ -1470,6 +1513,14 @@ extension LightBLEManager: CBPeripheralDelegate {
         print("[LightStar] \(line)")
         Task { @MainActor in self.deviceLog.append(line) }
         Task { @MainActor in
+            // Check if this is an extra light
+            if let idx = self.extraLights.firstIndex(where: { $0.peripheral === peripheral }) {
+                if let ch = chars.first(where: { $0.uuid == Self.writeCharUUID }) {
+                    self.extraLights[idx].writeChar = ch
+                    print("[LightStar] extra light ready: \(peripheral.name ?? "unknown")")
+                }
+                return
+            }
             for char in chars {
                 if char.uuid == Self.writeCharUUID {
                     self.writeChar = char
