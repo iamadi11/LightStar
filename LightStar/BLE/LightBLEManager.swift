@@ -1379,6 +1379,64 @@ final class LightBLEManager: NSObject {
     // FFF3 supports write-with-response (.write) — CB queues internally, ACK guaranteed.
     private func write(_ bytes: [UInt8]) { coalescer.enqueue(bytes) }
 
+    // MARK: - Animation ID Sweep
+
+    // Cycles through BC13 2-byte animation IDs so user can identify the audio beam.
+    // Each animation plays for 'holdSeconds' then moves on.
+    // Watch the strip — note ID when the moving-beam audio effect appears.
+    func sweepAnimations(from startID: UInt8 = 0x01, to endID: UInt8 = 0x3C, holdSeconds: Double = 3) {
+        guard !probeRunning, connectionState == .connected else { return }
+        probeRunning = true
+        probeLog = [
+            "=== BC13 ANIMATION SWEEP ===",
+            "Watch the strip. Note the ID when the audio beam appears.",
+            "Mic on strip must pick up sound — play music or clap.",
+            String(format: "IDs 0x%02X–0x%02X, %.0fs each", startID, endID, holdSeconds),
+            "",
+        ]
+
+        probeTask = Task { @MainActor in
+            self.write(Cmd.powerOn)
+            self.write(Cmd.brightness(1.0))
+            // Also try enabling mic mode before sweep
+            self.write([0xBC, 0x0F, 0x02, 0x00, 0x01, 0x55])
+            try? await Task.sleep(nanoseconds: 500_000_000)
+
+            var id = startID
+            while true {
+                if Task.isCancelled { break }
+                let frame: [UInt8] = [0xBC, 0x13, 0x02, 0x00, id, 0x55]
+                let hex = frame.map { String(format: "%02X", $0) }.joined(separator: " ")
+                self.probeLog.append(String(format: "→ ID 0x%02X: %@", id, hex))
+                self.write(frame)
+                try? await Task.sleep(nanoseconds: UInt64(holdSeconds * 1_000_000_000))
+                if id == endID || id == 0xFF { break }
+                id &+= 1
+            }
+
+            // Also try BC0F variants we haven't tested
+            self.probeLog.append("")
+            self.probeLog.append("BC0F mic-mode variants (2-byte payload):")
+            let micModes: [(UInt8, UInt8, String)] = [
+                (0x00, 0x01, "mic on, mode 1"),
+                (0x00, 0x02, "mic on, mode 2"),
+                (0x01, 0x01, "mic variant"),
+                (0x01, 0x00, "mic variant 2"),
+            ]
+            for (b1, b2, label) in micModes {
+                let cmd: [UInt8] = [0xBC, 0x0F, 0x02, b1, b2, 0x55]
+                self.probeLog.append("  \(label): \(cmd.map { String(format: "%02X", $0) }.joined(separator: " "))")
+                self.write(cmd)
+                try? await Task.sleep(nanoseconds: UInt64(holdSeconds * 1_000_000_000))
+            }
+
+            self.probeLog.append("")
+            self.probeLog.append("Done. Which ID showed the audio beam?")
+            self.probeLog.append("Use raw hex sender to replay: BC 13 02 00 [ID] 55")
+            self.probeRunning = false
+        }
+    }
+
     // MARK: - Per-LED / Segment Probe
 
     // Probes whether the strip supports per-LED or per-segment color control.

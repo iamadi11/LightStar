@@ -91,6 +91,12 @@ struct DebugTabView: View {
                     .disabled(ble.probeRunning)
                     .tint(.purple)
                     .help("Test per-LED / per-segment color — watch strip visually")
+                    Button(ble.probeRunning ? "…" : "Anim Sweep") {
+                        ble.sweepAnimations()
+                    }
+                    .disabled(ble.probeRunning)
+                    .tint(.indigo)
+                    .help("Sweep BC13 animation IDs to find audio beam — play music, watch strip")
                     if !ble.probeLog.isEmpty && !ble.probeRunning {
                         Spacer()
                         Button("Clear") { ble.probeLog = [] }
