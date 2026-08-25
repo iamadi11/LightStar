@@ -21,6 +21,7 @@ jobs:
     env:
       HAS_CERT: ${{ secrets.APPLE_CERTIFICATE != '' }}
       HAS_NOTARY: ${{ secrets.APPLE_ID != '' }}
+      HAS_SELF_CERT: ${{ secrets.APPLE_SELF_CERT != '' }}
 
     steps:
       - name: Checkout
@@ -131,6 +132,33 @@ jobs:
           cp -R "$RUNNER_TEMP/LightStar.xcarchive/Products/Applications/LightStar.app" \
                 "$RUNNER_TEMP/export/LightStar.app"
 
+      # ── Self-signed codesign (stable identity → TCC persists across updates) ─
+      # No Gatekeeper trust, but macOS TCC will track permissions by cert identity
+      # rather than binary hash, so permissions survive every app update.
+      - name: Import self-signed certificate
+        if: env.HAS_CERT != 'true' && env.HAS_SELF_CERT == 'true'
+        env:
+          SELF_CERT_BASE64: ${{ secrets.APPLE_SELF_CERT }}
+          SELF_CERT_PASS: ${{ secrets.APPLE_SELF_CERT_PASSWORD }}
+        run: |
+          KEYCHAIN_PATH="$RUNNER_TEMP/self.keychain"
+          CERT_PATH="$RUNNER_TEMP/self-cert.p12"
+          echo "$SELF_CERT_BASE64" | base64 --decode > "$CERT_PATH"
+          security create-keychain -p "ci" "$KEYCHAIN_PATH"
+          security default-keychain -s "$KEYCHAIN_PATH"
+          security unlock-keychain -p "ci" "$KEYCHAIN_PATH"
+          security import "$CERT_PATH" -k "$KEYCHAIN_PATH" \
+            -P "$SELF_CERT_PASS" -T /usr/bin/codesign
+          security set-key-partition-list \
+            -S apple-tool:,apple:,codesign: -s -k "ci" "$KEYCHAIN_PATH"
+
+      - name: Sign with self-signed certificate
+        if: env.HAS_CERT != 'true' && env.HAS_SELF_CERT == 'true'
+        run: |
+          codesign --deep --force --verify --verbose \
+            --sign "LightStar Code Signing" \
+            "$RUNNER_TEMP/export/LightStar.app"
+
       # ── Notarize ─────────────────────────────────────────────────────────────
       # Secrets needed:
       #   APPLE_ID           — your Apple ID email
@@ -200,9 +228,9 @@ jobs:
             4. On first launch grant **Bluetooth** permission when prompted
             5. Grant **Screen Recording** the first time you enable Video or Audio sync
 
-            > **Updating from an older version?** Always use the install script — it resets stale permission entries before installing. macOS ties unsigned-app permissions to the binary hash, so a new build looks like a new app and permissions must be re-granted. The install script handles this automatically and tells you exactly which prompts to expect.
+            > **Updating from an older version?** Use the install script — it handles Gatekeeper quarantine removal automatically.
 
-            > **Note:** This build is unsigned. The install script handles Gatekeeper automatically. To permanently fix the permission re-grant issue add `APPLE_CERTIFICATE` / `APPLE_CERTIFICATE_PASSWORD` / `APPLE_TEAM_ID` secrets to this repo for Developer ID signing.
+            > **Permissions:** This build is self-signed (stable identity). Once granted, Bluetooth / Screen Recording / Microphone permissions **persist across updates** — no need to re-grant. On your very first install (or upgrading from an unsigned build), grant permissions once when prompted; they will survive all future updates.
           draft: false
           prerelease: false
           files: ${{ env.DMG_PATH }}
@@ -211,5 +239,7 @@ jobs:
 
       # ── Cleanup keychain ─────────────────────────────────────────────────────
       - name: Delete keychain
-        if: ${{ always() && env.HAS_CERT == 'true' }}
-        run: security delete-keychain "$RUNNER_TEMP/build.keychain" || true
+        if: always()
+        run: |
+          security delete-keychain "$RUNNER_TEMP/build.keychain" 2>/dev/null || true
+          security delete-keychain "$RUNNER_TEMP/self.keychain" 2>/dev/null || true
