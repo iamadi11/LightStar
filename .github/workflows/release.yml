@@ -149,13 +149,48 @@ jobs:
           xcrun stapler staple "$RUNNER_TEMP/export/LightStar.app"
 
       # ── Package DMG (tag pushes only) ────────────────────────────────────────
+      # Staged layout:
+      #   LightStar.app          ← the app
+      #   Applications           ← symlink to /Applications (drag-to-install)
+      #   Install LightStar.command ← double-clickable script that strips
+      #                              quarantine + copies to /Applications + opens
       - name: Create DMG
         if: startsWith(github.ref, 'refs/tags/v')
         run: |
+          STAGE="$RUNNER_TEMP/dmg-stage"
+          mkdir -p "$STAGE"
+
+          # App bundle
+          cp -R "$RUNNER_TEMP/export/LightStar.app" "$STAGE/LightStar.app"
+
+          # Applications symlink for drag-to-install
+          ln -s /Applications "$STAGE/Applications"
+
+          # Double-clickable installer script
+          # Strips quarantine (avoids Gatekeeper block on unsigned builds),
+          # copies to /Applications, and opens the app.
+          cat > "$STAGE/Install LightStar.command" <<'SCRIPT'
+#!/bin/bash
+set -e
+DIR="$(cd "$(dirname "$0")" && pwd)"
+APP="$DIR/LightStar.app"
+
+echo "Removing Gatekeeper quarantine..."
+xattr -rd com.apple.quarantine "$APP" 2>/dev/null || true
+
+echo "Copying to /Applications..."
+cp -R "$APP" /Applications/LightStar.app
+xattr -rd com.apple.quarantine /Applications/LightStar.app 2>/dev/null || true
+
+echo "Launching LightStar..."
+open /Applications/LightStar.app
+SCRIPT
+          chmod +x "$STAGE/Install LightStar.command"
+
           DMG_NAME="LightStar-${{ steps.version.outputs.marketing }}-${{ steps.version.outputs.sha }}.dmg"
           DMG_PATH="$RUNNER_TEMP/$DMG_NAME"
-          hdiutil create -volname "LightStar" \
-            -srcfolder "$RUNNER_TEMP/export/LightStar.app" \
+          hdiutil create -volname "LightStar ${{ steps.version.outputs.marketing }}" \
+            -srcfolder "$STAGE" \
             -ov -format UDZO \
             "$DMG_PATH"
           echo "DMG_PATH=$DMG_PATH" >> "$GITHUB_ENV"
@@ -169,13 +204,20 @@ jobs:
           name: "LightStar ${{ steps.version.outputs.marketing }} (${{ steps.version.outputs.sha }})"
           body: |
             **Commit:** ${{ github.sha }}
-            **Branch:** ${{ github.ref_name }}
 
-            ### Install
-            1. Download the `.dmg` below
-            2. Open it and drag **LightStar.app** to Applications
-            3. On first launch: right-click → Open (bypasses Gatekeeper on unsigned builds)
-            4. Grant **Screen Recording** permission when prompted — covers system audio capture too
+            ## Install
+
+            1. Download the `.dmg` below and open it
+            2. **Easy install (recommended):** double-click **"Install LightStar.command"** — strips Gatekeeper quarantine, copies to `/Applications`, and launches automatically
+               - macOS will ask "Are you sure you want to open this Terminal script?" → click **Open**
+            3. **Manual install:** drag **LightStar.app** → **Applications** folder, then run in Terminal:
+               ```
+               xattr -rd com.apple.quarantine /Applications/LightStar.app
+               ```
+            4. On first launch grant **Bluetooth** permission when prompted
+            5. Grant **Screen Recording** the first time you enable Video or Audio sync
+
+            > **Note:** This build is unsigned. The install script handles Gatekeeper automatically. To sign future builds add `APPLE_CERTIFICATE` / `APPLE_CERTIFICATE_PASSWORD` / `APPLE_TEAM_ID` secrets to this repo.
           draft: false
           prerelease: false
           files: ${{ env.DMG_PATH }}
