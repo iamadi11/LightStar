@@ -33,15 +33,49 @@ struct SyncModePickerView: View {
 
             if ble.syncMode == .audio {
                 Picker("", selection: Binding(
-                    get: { ble.audioSyncMode },
-                    set: { ble.audioSyncMode = $0 }
+                    get: { ble.audioInputSource },
+                    set: { ble.audioInputSource = $0 }
                 )) {
-                    ForEach(LightBLEManager.AudioSyncMode.allCases, id: \.self) {
+                    ForEach(LightBLEManager.AudioInputSource.allCases, id: \.self) {
                         Text($0.rawValue).tag($0)
                     }
                 }
                 .pickerStyle(.segmented)
                 .controlSize(.mini)
+
+                if ble.audioInputSource == .stripMic {
+                    Picker("Style", selection: Binding(
+                        get: { ble.micStyle },
+                        set: { ble.micStyle = $0 }
+                    )) {
+                        ForEach(LightBLEManager.MicStyle.allCases, id: \.self) {
+                            Text($0.label).tag($0)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .controlSize(.mini)
+
+                    HStack {
+                        Text("Sensitivity")
+                            .font(.system(size: 10))
+                            .foregroundStyle(.secondary)
+                        Slider(value: Binding(
+                            get: { ble.micSensitivity },
+                            set: { ble.micSensitivity = $0 }
+                        ))
+                    }
+                } else {
+                    Picker("", selection: Binding(
+                        get: { ble.audioSyncMode },
+                        set: { ble.audioSyncMode = $0 }
+                    )) {
+                        ForEach(LightBLEManager.AudioSyncMode.allCases, id: \.self) {
+                            Text($0.rawValue).tag($0)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .controlSize(.mini)
+                }
             }
 
             Text(modeDescription)
@@ -75,6 +109,9 @@ struct SyncModePickerView: View {
         case .off:      return "No sync — color picker and presets above are active"
         case .video:    return "Edges weighted 3× · brightness stays at slider · 20 Hz"
         case .audio:
+            if ble.audioInputSource == .stripMic {
+                return "Strip's onboard mic · no phone audio · style + sensitivity above"
+            }
             switch ble.audioSyncMode {
             case .rainbow:   return "Beats → hue · treble → drift · bass → brightness"
             case .pulse:     return "Bass → brightness · keeps current color"

@@ -19,13 +19,16 @@
 		9CAB39013AB720E48D185CFA /* PresetsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA2EBC32F42356487D6B6268 /* PresetsView.swift */; };
 		A3956EA2931DD57FFE98BE83 /* MenuBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8584E39FD808B45A57E6E9CD /* MenuBarView.swift */; };
 		B42FF8D0B317F4F24C1BDE53 /* BLEProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 51E681E3A27EAC1A70BDD0FE /* BLEProtocol.swift */; };
+		AA000001AA000001AA000001 /* LightBLEManager+Color.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000002AA000002AA000002 /* LightBLEManager+Color.swift */; };
+		AA000003AA000003AA000003 /* LightBLEManager+Sync.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000004AA000004AA000004 /* LightBLEManager+Sync.swift */; };
+		AA000005AA000005AA000005 /* LightBLEManager+Logger.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000006AA000006AA000006 /* LightBLEManager+Logger.swift */; };
+		AA000007AA000007AA000007 /* LightBLEManager+Debug.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000008AA000008AA000008 /* LightBLEManager+Debug.swift */; };
 		B4C3D8703B2DCC52DC779715 /* LightState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 85C325703421F5313421C1A2 /* LightState.swift */; };
 		C850434E407C3455814F3185 /* ScreenColorSampler.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB9D1B8B90BD87EC4053F0BA /* ScreenColorSampler.swift */; };
 		D3996D85126574A7C7323EEB /* FrequencyBands.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9DC2781CB0C341C52ED5B29 /* FrequencyBands.swift */; };
 		EBBACD224CBCE8EDF326097A /* LightStarApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 351F6724302A2A9C8F8FBF29 /* LightStarApp.swift */; };
 		EDACBA4677EB646BF52E9696 /* DebugView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7BAA50072DD434393913B565 /* DebugView.swift */; };
 		F6C3E7E3CC19332F82A2A9F8 /* LightBLEManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 72339CFCC9EFADD4D0CB2469 /* LightBLEManager.swift */; };
-		FC5412ECC1D727B39494F459 /* CameraChangeDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0684CC78893F15A979D23057 /* CameraChangeDetector.swift */; };
 		FE0EC53441B7F6561EF584DC /* PresetStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53F50B77BEC004F04F88246F /* PresetStore.swift */; };
 		DD00112233445566778899AA /* LightStarIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD00112233445566778899BB /* LightStarIntents.swift */; };
 		FF001122334455667788AA01 /* LightStarWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF001122334455667788AA02 /* LightStarWidget.swift */; };
@@ -33,7 +36,6 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
-		0684CC78893F15A979D23057 /* CameraChangeDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraChangeDetector.swift; sourceTree = "<group>"; };
 		0E14A2153AEDB323F83BE4C8 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		351F6724302A2A9C8F8FBF29 /* LightStarApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LightStarApp.swift; sourceTree = "<group>"; };
 		3A846385662EA04F32B021F2 /* SystemAudioSampler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemAudioSampler.swift; sourceTree = "<group>"; };
@@ -42,6 +44,10 @@
 		CC00112233445566778899BB /* ScheduleView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScheduleView.swift; sourceTree = "<group>"; };
 		48AED48F7B52F06CFC569869 /* BLEWriteCoalescer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BLEWriteCoalescer.swift; sourceTree = "<group>"; };
 		51E681E3A27EAC1A70BDD0FE /* BLEProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BLEProtocol.swift; sourceTree = "<group>"; };
+		AA000002AA000002AA000002 /* LightBLEManager+Color.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "LightBLEManager+Color.swift"; sourceTree = "<group>"; };
+		AA000004AA000004AA000004 /* LightBLEManager+Sync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "LightBLEManager+Sync.swift"; sourceTree = "<group>"; };
+		AA000006AA000006AA000006 /* LightBLEManager+Logger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "LightBLEManager+Logger.swift"; sourceTree = "<group>"; };
+		AA000008AA000008AA000008 /* LightBLEManager+Debug.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "LightBLEManager+Debug.swift"; sourceTree = "<group>"; };
 		53F50B77BEC004F04F88246F /* PresetStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PresetStore.swift; sourceTree = "<group>"; };
 		59C313B960E5BBCD917BE314 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		654A30636DC7A820E73B4D74 /* SyncModePickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncModePickerView.swift; sourceTree = "<group>"; };
@@ -148,8 +154,11 @@
 			children = (
 				51E681E3A27EAC1A70BDD0FE /* BLEProtocol.swift */,
 				48AED48F7B52F06CFC569869 /* BLEWriteCoalescer.swift */,
-				0684CC78893F15A979D23057 /* CameraChangeDetector.swift */,
 				72339CFCC9EFADD4D0CB2469 /* LightBLEManager.swift */,
+				AA000002AA000002AA000002 /* LightBLEManager+Color.swift */,
+				AA000004AA000004AA000004 /* LightBLEManager+Sync.swift */,
+				AA000006AA000006AA000006 /* LightBLEManager+Logger.swift */,
+				AA000008AA000008AA000008 /* LightBLEManager+Debug.swift */,
 			);
 			path = BLE;
 			sourceTree = "<group>";
@@ -291,12 +300,15 @@
 			files = (
 				B42FF8D0B317F4F24C1BDE53 /* BLEProtocol.swift in Sources */,
 				561068AF5802496A5B7B109E /* BLEWriteCoalescer.swift in Sources */,
-				FC5412ECC1D727B39494F459 /* CameraChangeDetector.swift in Sources */,
 				9C78623959FACEB9DFC79323 /* ColorControlsView.swift in Sources */,
 				EDACBA4677EB646BF52E9696 /* DebugView.swift in Sources */,
 				3860E4D6B0597A480CA3F968 /* EffectGridView.swift in Sources */,
 				D3996D85126574A7C7323EEB /* FrequencyBands.swift in Sources */,
 				F6C3E7E3CC19332F82A2A9F8 /* LightBLEManager.swift in Sources */,
+				AA000001AA000001AA000001 /* LightBLEManager+Color.swift in Sources */,
+				AA000003AA000003AA000003 /* LightBLEManager+Sync.swift in Sources */,
+				AA000005AA000005AA000005 /* LightBLEManager+Logger.swift in Sources */,
+				AA000007AA000007AA000007 /* LightBLEManager+Debug.swift in Sources */,
 				EBBACD224CBCE8EDF326097A /* LightStarApp.swift in Sources */,
 				DD00112233445566778899AA /* LightStarIntents.swift in Sources */,
 				B4C3D8703B2DCC52DC779715 /* LightState.swift in Sources */,

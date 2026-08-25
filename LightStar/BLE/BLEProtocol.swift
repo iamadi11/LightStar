@@ -75,9 +75,9 @@ enum Cmd {
         [0xBC, 0x07, 0x01, forward ? 0x01 : 0x00, 0x55]
     }
 
-    // BC08: effect speed 0–100
+    // BC08: effect speed 0–255
     static func speed(_ value: Double) -> [UInt8] {
-        let s = UInt8(max(0, min(100, Int(value * 100))))
+        let s = UInt8(max(0, min(255, Int(value * 255))))
         return [0xBC, 0x08, 0x01, s, 0x55]
     }
 
@@ -94,9 +94,9 @@ enum Cmd {
         [0xBC, 0x11, 0x01, style, 0x55]
     }
 
-    // BC12: mic sensitivity 0–100
+    // BC12: mic sensitivity 0–255
     static func micSensitivity(_ value: Int) -> [UInt8] {
-        [0xBC, 0x12, 0x01, UInt8(max(0, min(100, value))), 0x55]
+        [0xBC, 0x12, 0x01, UInt8(max(0, min(255, value))), 0x55]
     }
 }
 

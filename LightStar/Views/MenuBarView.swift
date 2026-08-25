@@ -250,6 +250,44 @@ struct MenuBarView: View {
 
             Divider()
 
+            // Strip Configuration (BC02/BC03)
+            VStack(alignment: .leading, spacing: 6) {
+                Label("Strip Configuration", systemImage: "light.strip.2")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                HStack {
+                    Text("Channel order")
+                        .font(.system(size: 11))
+                    Spacer()
+                    Picker("", selection: Binding(
+                        get: { ble.ledChannelOrder },
+                        set: { ble.ledChannelOrder = $0 }
+                    )) {
+                        ForEach(LightBLEManager.LEDChannelOrder.allCases, id: \.self) {
+                            Text($0.label).tag($0)
+                        }
+                    }
+                    .labelsHidden()
+                    .frame(width: 80)
+                    .controlSize(.small)
+                }
+
+                HStack {
+                    Text("LED count")
+                        .font(.system(size: 11))
+                    Spacer()
+                    Stepper("\(ble.ledPixelCount)", value: Binding(
+                        get: { ble.ledPixelCount },
+                        set: { ble.ledPixelCount = $0 }
+                    ), in: 8...300)
+                    .font(.system(size: 11))
+                    .frame(width: 110)
+                }
+            }
+
+            Divider()
+
             VStack(alignment: .leading, spacing: 6) {
                 Toggle("Launch at Login", isOn: $launchAtLogin)
                     .font(.caption)

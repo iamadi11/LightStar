@@ -1,29 +1,6 @@
 import SwiftUI
 import Foundation
 
-// MARK: - LightState
-
-struct LightState: Codable {
-    var isOn: Bool = false
-    var red: Double = 1.0
-    var green: Double = 1.0
-    var blue: Double = 1.0
-    var brightness: Double = 1.0  // 0.0–1.0
-    var effectMode: UInt8 = 0
-    var effectSpeed: UInt8 = 5
-
-    // ponytail: Color is not Codable, store RGB components instead
-    var color: Color {
-        get { Color(red: red, green: green, blue: blue) }
-        set {
-            var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
-            (NSColor(newValue).usingColorSpace(.sRGB) ?? NSColor(newValue))
-                .getRed(&r, green: &g, blue: &b, alpha: &a)
-            red = Double(r); green = Double(g); blue = Double(b)
-        }
-    }
-}
-
 // MARK: - Preset
 
 struct Preset: Codable, Identifiable {
