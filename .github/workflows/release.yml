@@ -200,7 +200,9 @@ jobs:
             4. On first launch grant **Bluetooth** permission when prompted
             5. Grant **Screen Recording** the first time you enable Video or Audio sync
 
-            > **Note:** This build is unsigned. The install script handles Gatekeeper automatically. To sign future builds add `APPLE_CERTIFICATE` / `APPLE_CERTIFICATE_PASSWORD` / `APPLE_TEAM_ID` secrets to this repo.
+            > **Updating from an older version?** Always use the install script — it resets stale permission entries before installing. macOS ties unsigned-app permissions to the binary hash, so a new build looks like a new app and permissions must be re-granted. The install script handles this automatically and tells you exactly which prompts to expect.
+
+            > **Note:** This build is unsigned. The install script handles Gatekeeper automatically. To permanently fix the permission re-grant issue add `APPLE_CERTIFICATE` / `APPLE_CERTIFICATE_PASSWORD` / `APPLE_TEAM_ID` secrets to this repo for Developer ID signing.
           draft: false
           prerelease: false
           files: ${{ env.DMG_PATH }}

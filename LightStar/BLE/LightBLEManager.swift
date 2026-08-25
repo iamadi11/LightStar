@@ -160,7 +160,7 @@ final class LightBLEManager: NSObject {
         // "Bluetooth is off" error when the real issue is a permission denial.
         if CBManager.authorization == .denied || CBManager.authorization == .restricted {
             bleNeedsPermission = true
-            connectionError = "Bluetooth access denied — open Privacy & Security to allow LightStar"
+            connectionError = "Bluetooth access denied. Open Privacy & Security → Bluetooth and enable LightStar. (Re-grant required after each update on unsigned builds.)"
             return
         }
 
@@ -168,7 +168,7 @@ final class LightBLEManager: NSObject {
             startScan()
         } else if central.state == .unauthorized {
             bleNeedsPermission = true
-            connectionError = "Bluetooth access denied — open Privacy & Security to allow LightStar"
+            connectionError = "Bluetooth access denied. Open Privacy & Security → Bluetooth and enable LightStar. (Re-grant required after each update on unsigned builds.)"
         } else {
             // BT not ready yet — startScan deferred to centralManagerDidUpdateState
             connectWhenReady = true
@@ -533,7 +533,7 @@ final class LightBLEManager: NSObject {
         // Mic denial from MicAudioSampler
         if nsErr.domain == "MicAudio" && nsErr.code == -5001 {
             syncNeedsPermission = true
-            syncError = "Microphone access required"
+            syncError = "Microphone access required. Open Privacy & Security → Microphone and enable LightStar. (Re-grant required after each update.)"
             pendingSyncMode = syncMode == .off ? pendingSyncMode : syncMode
             return
         }
@@ -542,7 +542,7 @@ final class LightBLEManager: NSObject {
             || nsErr.domain.contains("ScreenCaptureKit")
         syncNeedsPermission = isPermission
         syncError = isPermission
-            ? "Screen Recording access required"
+            ? "Screen Recording access required. Open Privacy & Security → Screen Recording and enable LightStar. (Re-grant required after each update.)"
             : error.localizedDescription
         if isPermission {
             pendingSyncMode = syncMode == .off ? pendingSyncMode : syncMode
@@ -1344,7 +1344,7 @@ extension LightBLEManager: CBCentralManagerDelegate {
             case .unauthorized:
                 self.connectionState = .disconnected
                 self.bleNeedsPermission = true
-                self.connectionError = "Bluetooth access denied — open Privacy & Security to allow LightStar"
+                self.connectionError = "Bluetooth access denied. Open Privacy & Security → Bluetooth and enable LightStar. (Re-grant required after each update on unsigned builds.)"
                 self.connectWhenReady = false
             case .resetting:
                 // BT stack is resetting (e.g. after wake) — wait for poweredOn callback
