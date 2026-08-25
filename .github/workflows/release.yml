@@ -166,25 +166,8 @@ jobs:
           # Applications symlink for drag-to-install
           ln -s /Applications "$STAGE/Applications"
 
-          # Double-clickable installer script
-          # Strips quarantine (avoids Gatekeeper block on unsigned builds),
-          # copies to /Applications, and opens the app.
-          cat > "$STAGE/Install LightStar.command" <<'SCRIPT'
-#!/bin/bash
-set -e
-DIR="$(cd "$(dirname "$0")" && pwd)"
-APP="$DIR/LightStar.app"
-
-echo "Removing Gatekeeper quarantine..."
-xattr -rd com.apple.quarantine "$APP" 2>/dev/null || true
-
-echo "Copying to /Applications..."
-cp -R "$APP" /Applications/LightStar.app
-xattr -rd com.apple.quarantine /Applications/LightStar.app 2>/dev/null || true
-
-echo "Launching LightStar..."
-open /Applications/LightStar.app
-SCRIPT
+          # Double-clickable installer: strips quarantine, copies to /Applications, opens
+          cp ".github/install-lightstar.command" "$STAGE/Install LightStar.command"
           chmod +x "$STAGE/Install LightStar.command"
 
           DMG_NAME="LightStar-${{ steps.version.outputs.marketing }}-${{ steps.version.outputs.sha }}.dmg"
