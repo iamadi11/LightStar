@@ -156,24 +156,31 @@ final class LightBLEManager: NSObject {
         connectionError = nil
         bleNeedsPermission = false
 
-        // Catch denial before the manager even powers on — avoids a confusing
-        // "Bluetooth is off" error when the real issue is a permission denial.
-        if CBManager.authorization == .denied || CBManager.authorization == .restricted {
-            bleNeedsPermission = true
-            connectionError = "Bluetooth access denied. Open Privacy & Security → Bluetooth and enable LightStar. (Re-grant required after each update on unsigned builds.)"
-            return
-        }
-
+        // Use central.state (from the live CBCentralManager) rather than the
+        // CBManager.authorization class property — the class property can return
+        // stale data after the user grants permission in System Settings.
         if central.state == .poweredOn {
             startScan()
         } else if central.state == .unauthorized {
             bleNeedsPermission = true
-            connectionError = "Bluetooth access denied. Open Privacy & Security → Bluetooth and enable LightStar. (Re-grant required after each update on unsigned builds.)"
+            connectionError = "Bluetooth access denied. Open Privacy & Security → Bluetooth and enable LightStar."
         } else {
-            // BT not ready yet — startScan deferred to centralManagerDidUpdateState
+            // .unknown / .poweredOff / .resetting — defer to centralManagerDidUpdateState
             connectWhenReady = true
             connectionState = .scanning
         }
+    }
+
+    // Call when the user returns from System Settings after (potentially) granting
+    // Bluetooth permission. Recreates CBCentralManager so it re-evaluates current
+    // auth state and triggers the permission dialog if still notDetermined.
+    func retryBluetoothPermission() {
+        guard bleNeedsPermission else { return }
+        bleNeedsPermission = false
+        connectionError = nil
+        connectionState = .disconnected
+        connectWhenReady = true
+        central = CBCentralManager(delegate: self, queue: .main)
     }
 
     func disconnect() {
@@ -1344,7 +1351,7 @@ extension LightBLEManager: CBCentralManagerDelegate {
             case .unauthorized:
                 self.connectionState = .disconnected
                 self.bleNeedsPermission = true
-                self.connectionError = "Bluetooth access denied. Open Privacy & Security → Bluetooth and enable LightStar. (Re-grant required after each update on unsigned builds.)"
+                self.connectionError = "Bluetooth access denied. Open Privacy & Security → Bluetooth and enable LightStar."
                 self.connectWhenReady = false
             case .resetting:
                 // BT stack is resetting (e.g. after wake) — wait for poweredOn callback

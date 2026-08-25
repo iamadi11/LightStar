@@ -257,6 +257,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidBecomeActive(_ notification: Notification) {
         // Retry sync if user just granted Screen Recording or Mic in System Settings.
         ble.retryPendingSyncIfNeeded()
+        // Retry BT connect if user just granted Bluetooth in System Settings.
+        ble.retryBluetoothPermission()
     }
 
     // MARK: - Sleep / Wake reconnect
