@@ -5,6 +5,14 @@ import UniformTypeIdentifiers
 @MainActor @Observable
 final class PresetStore {
     var presets: [Preset] = []
+    var defaultPresetID: UUID? {
+        get {
+            UserDefaults.standard.string(forKey: "defaultPresetID").flatMap { UUID(uuidString: $0) }
+        }
+        set {
+            UserDefaults.standard.set(newValue?.uuidString, forKey: "defaultPresetID")
+        }
+    }
 
     private static var storeURL: URL {
         let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]

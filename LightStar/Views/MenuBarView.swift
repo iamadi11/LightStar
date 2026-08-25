@@ -5,6 +5,7 @@ import ServiceManagement
 struct MenuBarView: View {
     @Environment(LightBLEManager.self) private var ble
     @Environment(PresetStore.self) private var presets
+    @Environment(ScheduleStore.self) private var schedules
     @State private var selectedTab = 0
     @State private var showSaveSheet = false
     @State private var newPresetName = ""
@@ -170,26 +171,37 @@ struct MenuBarView: View {
                 }
                 LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
                     ForEach(presets.presets) { preset in
+                        let isDefault = presets.defaultPresetID == preset.id
                         Button {
                             applyPreset(preset)
                         } label: {
-                            HStack(spacing: 6) {
+                            HStack(spacing: 4) {
                                 Circle()
                                     .fill(preset.color)
                                     .frame(width: 10, height: 10)
                                 Text(preset.name)
                                     .lineLimit(1)
+                                if isDefault {
+                                    Image(systemName: "star.fill")
+                                        .font(.system(size: 7))
+                                        .foregroundStyle(.yellow)
+                                }
                             }
                             .frame(maxWidth: .infinity)
                         }
                         .buttonStyle(.bordered)
                         .controlSize(.small)
                         .contextMenu {
+                            Button(isDefault ? "Clear Default" : "Set as Default on Connect") {
+                                presets.defaultPresetID = isDefault ? nil : preset.id
+                            }
+                            Divider()
                             Button("Rename…") {
                                 renamingPreset = preset
                                 newPresetName = preset.name
                             }
                             Button("Delete", role: .destructive) {
+                                if isDefault { presets.defaultPresetID = nil }
                                 presets.presets.removeAll { $0.id == preset.id }
                                 presets.save()
                             }
@@ -224,6 +236,10 @@ struct MenuBarView: View {
             Divider()
 
             AnimationsView()
+
+            Divider()
+
+            ScheduleView()
 
             Divider()
 
@@ -284,8 +300,19 @@ private struct SyncControlView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Spacer()
+                if let sc = ble.syncColor {
+                    Circle()
+                        .fill(sc)
+                        .frame(width: 8, height: 8)
+                        .transition(.opacity)
+                }
+                Text("⌘⇧S")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                    .help("Global shortcut: ⌘⇧S toggles sync")
                 if ble.syncTransitioning { ProgressView().controlSize(.mini) }
             }
+            .animation(.easeInOut(duration: 0.3), value: ble.syncColor != nil)
 
             Picker("", selection: Binding(
                 get: { ble.syncMode },

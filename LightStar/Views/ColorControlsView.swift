@@ -3,53 +3,67 @@ import SwiftUI
 // Inline hue + saturation picker — no popup window.
 struct ColorControlView: View {
     @Environment(LightBLEManager.self) private var ble
-    @State private var hue: Double = 0        // red
-    @State private var sat: Double = 1.0      // full saturation — never start at white
+    @State private var hue: Double = 0
+    @State private var sat: Double = 1.0
+    @State private var colorTemp: Double = 0.5   // 0=warm 2700K, 1=cool 6500K
+    @State private var mode: ColorMode = .color
     @State private var ignoreNextBLEUpdate = false
+
+    enum ColorMode { case color, white }
 
     private static let hueGradient = Gradient(colors: stride(from: 0.0, through: 1.0, by: 1.0/12).map {
         Color(hue: $0, saturation: 1, brightness: 1)
     })
+    private static let cctGradient = Gradient(colors: [
+        Color(red: 1.0, green: 0.76, blue: 0.47),   // ~2700K warm
+        Color(red: 1.0, green: 1.0,  blue: 1.0),    // ~4000K neutral
+        Color(red: 0.87, green: 0.93, blue: 1.0),   // ~6500K cool
+    ])
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            // Preview swatch
             HStack(spacing: 8) {
                 Label("Color", systemImage: "paintbrush")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Spacer()
-                // White shortcut
-                Button("White") {
-                    sat = 0
-                    sendColor()
+                Picker("", selection: $mode) {
+                    Text("Color").tag(ColorMode.color)
+                    Text("White").tag(ColorMode.white)
                 }
-                .buttonStyle(.bordered)
+                .pickerStyle(.segmented)
                 .controlSize(.mini)
-                RoundedRectangle(cornerRadius: 5)
-                    .fill(Color(hue: hue, saturation: sat, brightness: 1))
-                    .frame(width: 36, height: 22)
-                    .overlay(RoundedRectangle(cornerRadius: 5).stroke(Color.primary.opacity(0.15), lineWidth: 0.5))
+                .frame(width: 110)
             }
 
-            // Hue slider
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Hue").font(.caption2).foregroundStyle(.secondary)
-                GradientSlider(gradient: Self.hueGradient, value: $hue)
-                    .onChange(of: hue) { _, _ in sendColor() }
-            }
-
-            // Saturation slider (white → full color)
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Saturation").font(.caption2).foregroundStyle(.secondary)
-                GradientSlider(
-                    gradient: Gradient(colors: [
-                        Color(hue: hue, saturation: 0, brightness: 1),
-                        Color(hue: hue, saturation: 1, brightness: 1)
-                    ]),
-                    value: $sat
-                )
-                .onChange(of: sat) { _, _ in sendColor() }
+            if mode == .color {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Hue").font(.caption2).foregroundStyle(.secondary)
+                    GradientSlider(gradient: Self.hueGradient, value: $hue)
+                        .onChange(of: hue) { _, _ in sendColor() }
+                }
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Saturation").font(.caption2).foregroundStyle(.secondary)
+                    GradientSlider(
+                        gradient: Gradient(colors: [
+                            Color(hue: hue, saturation: 0, brightness: 1),
+                            Color(hue: hue, saturation: 1, brightness: 1)
+                        ]),
+                        value: $sat
+                    )
+                    .onChange(of: sat) { _, _ in sendColor() }
+                }
+            } else {
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack {
+                        Text("Temperature").font(.caption2).foregroundStyle(.secondary)
+                        Spacer()
+                        Text("\(Int(2700 + colorTemp * 3800))K")
+                            .font(.caption2).foregroundStyle(.secondary).monospacedDigit()
+                    }
+                    GradientSlider(gradient: Self.cctGradient, value: $colorTemp)
+                        .onChange(of: colorTemp) { _, _ in sendCCT() }
+                }
             }
         }
         .onAppear { syncFromBLE() }
@@ -61,18 +75,19 @@ struct ColorControlView: View {
 
     private func syncFromBLE() {
         let (h, s, _) = ble.color.hsvComponents
-        if s > 0.05 {
-            hue = h
-            sat = s
-        }
-        // If color is white/near-white, keep sliders as-is so dragging hue
-        // immediately shows color. Don't reset sat to 0.
+        if s > 0.05 { hue = h; sat = s }
     }
 
     private func sendColor() {
         ignoreNextBLEUpdate = true
         ble.setSyncMode(.off)
         ble.setHue(hue, saturation: sat)
+    }
+
+    private func sendCCT() {
+        ignoreNextBLEUpdate = true
+        ble.setSyncMode(.off)
+        ble.setColorTemperature(colorTemp)
     }
 }
 

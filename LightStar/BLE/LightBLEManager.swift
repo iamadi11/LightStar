@@ -38,9 +38,12 @@ final class LightBLEManager: NSObject {
     var effectModeActive = false
     // Sync state machine
     var syncMode: SyncMode = .off
+    var syncColor: Color? = nil          // live color during sync; nil when sync is off
     var syncError: String?
     var syncNeedsPermission = false   // true when syncError is a Screen Recording denial
     var syncTransitioning = false
+    // Called after the connect sequence completes with no sync mode to restore
+    var onConnect: (@MainActor () -> Void)?
     enum AudioSyncMode: String, CaseIterable { case rainbow = "Rainbow"; case pulse = "Pulse"; case frequency = "Frequency" }
     var audioSyncMode: AudioSyncMode = .rainbow
     enum AudioInputSource: String, CaseIterable { case system = "System Audio"; case mic = "Microphone" }
@@ -227,6 +230,37 @@ final class LightBLEManager: NSObject {
         setHue(h, saturation: s)
     }
 
+    // Color temperature 0=warm 2700K … 1=cool 6500K.
+    // Converts Kelvin → blackbody-approximated RGB → HSV, then writes hue.
+    func setColorTemperature(_ t: Double) {
+        let kelvin = 2700 + t * 3800   // 2700–6500 K
+        let (h, s) = kelvinToHS(kelvin)
+        setHue(h, saturation: s)
+    }
+
+    // Approximation: low K = warm orange, mid = white, high K = cool blue-white.
+    // Uses simple linear interpolation across three anchor points.
+    private func kelvinToHS(_ k: Double) -> (Double, Double) {
+        // Anchors: 2700K=warm orange, 4000K=neutral, 6500K=cool blue
+        switch k {
+        case ..<3350:
+            let t = (k - 2700) / 650    // 0…1 within 2700–3350
+            let h = 0.08 - t * 0.02     // 0.08 (warm orange) → 0.06 (yellow-white)
+            let s = 0.8 - t * 0.5       // 0.8 → 0.3
+            return (h, s)
+        case ..<5000:
+            let t = (k - 3350) / 1650   // 0…1 within 3350–5000
+            let h = 0.06 - t * 0.06     // 0.06 → 0.0 (white)
+            let s = 0.3 - t * 0.3       // 0.3 → 0.0 (pure white)
+            return (h, s)
+        default:
+            let t = min(1.0, (k - 5000) / 1500)   // 0…1 within 5000–6500
+            let h = 0.55 + t * 0.08     // 0.55 → 0.63 (cool blue-white)
+            let s = t * 0.25            // 0.0 → 0.25
+            return (h, s)
+        }
+    }
+
     func setBrightness(_ value: Double) {
         if syncMode != .off { stopSyncInline() }
         brightness = value
@@ -262,6 +296,10 @@ final class LightBLEManager: NSObject {
     }
 
     // MARK: - Sync state machine
+
+    func toggleSync() {
+        setSyncMode(syncMode == .off ? (lastSyncMode == .off ? .video : lastSyncMode) : .off)
+    }
 
     func setSyncMode(_ mode: SyncMode) {
         let prevMode = syncMode
@@ -301,6 +339,7 @@ final class LightBLEManager: NSObject {
         screenSampler.onColor = nil
         flashLevel = 0
         syncMode = .off
+        syncColor = nil
         Task { await self.systemAudio.stop(); await self.micAudio.stop(); await self.screenSampler.stop() }
     }
 
@@ -393,6 +432,7 @@ final class LightBLEManager: NSObject {
             let boostedS = smoothS < 0.3 ? min(1.0, smoothS * 3.0) : min(1.0, smoothS * 1.5)
             self.lastScreenH = smoothH
             self.lastScreenS = boostedS
+            self.syncColor = Color(hue: smoothH, saturation: boostedS, brightness: 1)
             self.write(Cmd.hue(smoothH, saturation: boostedS))
             if self.videoSyncBrightness {
                 self.write(Cmd.brightness(min(1.0, max(0.05, smoothV * 1.3))))
@@ -437,6 +477,7 @@ final class LightBLEManager: NSObject {
                 } else {
                     self.flashLevel = max(0.0, self.flashLevel * 0.82)
                 }
+                self.syncColor = Color(hue: self.lastScreenH, saturation: self.lastScreenS, brightness: 1)
                 let bri = min(1.0, max(0.04, bands.bass * 0.55 + bands.rms * 0.15 + self.flashLevel * 0.80))
                 self.write(Cmd.brightness(bri))
                 return
@@ -449,9 +490,12 @@ final class LightBLEManager: NSObject {
                 } else {
                     self.beatHue = (self.beatHue + bands.high * 0.006).truncatingRemainder(dividingBy: 1.0)
                 }
-                self.write(Cmd.hue(self.beatHue, saturation: min(1.0, 0.6 + bands.mid * 0.4)))
+                let rainbowS = min(1.0, 0.6 + bands.mid * 0.4)
+                self.syncColor = Color(hue: self.beatHue, saturation: rainbowS, brightness: 1)
+                self.write(Cmd.hue(self.beatHue, saturation: rainbowS))
                 self.write(Cmd.brightness(min(1.0, max(0.05, bands.bass * 1.3 + bands.rms * 0.3))))
             case .pulse:
+                self.syncColor = Color(hue: self.audioPulseH, saturation: 1.0, brightness: 1)
                 self.write(Cmd.hue(self.audioPulseH, saturation: min(1.0, 0.8 + bands.mid * 0.2)))
                 self.write(Cmd.brightness(min(1.0, max(0.03, bands.bass * 1.5 + bands.rms * 0.2))))
             case .frequency:
@@ -459,6 +503,7 @@ final class LightBLEManager: NSObject {
                 // bass-heavy music doesn't pull hue toward zero (red) unintentionally.
                 let hTotal = bands.mid + bands.high + 0.001
                 let h = (bands.mid * (120/360.0) + bands.high * (240/360.0)) / hTotal
+                self.syncColor = Color(hue: h, saturation: 1.0, brightness: 1)
                 self.write(Cmd.hue(h, saturation: 1.0))
                 self.write(Cmd.brightness(min(1.0, max(0.05, (bands.bass + bands.mid + bands.high) / 3 * 1.5 + bands.rms * 0.2))))
             }
