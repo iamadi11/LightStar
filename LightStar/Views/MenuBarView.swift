@@ -260,6 +260,14 @@ struct MenuBarView: View {
                 Toggle("Auto-connect on Launch", isOn: $autoConnectOnLaunch)
                     .font(.caption)
                     .toggleStyle(.checkbox)
+                if presets.iCloudAvailable {
+                    Toggle("Sync Presets via iCloud", isOn: Binding(
+                        get: { presets.iCloudEnabled },
+                        set: { presets.iCloudEnabled = $0 }
+                    ))
+                    .font(.caption)
+                    .toggleStyle(.checkbox)
+                }
                 HStack {
                     Spacer()
                     Button("Quit") { NSApp.terminate(nil) }

@@ -92,6 +92,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             _ = ble.isOn
             _ = ble.connectionState
             _ = ble.syncMode
+            _ = ble.syncColor
             updateIcon()
         } onChange: {
             Task { @MainActor in self.startObservingBLE() }
@@ -101,12 +102,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func updateIcon() {
         guard let button = statusItem?.button else { return }
         let syncing = ble.syncMode != .off
-        let color: NSColor? = (ble.connectionState == .connected && ble.isOn)
-            ? NSColor(ble.color) : nil
+        // During sync show live syncColor; otherwise show the static color when on.
+        let color: NSColor?
+        if syncing, let sc = ble.syncColor {
+            color = NSColor(sc)
+        } else if ble.connectionState == .connected && ble.isOn {
+            color = NSColor(ble.color)
+        } else {
+            color = nil
+        }
         button.image = iconImage(color: color, isOn: ble.isOn, syncing: syncing)
     }
 
-    // Draws a colored lightbulb (syncing → waveform overlay); gray when off/disconnected.
+    // Draws a colored lightbulb (syncing → waveform); gray when off/disconnected.
     private func iconImage(color: NSColor?, isOn: Bool, syncing: Bool = false) -> NSImage {
         let size = NSSize(width: 18, height: 18)
         let symbolName = syncing ? "waveform" : "lightbulb.fill"
@@ -116,7 +124,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let cfg = NSImage.SymbolConfiguration(pointSize: 14, weight: .medium)
             let tinted = sym.withSymbolConfiguration(cfg) ?? sym
             let tintColor = color ?? (isOn ? NSColor.secondaryLabelColor : NSColor.tertiaryLabelColor)
-            // Fill with tint, then composite symbol as alpha mask — avoids cgImage nil crash
             tintColor.setFill()
             rect.fill()
             tinted.draw(in: rect, from: NSRect(origin: .zero, size: tinted.size),
@@ -129,12 +136,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func togglePopover() {
         guard let button = statusItem?.button, let popover else { return }
-        // Right-click → context menu with Quit; left-click → toggle popover
         if NSApp.currentEvent?.type == .rightMouseUp {
             popover.performClose(nil)
-            let menu = NSMenu()
-            menu.addItem(NSMenuItem(title: "Quit LightStar", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
-            statusItem?.popUpMenu(menu)
+            statusItem?.popUpMenu(buildContextMenu())
             return
         }
         if popover.isShown {
@@ -143,6 +147,65 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
             NSApp.activate(ignoringOtherApps: true)
         }
+    }
+
+    private func buildContextMenu() -> NSMenu {
+        let menu = NSMenu()
+
+        // Power toggle
+        let powerTitle = ble.connectionState == .connected
+            ? (ble.isOn ? "Turn Off" : "Turn On")
+            : "Not Connected"
+        let powerItem = NSMenuItem(title: powerTitle, action: #selector(contextTogglePower), keyEquivalent: "")
+        powerItem.isEnabled = ble.connectionState == .connected
+        menu.addItem(powerItem)
+
+        // Sync toggle
+        let syncTitle = ble.syncMode == .off ? "Enable Sync" : "Disable Sync (\(ble.syncMode.rawValue))"
+        let syncItem = NSMenuItem(title: syncTitle, action: #selector(contextToggleSync), keyEquivalent: "")
+        syncItem.isEnabled = ble.connectionState == .connected
+        menu.addItem(syncItem)
+
+        menu.addItem(.separator())
+
+        // Presets submenu
+        if !presets.presets.isEmpty {
+            let presetsMenu = NSMenu()
+            for preset in presets.presets {
+                let item = NSMenuItem(title: preset.name, action: #selector(contextApplyPreset(_:)), keyEquivalent: "")
+                item.representedObject = preset.id.uuidString
+                item.isEnabled = ble.connectionState == .connected
+                if presets.defaultPresetID == preset.id {
+                    item.state = .on
+                }
+                presetsMenu.addItem(item)
+            }
+            let presetsItem = NSMenuItem(title: "Presets", action: nil, keyEquivalent: "")
+            presetsItem.submenu = presetsMenu
+            menu.addItem(presetsItem)
+            menu.addItem(.separator())
+        }
+
+        menu.addItem(NSMenuItem(title: "Quit LightStar", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
+        return menu
+    }
+
+    @objc private func contextTogglePower() {
+        ble.setPower(on: !ble.isOn)
+    }
+
+    @objc private func contextToggleSync() {
+        ble.toggleSync()
+    }
+
+    @objc private func contextApplyPreset(_ sender: NSMenuItem) {
+        guard let idStr = sender.representedObject as? String,
+              let id = UUID(uuidString: idStr),
+              let preset = presets.presets.first(where: { $0.id == id })
+        else { return }
+        if !ble.isOn { ble.setPower(on: true) }
+        ble.setColor(preset.color)
+        ble.setBrightness(preset.brightness)
     }
 
     // MARK: - Global keyboard shortcuts
