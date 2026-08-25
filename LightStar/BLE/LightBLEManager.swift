@@ -22,6 +22,7 @@ final class LightBLEManager: NSObject {
 
     var connectionState: ConnectionState = .disconnected
     var connectionError: String?   // set on scan timeout or reconnect exhaustion
+    var bleNeedsPermission = false  // true when BT is .unauthorized → show settings button
     var isOn: Bool = UserDefaults.standard.object(forKey: "lastPowerState") as? Bool ?? false {
         didSet { UserDefaults.standard.set(isOn, forKey: "lastPowerState") }
     }
@@ -152,8 +153,21 @@ final class LightBLEManager: NSObject {
         guard connectionState == .disconnected else { return }
         reconnectAttempts = 0
         connectionError = nil
+        bleNeedsPermission = false
+
+        // Catch denial before the manager even powers on — avoids a confusing
+        // "Bluetooth is off" error when the real issue is a permission denial.
+        if CBManager.authorization == .denied || CBManager.authorization == .restricted {
+            bleNeedsPermission = true
+            connectionError = "Bluetooth access denied — open Privacy & Security to allow LightStar"
+            return
+        }
+
         if central.state == .poweredOn {
             startScan()
+        } else if central.state == .unauthorized {
+            bleNeedsPermission = true
+            connectionError = "Bluetooth access denied — open Privacy & Security to allow LightStar"
         } else {
             // BT not ready yet — startScan deferred to centralManagerDidUpdateState
             connectWhenReady = true
@@ -172,6 +186,8 @@ final class LightBLEManager: NSObject {
         shouldAutoReconnect = false
         lastSyncMode = .off
         reconnectAttempts = maxReconnectAttempts
+        bleNeedsPermission = false
+        connectionError = nil
         coalescer.flush()
         if probeRunning {
             probeRunning = false
@@ -1302,7 +1318,12 @@ extension LightBLEManager: CBCentralManagerDelegate {
                 }
             case .unauthorized:
                 self.connectionState = .disconnected
-                self.connectionError = "Bluetooth access denied — check Privacy & Security settings"
+                self.bleNeedsPermission = true
+                self.connectionError = "Bluetooth access denied — open Privacy & Security to allow LightStar"
+                self.connectWhenReady = false
+            case .resetting:
+                // BT stack is resetting (e.g. after wake) — wait for poweredOn callback
+                break
             default:
                 break
             }

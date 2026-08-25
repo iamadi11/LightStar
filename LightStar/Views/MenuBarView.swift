@@ -91,7 +91,14 @@ struct MenuBarView: View {
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            if ble.connectionState == .disconnected {
+            if ble.bleNeedsPermission {
+                Button("Open Bluetooth Settings") {
+                    NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Bluetooth")!)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .padding(.top, 4)
+            } else if ble.connectionState == .disconnected {
                 Button("Connect") { ble.connect() }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.small)
