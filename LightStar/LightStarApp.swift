@@ -252,6 +252,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             nil)
     }
 
+    // MARK: - App activate (return from System Settings after granting permission)
+
+    func applicationDidBecomeActive(_ notification: Notification) {
+        // Retry sync if user just granted Screen Recording or Mic in System Settings.
+        ble.retryPendingSyncIfNeeded()
+    }
+
     // MARK: - Sleep / Wake reconnect
 
     private func setupSleepWakeObserver() {

@@ -42,6 +42,7 @@ final class LightBLEManager: NSObject {
     var syncColor: Color? = nil          // live color during sync; nil when sync is off
     var syncError: String?
     var syncNeedsPermission = false   // true when syncError is a Screen Recording denial
+    private var pendingSyncMode: SyncMode?  // mode to retry when permission is granted
     var syncTransitioning = false
     // Called after the connect sequence completes with no sync mode to restore
     var onConnect: (@MainActor () -> Void)?
@@ -533,6 +534,7 @@ final class LightBLEManager: NSObject {
         if nsErr.domain == "MicAudio" && nsErr.code == -5001 {
             syncNeedsPermission = true
             syncError = "Microphone access required"
+            pendingSyncMode = syncMode == .off ? pendingSyncMode : syncMode
             return
         }
         // SCStreamError.userDeclined = -3801; also catches .notEntitled (-3827)
@@ -542,6 +544,19 @@ final class LightBLEManager: NSObject {
         syncError = isPermission
             ? "Screen Recording access required"
             : error.localizedDescription
+        if isPermission {
+            pendingSyncMode = syncMode == .off ? pendingSyncMode : syncMode
+        }
+    }
+
+    // Called by AppDelegate when app becomes active (returns from System Settings).
+    // If a sync mode failed due to permissions, retry it automatically.
+    func retryPendingSyncIfNeeded() {
+        guard syncNeedsPermission, let mode = pendingSyncMode else { return }
+        pendingSyncMode = nil
+        syncNeedsPermission = false
+        syncError = nil
+        setSyncMode(mode)
     }
 
     private func restoreSteadyState() {
@@ -1296,7 +1311,17 @@ extension LightBLEManager: CBCentralManagerDelegate {
         Task { @MainActor in
             switch central.state {
             case .poweredOn:
-                if self.connectWhenReady {
+                // Clear any stale permission error — BT is now authorized and on.
+                // This fires automatically when the user grants permission in System
+                // Settings and returns to the app.
+                if self.bleNeedsPermission {
+                    self.bleNeedsPermission = false
+                    self.connectionError = nil
+                    self.connectionState = .disconnected
+                    // Auto-reconnect so user doesn't need to tap Connect again.
+                    self.reconnectAttempts = 0
+                    self.startScan()
+                } else if self.connectWhenReady {
                     self.connectWhenReady = false
                     self.startScan()
                 } else if self.shouldAutoReconnect && self.connectionState == .disconnected {
