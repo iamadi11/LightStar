@@ -389,6 +389,7 @@ final class LightBLEManager: NSObject {
         // BC13 animations run in device firmware — BC04+BC05 alone can't stop them.
         // Power-cycle (OFF→ON) is the only reliable reset, then restore solid color.
         Task { @MainActor in
+            // BC06 effects run in device firmware — power-cycle is the only reliable reset.
             self.write(Cmd.powerOff)
             try? await Task.sleep(nanoseconds: 200_000_000)
             self.write(Cmd.powerOn)
@@ -596,11 +597,11 @@ final class LightBLEManager: NSObject {
                 }
                 let rainbowS = min(1.0, 0.6 + bands.mid * 0.4)
                 self.syncColor = Color(hue: self.beatHue, saturation: rainbowS, brightness: 1)
-                self.write(Cmd.hue(self.beatHue, saturation: rainbowS))
+                self.write(Cmd.audioHue(self.beatHue, saturation: rainbowS))
                 self.write(Cmd.brightness(min(1.0, max(0.05, bands.bass * 1.3 + bands.rms * 0.3))))
             case .pulse:
                 self.syncColor = Color(hue: self.audioPulseH, saturation: 1.0, brightness: 1)
-                self.write(Cmd.hue(self.audioPulseH, saturation: min(1.0, 0.8 + bands.mid * 0.2)))
+                self.write(Cmd.audioHue(self.audioPulseH, saturation: min(1.0, 0.8 + bands.mid * 0.2)))
                 self.write(Cmd.brightness(min(1.0, max(0.03, bands.bass * 1.5 + bands.rms * 0.2))))
             case .frequency:
                 // Hue blends mid→green and high→blue; bass excluded from denominator so
@@ -608,7 +609,7 @@ final class LightBLEManager: NSObject {
                 let hTotal = bands.mid + bands.high + 0.001
                 let h = (bands.mid * (120/360.0) + bands.high * (240/360.0)) / hTotal
                 self.syncColor = Color(hue: h, saturation: 1.0, brightness: 1)
-                self.write(Cmd.hue(h, saturation: 1.0))
+                self.write(Cmd.audioHue(h, saturation: 1.0))
                 self.write(Cmd.brightness(min(1.0, max(0.05, (bands.bass + bands.mid + bands.high) / 3 * 1.5 + bands.rms * 0.2))))
             }
         }
@@ -755,26 +756,30 @@ final class LightBLEManager: NSObject {
         txt += """
 
 
-        ── Known BC/55 Commands (reverse-engineered) ────────────
+        ── Known BC/55 Commands (confirmed via APK reverse-engineering 2026-08-26) ──
         Frame: BC [cmd] [data_len] [data × data_len] 55
-        Transport: ATT Write Command (withoutResponse) on FFF3
+        Transport: ATT Write-with-Response on FFF3
         Service: 0000FFF0-0000-1000-8000-00805F9B34FB
-        Scan UUID: 0x2022
+        Notify:  0000FFF4-0000-1000-8000-00805F9B34FB (device never sends)
+        Scan UUID: 0x2022 (filterByte1=0x22 filterByte2=0x20)
 
-        BC01 01 01 00 55  — Power OFF
-        BC01 01 01 01 55  — Power ON
-        BC04 06 [H_hi][H_lo][S_hi][S_lo] 00 00 55  — Hue (0–360 BE) + Sat (0–1000 BE)
-        BC05 06 [B_hi][B_lo] 00 00 00 00 55  — Brightness (100–1000 BE)
-        BC06 02 00 [id] 55  — Effect (IDs: 01, 03, 35 confirmed)
-        BC08 01 [speed 0–100] 55  — Effect speed
-        BC13 01 [id 0–FD] 55  — Firmware animation (ignores BC04/05 until power-cycle)
-        BC13 02 00 00 55  — Speculative: stop animation (unconfirmed)
+        BC01 01 01 00 55          — Power OFF
+        BC01 01 01 01 55          — Power ON
+        BC04 06 H_hi H_lo S_hi S_lo 00 00 55  — Hue (0–360 BE) + Sat (0–1000 BE), static
+        BC05 06 B_hi B_lo 00 00 00 00 55       — Brightness (100–1000 BE)
+        BC06 02 [hi] [lo] 55      — Effect mode (58 IDs: see knownEffects in BLEProtocol.swift)
+        BC07 01 [0/1] 55          — Effect direction (0=backward 1=forward)
+        BC08 01 [0–100] 55        — Effect speed
+        BC09 06 H_hi H_lo S_hi S_lo 00 00 55  — Streaming color (used during phone-mic audio sync)
+        BC0F 01 01 55             — Strip's onboard mic ON (strip reacts to ambient sound itself)
+        BC0F 01 00 55             — Strip's onboard mic OFF (app drives color via BC09)
+        BC11 01 [1–4] 55          — Onboard mic style: 1=Classic 2=Soft 3=Dynamic 4=Disco
+        BC12 01 [0–100] 55        — Mic sensitivity
+        BC13 01 [id 0x00–0xFD] 55 — Firmware animation scenes (253 scenes, 3 gap IDs)
 
-        ── Unconfirmed / To-Explore ─────────────────────────────
-        BC07: zone select (speculative — 01 00, 01 02 tested, effect unknown)
-        BC10: force solid mode (speculative — 0x00, effect unknown)
-        BC11: unknown
+        ── Unconfirmed ──────────────────────────────────────────
         BC03: unknown
+        BC10: unknown
 
         ── Restore Instructions ─────────────────────────────────
         If custom firmware breaks the device:
@@ -798,11 +803,16 @@ final class LightBLEManager: NSObject {
             "gattLog": deviceLog,
             "knownCommands": [
                 ["cmd": "BC01", "desc": "Power", "format": "BC 01 01 [00=off|01=on] 55"],
-                ["cmd": "BC04", "desc": "Hue+Sat", "format": "BC 04 06 H_hi H_lo S_hi S_lo 00 00 55"],
+                ["cmd": "BC04", "desc": "Static color (Hue+Sat)", "format": "BC 04 06 H_hi H_lo S_hi S_lo 00 00 55"],
                 ["cmd": "BC05", "desc": "Brightness", "format": "BC 05 06 B_hi B_lo 00 00 00 00 55"],
-                ["cmd": "BC06", "desc": "Effect", "format": "BC 06 02 00 [id] 55"],
-                ["cmd": "BC08", "desc": "Speed", "format": "BC 08 01 [0-100] 55"],
-                ["cmd": "BC13", "desc": "Animation", "format": "BC 13 01 [id] 55"],
+                ["cmd": "BC06", "desc": "Effect (58 IDs)", "format": "BC 06 02 hi lo 55"],
+                ["cmd": "BC07", "desc": "Effect direction", "format": "BC 07 01 [0=back|1=fwd] 55"],
+                ["cmd": "BC08", "desc": "Effect speed", "format": "BC 08 01 [0-100] 55"],
+                ["cmd": "BC09", "desc": "Streaming color (audio sync)", "format": "BC 09 06 H_hi H_lo S_hi S_lo 00 00 55"],
+                ["cmd": "BC0F", "desc": "Strip onboard mic", "format": "BC 0F 01 [0=off|1=on] 55"],
+                ["cmd": "BC11", "desc": "Mic style", "format": "BC 11 01 [1=Classic|2=Soft|3=Dynamic|4=Disco] 55"],
+                ["cmd": "BC12", "desc": "Mic sensitivity", "format": "BC 12 01 [0-100] 55"],
+                ["cmd": "BC13", "desc": "Firmware animation scene", "format": "BC 13 01 [id 0x00-0xFD] 55"],
             ]
         ]
         json["advertisement"] = capturedAdvertisementStrings

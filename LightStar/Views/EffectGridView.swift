@@ -3,13 +3,6 @@ import SwiftUI
 struct EffectsView: View {
     @Environment(LightBLEManager.self) private var ble
 
-    // Effect IDs confirmed from second PacketLogger capture (2026-08-23)
-    private let effects: [(name: String, id: UInt8)] = [
-        ("Effect 1", 0x01),
-        ("Effect 3", 0x03),
-        ("Effect 53", 0x35),
-    ]
-
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
@@ -24,12 +17,22 @@ struct EffectsView: View {
                 }
             }
 
-            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 6) {
-                ForEach(effects, id: \.id) { fx in
-                    Button(fx.name) { ble.setEffect(id: fx.id) }
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
-                        .tint(ble.effectModeActive && ble.effectID == fx.id ? .accentColor : nil)
+            ForEach(knownEffects, id: \.group.rawValue) { section in
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(section.group.rawValue)
+                        .font(.system(size: 9, weight: .medium))
+                        .foregroundStyle(.tertiary)
+                        .padding(.top, 2)
+
+                    LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 5) {
+                        ForEach(section.effects) { fx in
+                            Button(fx.name) { ble.setEffect(id: fx.id) }
+                                .buttonStyle(.bordered)
+                                .controlSize(.mini)
+                                .tint(ble.effectModeActive && ble.effectID == fx.id ? .accentColor : nil)
+                                .font(.system(size: 10))
+                        }
+                    }
                 }
             }
 
@@ -55,10 +58,10 @@ struct EffectsView: View {
     }
 }
 
-// BC13: 253 built-in animation scenes (0x00–0xFF, gaps at 0x3D 0x5B 0x96)
+// BC13: 253 built-in firmware animation scenes (0x00–0xFF, gaps at 0x3D 0x5B 0x96)
+// Separate from BC06 effects — these are device-firmware patterns, not the HA effect table.
 struct AnimationsView: View {
     @Environment(LightBLEManager.self) private var ble
-    // Valid IDs — skip the 3 gaps
     private static let validIDs: [UInt8] = (0x00...0xFF).compactMap { v in
         [0x3D, 0x5B, 0x96].contains(v) ? nil : UInt8(v)
     }
