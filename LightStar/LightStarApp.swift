@@ -94,8 +94,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             _ = ble.syncMode
             _ = ble.syncColor
             updateIcon()
+            writeWidgetState()
         } onChange: {
             Task { @MainActor in self.startObservingBLE() }
+        }
+    }
+
+    private func writeWidgetState() {
+        let (h, s, _) = ble.color.hsvComponents
+        let state: [String: Any] = [
+            "connected": ble.connectionState == .connected,
+            "isOn": ble.isOn,
+            "hue": h,
+            "saturation": s,
+        ]
+        guard let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else { return }
+        let dir = support.appendingPathComponent("LightStar")
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let file = dir.appendingPathComponent("widget-state.json")
+        if let data = try? JSONSerialization.data(withJSONObject: state) {
+            try? data.write(to: file, options: .atomic)
         }
     }
 

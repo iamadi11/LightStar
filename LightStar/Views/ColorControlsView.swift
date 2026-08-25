@@ -53,17 +53,53 @@ struct ColorControlView: View {
                     )
                     .onChange(of: sat) { _, _ in sendColor() }
                 }
+
+                // Color history strip
+                if !ble.colorHistory.isEmpty {
+                    HStack(spacing: 5) {
+                        ForEach(Array(ble.colorHistory.prefix(10).enumerated()), id: \.offset) { _, entry in
+                            Circle()
+                                .fill(Color(hue: entry.h, saturation: entry.s, brightness: 1))
+                                .frame(width: 14, height: 14)
+                                .overlay(Circle().stroke(Color.primary.opacity(0.15), lineWidth: 0.5))
+                                .onTapGesture {
+                                    hue = entry.h; sat = entry.s
+                                    sendColor()
+                                }
+                        }
+                        Spacer()
+                    }
+                    .padding(.top, 2)
+                }
             } else {
                 VStack(alignment: .leading, spacing: 2) {
                     HStack {
                         Text("Temperature").font(.caption2).foregroundStyle(.secondary)
                         Spacer()
-                        Text("\(Int(2700 + colorTemp * 3800))K")
-                            .font(.caption2).foregroundStyle(.secondary).monospacedDigit()
+                        if ble.circadianEnabled {
+                            Text("auto").font(.caption2).foregroundStyle(.blue)
+                        } else {
+                            Text("\(Int(2700 + colorTemp * 3800))K")
+                                .font(.caption2).foregroundStyle(.secondary).monospacedDigit()
+                        }
                     }
                     GradientSlider(gradient: Self.cctGradient, value: $colorTemp)
                         .onChange(of: colorTemp) { _, _ in sendCCT() }
+                        .disabled(ble.circadianEnabled)
+                        .opacity(ble.circadianEnabled ? 0.4 : 1)
                 }
+
+                Toggle(isOn: Binding(
+                    get: { ble.circadianEnabled },
+                    set: { ble.circadianEnabled = $0 }
+                )) {
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("Circadian (auto-adjust)").font(.caption2)
+                        Text("Warm at night · Cool in morning")
+                            .font(.caption2).foregroundStyle(.tertiary)
+                    }
+                }
+                .toggleStyle(.checkbox)
             }
         }
         .onAppear { syncFromBLE() }
@@ -81,6 +117,7 @@ struct ColorControlView: View {
     private func sendColor() {
         ignoreNextBLEUpdate = true
         ble.setSyncMode(.off)
+        ble.circadianEnabled = false
         ble.setHue(hue, saturation: sat)
     }
 

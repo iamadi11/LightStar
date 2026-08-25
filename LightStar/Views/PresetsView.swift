@@ -27,6 +27,14 @@ struct PresetsView: View {
                     .controlSize(.small)
                 }
             }
+
+            HStack(spacing: 8) {
+                Button("Export…") { presets.exportToFile() }
+                Button("Import…") { presets.importFromFile() }
+            }
+            .buttonStyle(.borderless)
+            .font(.caption)
+            .foregroundStyle(.secondary)
         }
     }
 

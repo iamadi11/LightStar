@@ -83,6 +83,65 @@ final class LightBLEManager: NSObject {
     var isSyncingVideo: Bool { syncMode == .video || syncMode == .combined }
     var isSyncingAudio: Bool { syncMode == .audio || syncMode == .combined }
 
+    // MARK: - Color history (last 12 manually set colors)
+
+    var colorHistory: [(h: Double, s: Double)] = {
+        guard let data = UserDefaults.standard.data(forKey: "colorHistory"),
+              let arr = try? JSONDecoder().decode([[Double]].self, from: data) else { return [] }
+        return arr.map { ($0[0], $0[1]) }
+    }()
+
+    private func recordColorHistory(_ h: Double, _ s: Double) {
+        guard s > 0.05 else { return }   // skip near-whites
+        colorHistory = ([(h, s)] + colorHistory.filter {
+            abs($0.h - h) > 0.03 || abs($0.s - s) > 0.08
+        }).prefix(12).map { $0 }
+        let encoded = colorHistory.map { [$0.h, $0.s] }
+        UserDefaults.standard.set(try? JSONEncoder().encode(encoded), forKey: "colorHistory")
+    }
+
+    // MARK: - Circadian auto color temperature
+
+    var circadianEnabled: Bool = UserDefaults.standard.bool(forKey: "circadianEnabled") {
+        didSet {
+            UserDefaults.standard.set(circadianEnabled, forKey: "circadianEnabled")
+            if circadianEnabled { startCircadianTimer() } else { stopCircadianTimer() }
+        }
+    }
+    private var circadianTimer: Timer?
+
+    private func startCircadianTimer() {
+        circadianTimer?.invalidate()
+        applyCircadianCCT()
+        circadianTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.applyCircadianCCT() }
+        }
+    }
+
+    private func stopCircadianTimer() {
+        circadianTimer?.invalidate()
+        circadianTimer = nil
+    }
+
+    private func applyCircadianCCT() {
+        guard circadianEnabled, connectionState == .connected, isOn, syncMode == .off else { return }
+        setColorTemperature(Self.circadianCCTValue())
+    }
+
+    // Maps current time to a 0–1 CCT value (0=2700K warm, 1=6500K cool).
+    static func circadianCCTValue(for date: Date = .now) -> Double {
+        let cal = Calendar.current
+        let h = Double(cal.component(.hour, from: date))
+        let m = Double(cal.component(.minute, from: date))
+        let t = h + m / 60.0        // 0…24
+        switch t {
+        case 6..<12:  return (t - 6) / 6.0           // ramp up: 0→1 (warm→cool)
+        case 12..<17: return 1.0                      // peak daylight
+        case 17..<22: return 1.0 - (t - 17) / 5.0   // ramp down: 1→0 (cool→warm)
+        default:      return 0.0                      // night: warm
+        }
+    }
+
     // MARK: - Protocol probe
     var probeLog: [String] = []
     var probeRunning = false
@@ -155,6 +214,7 @@ final class LightBLEManager: NSObject {
 
     override init() {
         super.init()
+        if circadianEnabled { startCircadianTimer() }
         central = CBCentralManager(delegate: self, queue: .main)
         coalescer = BLEWriteCoalescer(
             send: { [weak self] data in
@@ -261,6 +321,7 @@ final class LightBLEManager: NSObject {
         color = Color(hue: h, saturation: s, brightness: 1)
         UserDefaults.standard.set(h, forKey: "colorHue")
         UserDefaults.standard.set(s, forKey: "colorSat")
+        recordColorHistory(h, s)
         audioPulseH = h
         effectModeActive = false
         fadeTask?.cancel()
@@ -1554,6 +1615,8 @@ extension LightBLEManager: CBPeripheralDelegate {
                     self.lastSyncMode = .off
                     if modeToRestore != .off {
                         self.setSyncMode(modeToRestore)
+                    } else if self.circadianEnabled {
+                        self.applyCircadianCCT()
                     }
                 }
             }

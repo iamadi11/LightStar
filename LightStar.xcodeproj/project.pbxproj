@@ -28,6 +28,8 @@
 		FC5412ECC1D727B39494F459 /* CameraChangeDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0684CC78893F15A979D23057 /* CameraChangeDetector.swift */; };
 		FE0EC53441B7F6561EF584DC /* PresetStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53F50B77BEC004F04F88246F /* PresetStore.swift */; };
 		DD00112233445566778899AA /* LightStarIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD00112233445566778899BB /* LightStarIntents.swift */; };
+		FF001122334455667788AA01 /* LightStarWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF001122334455667788AA02 /* LightStarWidget.swift */; };
+		FF001122334455667788AA06 /* LightStarWidget.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = FF001122334455667788AA07 /* LightStarWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -55,6 +57,10 @@
 		DA2EBC32F42356487D6B6268 /* PresetsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PresetsView.swift; sourceTree = "<group>"; };
 		E9DC2781CB0C341C52ED5B29 /* FrequencyBands.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrequencyBands.swift; sourceTree = "<group>"; };
 		DD00112233445566778899BB /* LightStarIntents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LightStarIntents.swift; sourceTree = "<group>"; };
+		FF001122334455667788AA02 /* LightStarWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LightStarWidget.swift; sourceTree = "<group>"; };
+		FF001122334455667788AA03 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		FF001122334455667788AA04 /* LightStarWidget.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = LightStarWidget.entitlements; sourceTree = "<group>"; };
+		FF001122334455667788AA07 /* LightStarWidget.appex */ = {isa = PBXFileReference; explicitFileType = wrapper.app-extension; includeInIndex = 0; path = LightStarWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -62,8 +68,19 @@
 			isa = PBXGroup;
 			children = (
 				6FCFA247DF69CD7841EB5321 /* LightStar.app */,
+				FF001122334455667788AA07 /* LightStarWidget.appex */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		FF001122334455667788AA05 /* LightStarWidget */ = {
+			isa = PBXGroup;
+			children = (
+				FF001122334455667788AA02 /* LightStarWidget.swift */,
+				FF001122334455667788AA03 /* Info.plist */,
+				FF001122334455667788AA04 /* LightStarWidget.entitlements */,
+			);
+			path = LightStarWidget;
 			sourceTree = "<group>";
 		};
 		38C021A913F224BB493B9DAE /* Models */ = {
@@ -81,6 +98,7 @@
 			isa = PBXGroup;
 			children = (
 				7F32E8FF461E29F1D91D2E4C /* LightStar */,
+				FF001122334455667788AA05 /* LightStarWidget */,
 				02F83A3EA6FD8195FB7BAB99 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -138,6 +156,30 @@
 		};
 /* End PBXGroup section */
 
+/* Begin PBXContainerItemProxy section */
+		FF001122334455667788AA0D /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 364B950B741AAD2489805138 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = FF001122334455667788AA0A;
+			remoteInfo = LightStarWidget;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		FF001122334455667788AA0B /* Embed App Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				FF001122334455667788AA06 /* LightStarWidget.appex in Embed App Extensions */,
+			);
+			name = "Embed App Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXNativeTarget section */
 		C68498EFB4B90DF7C1061CA7 /* LightStar */ = {
 			isa = PBXNativeTarget;
@@ -145,10 +187,12 @@
 			buildPhases = (
 				F704B5147AE88D324870F3B9 /* Sources */,
 				FCFCB187587FB10775C7E7E1 /* Resources */,
+				FF001122334455667788AA0B /* Embed App Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				FF001122334455667788AA0C /* PBXTargetDependency */,
 			);
 			name = LightStar;
 			packageProductDependencies = (
@@ -157,7 +201,33 @@
 			productReference = 6FCFA247DF69CD7841EB5321 /* LightStar.app */;
 			productType = "com.apple.product-type.application";
 		};
+		FF001122334455667788AA0A /* LightStarWidget */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = FF001122334455667788AA10 /* Build configuration list for PBXNativeTarget "LightStarWidget" */;
+			buildPhases = (
+				FF001122334455667788AA08 /* Sources */,
+				FF001122334455667788AA09 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = LightStarWidget;
+			packageProductDependencies = (
+			);
+			productName = LightStarWidget;
+			productReference = FF001122334455667788AA07 /* LightStarWidget.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 /* End PBXNativeTarget section */
+
+/* Begin PBXTargetDependency section */
+		FF001122334455667788AA0C /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = FF001122334455667788AA0A /* LightStarWidget */;
+			targetProxy = FF001122334455667788AA0D /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin PBXProject section */
 		364B950B741AAD2489805138 /* Project object */ = {
@@ -167,6 +237,10 @@
 				LastUpgradeCheck = 1600;
 				TargetAttributes = {
 					C68498EFB4B90DF7C1061CA7 = {
+						DevelopmentTeam = "";
+						ProvisioningStyle = Automatic;
+					};
+					FF001122334455667788AA0A = {
 						DevelopmentTeam = "";
 						ProvisioningStyle = Automatic;
 					};
@@ -187,6 +261,7 @@
 			projectRoot = "";
 			targets = (
 				C68498EFB4B90DF7C1061CA7 /* LightStar */,
+				FF001122334455667788AA0A /* LightStarWidget */,
 			);
 		};
 /* End PBXProject section */
@@ -197,6 +272,13 @@
 			buildActionMask = 2147483647;
 			files = (
 				7884A1F9031CF65BF2A6B9ED /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		FF001122334455667788AA09 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -227,6 +309,14 @@
 				494FAD89C737703809B25B9E /* SyncModePickerView.swift in Sources */,
 				143A26B8D7AF992296B0B052 /* SystemAudioSampler.swift in Sources */,
 				AA11223344556677889900AB /* MicAudioSampler.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		FF001122334455667788AA08 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				FF001122334455667788AA01 /* LightStarWidget.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -400,6 +490,47 @@
 			};
 			name = Release;
 		};
+		FF001122334455667788AA0E /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = LightStarWidget/LightStarWidget.entitlements;
+				INFOPLIST_FILE = LightStarWidget/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.adityaraj.LightStar.widget";
+				PRODUCT_NAME = LightStarWidget;
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+		FF001122334455667788AA0F /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = LightStarWidget/LightStarWidget.entitlements;
+				INFOPLIST_FILE = LightStarWidget/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.adityaraj.LightStar.widget";
+				PRODUCT_NAME = LightStarWidget;
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -417,6 +548,15 @@
 			buildConfigurations = (
 				755FC83CDFA729D3C0B21ACD /* Debug */,
 				5697185DCDE5F731A2B418E3 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		FF001122334455667788AA10 /* Build configuration list for PBXNativeTarget "LightStarWidget" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				FF001122334455667788AA0E /* Debug */,
+				FF001122334455667788AA0F /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;
