@@ -383,7 +383,7 @@ extension LightBLEManager: CBCentralManagerDelegate {
                     }
                 }
             case .poweredOff:
-                if self.connectionState == .scanning || self.connectionState == .connecting {
+                if self.connectionState != .disconnected {
                     self.central.stopScan()
                     self.connectionState = .disconnected
                     self.connectionError = "Bluetooth is off — turn it on to connect"
@@ -580,6 +580,9 @@ extension LightBLEManager: CBPeripheralDelegate {
                                 error: (any Error)?) {
         if let error {
             print("[LightStar] write error: \(error.localizedDescription)")
+            Task { @MainActor in
+                self.connectionError = "Write failed: \(error.localizedDescription)"
+            }
         }
     }
 

@@ -1,7 +1,6 @@
 import SwiftUI
 import AppKit
 import Carbon.HIToolbox
-import AVFoundation
 import ScreenCaptureKit
 
 @main
@@ -45,21 +44,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self.ble.setColor(preset.color)
             self.ble.setBrightness(preset.brightness)
         }
-        Task { await requestAllPermissions() }
-    }
-
-    // MARK: - Permissions
-
-    private func requestAllPermissions() async {
-        // Camera — only prompt once; macOS TCC handles subsequent launches automatically.
-        if AVCaptureDevice.authorizationStatus(for: .video) == .notDetermined {
-            await AVCaptureDevice.requestAccess(for: .video)
-        }
-        // Screen Recording / system audio: do NOT call SCShareableContent here.
-        // On macOS 15 it re-shows the TCC dialog on every launch even when already
-        // granted. ScreenCaptureKit requests the entitlement lazily the first time
-        // sync actually starts, which is the correct UX.
-        // Bluetooth triggered automatically by CBCentralManager init.
     }
 
     // MARK: - Menu bar icon
@@ -74,7 +58,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let popover = NSPopover()
         popover.contentSize = NSSize(width: 320, height: 480)
-        popover.behavior = .transient
+        popover.behavior = .applicationDefined
         schedules.reschedule()
         popover.contentViewController = NSHostingController(
             rootView: MenuBarView()
@@ -130,6 +114,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             color = nil
         }
         button.image = iconImage(color: color, isOn: ble.isOn, syncing: syncing)
+        if let err = ble.connectionError {
+            button.toolTip = "LightStar — \(err)"
+        } else {
+            switch ble.connectionState {
+            case .connected:  button.toolTip = "LightStar — Connected\(ble.isOn ? "" : " (off)")"
+            case .scanning:   button.toolTip = "LightStar — Scanning…"
+            case .connecting: button.toolTip = "LightStar — Connecting…"
+            case .disconnected: button.toolTip = "LightStar — Disconnected"
+            }
+        }
     }
 
     // Draws a colored lightbulb (syncing → waveform); gray when off/disconnected.
