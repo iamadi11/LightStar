@@ -71,6 +71,7 @@ public extension LightBLEManager {
 
     // Color temperature 0=warm 2700K … 1=cool 6500K.
     public func setColorTemperature(_ t: Double) {
+        colorTemperature = t
         let kelvin = 2700 + t * 3800
         let (h, s) = kelvinToHS(kelvin)
         setHue(h, saturation: s)

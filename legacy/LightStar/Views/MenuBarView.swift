@@ -219,6 +219,25 @@ struct MenuBarView: View {
                 .accessibilityValue("\(Int(ble.brightness * 100))%")
             }
 
+            // Color Temperature
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Label("Color Temp", systemImage: "thermometer.medium")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Text(colorTempLabel)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                Slider(value: Binding(
+                    get: { ble.colorTemperature },
+                    set: { ble.setColorTemperature($0) }
+                ), in: 0...1)
+                .accessibilityLabel("Color Temperature")
+                .accessibilityValue(colorTempLabel)
+            }
+
             Divider()
 
             // Presets
@@ -461,7 +480,7 @@ private struct SyncControlView: View {
                 set: { ble.setSyncMode($0) }
             )) {
                 ForEach(LightBLEManager.SyncMode.allCases, id: \.self) {
-                    Text($0.rawValue).tag($0)
+                    Text($0.displayName).tag($0)
                 }
             }
             .pickerStyle(.segmented)
@@ -582,21 +601,31 @@ private struct SyncControlView: View {
 
     private var modeDescription: String {
         switch ble.syncMode {
-        case .off:      return "No sync — color picker and presets above are active"
-        case .video:    return ble.videoSyncBrightness ? "Edges weighted 3× · screen brightness → strip · 20 Hz" : "Edges weighted 3× · brightness stays at slider · 20 Hz"
+        case .off:      return "Color picker and presets are active"
+        case .video:    return "Strip mirrors your screen colors in real-time"
         case .audio:
             switch ble.audioSyncMode {
-            case .rainbow:   return "Beats → hue · treble → drift · bass → brightness"
-            case .pulse:     return "Bass → brightness · keeps current color"
-            case .frequency: return "Bass → red · mid → green · treble → blue"
+            case .rainbow:   return "Music beats drive color and brightness"
+            case .pulse:     return "Bass pulses brightness, keeps current color"
+            case .frequency: return "Bass → red · mids → green · treble → blue"
             }
-        case .combined: return "Screen → color · audio beats → brightness · no mic needed"
+        case .combined: return "Screen sets color · music beats set brightness"
         }
     }
 }
 
 // MARK: - MenuBarView helpers (private extension keeps them off the struct namespace)
 private extension MenuBarView {
+    var colorTempLabel: String {
+        let k = Int(2700 + ble.colorTemperature * 3800)
+        switch k {
+        case ..<3200: return "Warm \(k)K"
+        case ..<4500: return "Neutral \(k)K"
+        case ..<5500: return "Cool \(k)K"
+        default:      return "Daylight \(k)K"
+        }
+    }
+
     func applyPreset(_ preset: Preset) {
         if !ble.isOn { ble.setPower(on: true) }
         // setColor → setHue already calls stopSyncInline() when sync is active.

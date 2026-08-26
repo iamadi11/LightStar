@@ -16,6 +16,15 @@ public final class LightBLEManager: NSObject {
         case video    = "Video"
         case audio    = "Audio"
         case combined = "Video+Audio"
+
+        var displayName: String {
+            switch self {
+            case .off:      return "Off"
+            case .video:    return "Screen"
+            case .audio:    return "Music"
+            case .combined: return "Both"
+            }
+        }
     }
 
     // MARK: - Observable state
@@ -36,7 +45,9 @@ public final class LightBLEManager: NSObject {
     }
     public var effectID: UInt8 = 0x01
     public var effectSpeed: Double = 0.5   // 0–1 mapped to 0–100
+    public var effectForward: Bool = true
     public var effectModeActive = false
+    public var colorTemperature: Double = 0.5  // 0=warm 2700K … 1=cool 6500K; not persisted as a mode flag
     // Sync state machine
     public var syncMode: SyncMode = .off
     public var syncColor: Color? = nil          // live color during sync; nil when sync is off

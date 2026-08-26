@@ -38,3 +38,5 @@ src-tauri/WixTools/
 *.pem
 *.p12
 .claude/worktrees/
+build/
+.env.local

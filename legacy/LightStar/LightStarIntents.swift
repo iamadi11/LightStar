@@ -226,6 +226,47 @@ struct ApplyPresetIntent: AppIntent {
     }
 }
 
+// MARK: - State query
+
+struct GetLightStateIntent: AppIntent {
+    nonisolated(unsafe) static var title: LocalizedStringResource = "Get LightStar State"
+    nonisolated(unsafe) static var description = IntentDescription("Returns whether the light is on, its brightness (0–100), and current sync mode.")
+    nonisolated(unsafe) static var openAppWhenRun: Bool = false
+
+    @MainActor func perform() async throws -> some IntentResult & ReturnsValue<String> {
+        guard let ble = appDelegate()?.ble else { throw LSIntentError.notConnected }
+        let state = ble.isOn ? "on" : "off"
+        let brightness = Int(ble.brightness * 100)
+        let sync = ble.syncMode == .off ? "sync off" : "\(ble.syncMode.displayName) sync"
+        return .result(value: "Light is \(state), brightness \(brightness)%, \(sync)")
+    }
+}
+
+// MARK: - Focus Filter
+
+struct LightStarFocusFilter: SetFocusFilterIntent {
+    nonisolated(unsafe) static var title: LocalizedStringResource = "Adjust LightStar"
+    nonisolated(unsafe) static var description = IntentDescription("Dim or warm the light when a Focus mode is active.")
+    nonisolated(unsafe) static var typeDisplayRepresentation: TypeDisplayRepresentation = "LightStar Focus Filter"
+
+    var displayRepresentation: DisplayRepresentation {
+        DisplayRepresentation(title: "\(brightness)% · \(colorTemperature.rawValue)")
+    }
+
+    @Parameter(title: "Brightness", description: "0 = dim, 100 = full", default: 80, inclusiveRange: (0, 100))
+    var brightness: Int
+
+    @Parameter(title: "Color Temperature", default: ColorTempOption.neutral)
+    var colorTemperature: ColorTempOption
+
+    @MainActor func perform() async throws -> some IntentResult {
+        guard let ble = appDelegate()?.ble else { return .result() }
+        ble.setBrightness(Double(brightness) / 100.0)
+        ble.setColorTemperature((colorTemperature.kelvin - 2700) / 3800)
+        return .result()
+    }
+}
+
 // MARK: - App Shortcuts (Siri phrases)
 
 struct LightStarShortcuts: AppShortcutsProvider {
@@ -293,6 +334,15 @@ struct LightStarShortcuts: AppShortcutsProvider {
             ],
             shortTitle: "Set Brightness",
             systemImageName: "sun.max.fill"
+        )
+        AppShortcut(
+            intent: GetLightStateIntent(),
+            phrases: [
+                "Is \(.applicationName) on",
+                "Check \(.applicationName) status",
+            ],
+            shortTitle: "Get State",
+            systemImageName: "info.circle"
         )
     }
 }
