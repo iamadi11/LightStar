@@ -116,11 +116,13 @@ extension LightBLEManager {
 
     func saveProbeLog() {
         guard !probeLog.isEmpty else { return }
+        #if DEBUG
         let ts = Int(Date().timeIntervalSince1970)
         let url = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("Desktop/lightstar-protocol-\(ts).txt")
         let content = probeLog.joined(separator: "\n")
         try? content.write(to: url, atomically: true, encoding: .utf8)
         probeLog.append("Saved → \(url.lastPathComponent)")
+        #endif
     }
 }

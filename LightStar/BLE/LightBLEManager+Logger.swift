@@ -6,11 +6,13 @@ extension LightBLEManager {
 
     func saveDeviceLog() {
         guard !deviceLog.isEmpty else { return }
+        #if DEBUG
         let ts = Int(Date().timeIntervalSince1970)
         let url = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Desktop/lightstar-device-info-\(ts).txt")
         let content = "=== LightStar Device Info ===\n" + deviceLog.joined(separator: "\n")
         try? content.write(to: url, atomically: true, encoding: .utf8)
         deviceLog.append("Saved → \(url.lastPathComponent)")
+        #endif
     }
 
     func saveFullBackup() {
@@ -74,6 +76,7 @@ extension LightBLEManager {
         Git snapshot: pre-firmware-research tag (run: git log --oneline -5)
         """
 
+        #if DEBUG
         try? txt.write(toFile: "\(base).txt", atomically: true, encoding: .utf8)
 
         let json: [String: Any] = [
@@ -110,15 +113,18 @@ extension LightBLEManager {
         deviceLog.append("✓ Backup saved:")
         deviceLog.append("  \(base).txt")
         deviceLog.append("  \(base).json")
+        #endif
     }
 
     func saveDeviceInfoIfComplete() {
+        #if DEBUG
         guard deviceLog.contains(where: { $0.hasPrefix("  READ") }) else { return }
         let dir = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Desktop")
         let existing = (try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil))?
             .filter { $0.lastPathComponent.hasPrefix("lightstar-device-info-") } ?? []
         guard existing.isEmpty else { return }
         saveDeviceLog()
+        #endif
     }
 
     // MARK: - Time sync (BC0B — auto-sent on connect, matches OEM app behaviour)

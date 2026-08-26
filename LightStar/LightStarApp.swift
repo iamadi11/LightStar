@@ -21,6 +21,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var hotKeyRef: EventHotKeyRef?
     lazy var ble = LightBLEManager()
     lazy var presets = PresetStore()
+    private var widgetStateTask: Task<Void, Never>?
     lazy var schedules: ScheduleStore = {
         let s = ScheduleStore()
         s.ble = ble
@@ -85,19 +86,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func writeWidgetState() {
-        let (h, s, _) = ble.color.hsvComponents
-        let state: [String: Any] = [
-            "connected": ble.connectionState == .connected,
-            "isOn": ble.isOn,
-            "hue": h,
-            "saturation": s,
-        ]
-        guard let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else { return }
-        let dir = support.appendingPathComponent("LightStar")
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        let file = dir.appendingPathComponent("widget-state.json")
-        if let data = try? JSONSerialization.data(withJSONObject: state) {
-            try? data.write(to: file, options: .atomic)
+        widgetStateTask?.cancel()
+        widgetStateTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 200_000_000)
+            guard !Task.isCancelled else { return }
+            let (h, s, _) = self.ble.color.hsvComponents
+            let state: [String: Any] = [
+                "connected": self.ble.connectionState == .connected,
+                "isOn": self.ble.isOn,
+                "hue": h,
+                "saturation": s,
+            ]
+            guard let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else { return }
+            let dir = support.appendingPathComponent("LightStar")
+            try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            let file = dir.appendingPathComponent("widget-state.json")
+            if let data = try? JSONSerialization.data(withJSONObject: state) {
+                try? data.write(to: file, options: .atomic)
+            }
         }
     }
 
@@ -276,13 +282,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - Sleep / Wake reconnect
 
     private func setupSleepWakeObserver() {
-        NSWorkspace.shared.notificationCenter.addObserver(
-            forName: NSWorkspace.didWakeNotification,
-            object: nil, queue: .main) { [weak self] _ in
-                guard let self else { return }
-                let autoConnect = UserDefaults.standard.object(forKey: "autoConnectOnLaunch") as? Bool ?? true
-                guard autoConnect, self.ble.connectionState == .disconnected else { return }
-                Task { @MainActor in self.ble.connect() }
-            }
+        let nc = NSWorkspace.shared.notificationCenter
+        nc.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
+            guard let self else { return }
+            let autoConnect = UserDefaults.standard.object(forKey: "autoConnectOnLaunch") as? Bool ?? true
+            guard autoConnect, self.ble.connectionState == .disconnected else { return }
+            Task { @MainActor in self.ble.connect() }
+        }
+        nc.addObserver(forName: NSWorkspace.screensDidSleepNotification, object: nil, queue: .main) { [weak self] _ in
+            Task { @MainActor in self?.ble.pauseScreenSync() }
+        }
+        nc.addObserver(forName: NSWorkspace.screensDidWakeNotification, object: nil, queue: .main) { [weak self] _ in
+            Task { @MainActor in self?.ble.resumeScreenSync() }
+        }
     }
 }

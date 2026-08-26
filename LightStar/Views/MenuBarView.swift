@@ -15,44 +15,98 @@ struct MenuBarView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Header
-            HStack {
-                Image(systemName: "lightbulb.fill")
-                    .foregroundStyle(ble.connectionState == .connected ? Color.yellow : .secondary)
-                Text("LightStar")
-                    .font(.headline)
+            // Header with persistent status
+            HStack(alignment: .center) {
+                Image(systemName: headerIcon)
+                    .foregroundStyle(headerIconColor)
+                    .animation(.easeInOut(duration: 0.3), value: ble.connectionState)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("LightStar")
+                        .font(.headline)
+                    Text(statusLine)
+                        .font(.caption2)
+                        .foregroundStyle(statusLineColor)
+                        .animation(.easeInOut(duration: 0.3), value: ble.connectionState)
+                }
                 Spacer()
                 connectionButton
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 10)
 
-            // Tab picker
+            #if DEBUG
+            // Tab picker (debug builds only)
             HStack(spacing: 0) {
                 tabButton("Control", index: 0)
                 tabButton("Debug", index: 1)
             }
             .padding(.horizontal, 16)
             .padding(.bottom, 8)
+            #endif
 
             Divider()
 
             ScrollView {
+                #if DEBUG
                 if selectedTab == 0 {
-                    if ble.connectionState == .connected {
-                        controlsSection
-                            .transition(.opacity)
-                    } else {
-                        statusSection
-                            .transition(.opacity)
-                    }
+                    contentView
                 } else {
                     DebugTabView()
                 }
+                #else
+                contentView
+                #endif
             }
             .animation(.easeInOut(duration: 0.2), value: ble.connectionState)
         }
         .frame(width: 320)
+    }
+
+    @ViewBuilder
+    private var contentView: some View {
+        if ble.connectionState == .connected {
+            controlsSection
+                .transition(.opacity)
+        } else {
+            statusSection
+                .transition(.opacity)
+        }
+    }
+
+    private var headerIcon: String {
+        switch ble.connectionState {
+        case .connected:   return ble.isOn ? "lightbulb.fill" : "lightbulb"
+        case .scanning:    return "antenna.radiowaves.left.and.right"
+        case .connecting:  return "antenna.radiowaves.left.and.right"
+        case .disconnected: return "lightbulb.slash"
+        }
+    }
+
+    private var headerIconColor: Color {
+        switch ble.connectionState {
+        case .connected:    return ble.isOn ? .yellow : .secondary
+        case .scanning, .connecting: return .accentColor
+        case .disconnected: return .secondary
+        }
+    }
+
+    private var statusLine: String {
+        if let err = ble.connectionError { return err }
+        switch ble.connectionState {
+        case .connected:    return ble.isOn ? "Connected · On" : "Connected · Off"
+        case .scanning:     return "Scanning for device…"
+        case .connecting:   return "Connecting…"
+        case .disconnected: return "Not connected"
+        }
+    }
+
+    private var statusLineColor: Color {
+        if ble.connectionError != nil { return .red }
+        switch ble.connectionState {
+        case .connected:    return .green
+        case .scanning, .connecting: return .accentColor
+        case .disconnected: return .secondary
+        }
     }
 
     private func tabButton(_ label: String, index: Int) -> some View {
@@ -71,42 +125,48 @@ struct MenuBarView: View {
     // MARK: - Sections
 
     private var statusSection: some View {
-        VStack(spacing: 8) {
-            if ble.connectionState == .scanning {
+        VStack(spacing: 12) {
+            if ble.connectionState == .scanning || ble.connectionState == .connecting {
                 ProgressView()
                     .controlSize(.large)
                     .padding(.bottom, 4)
+                Text(stateLabel)
+                    .foregroundStyle(.secondary)
+                    .font(.subheadline)
+                Button("Cancel") { ble.disconnect() }
+                    .buttonStyle(.bordered)
+                    .controlSize(.regular)
             } else {
                 Image(systemName: stateIcon)
-                    .font(.system(size: 32))
-                    .foregroundStyle(.secondary)
-            }
-            Text(stateLabel)
-                .foregroundStyle(.secondary)
-                .font(.subheadline)
-            if let err = ble.connectionError {
-                Text(err)
-                    .font(.system(size: 11))
-                    .foregroundStyle(.red)
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            if ble.bleNeedsPermission {
-                Button("Open Bluetooth Settings") {
-                    NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Bluetooth")!)
+                    .font(.system(size: 40))
+                    .foregroundStyle(.tertiary)
+                    .padding(.bottom, 4)
+                if let err = ble.connectionError {
+                    Text(err)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.red)
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+                } else {
+                    Text("No light bar connected")
+                        .foregroundStyle(.secondary)
+                        .font(.subheadline)
                 }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-                .padding(.top, 4)
-            } else if ble.connectionState == .disconnected {
-                Button("Connect") { ble.connect() }
+                if ble.bleNeedsPermission {
+                    Button("Open Bluetooth Settings") {
+                        NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Bluetooth")!)
+                    }
                     .buttonStyle(.borderedProminent)
-                    .controlSize(.small)
-                    .padding(.top, 4)
+                    .controlSize(.regular)
+                } else {
+                    Button("Connect to Light Bar") { ble.connect() }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.large)
+                }
             }
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 40)
+        .padding(.vertical, 44)
     }
 
     private var controlsSection: some View {
@@ -139,6 +199,8 @@ struct MenuBarView: View {
                     get: { ble.brightness },
                     set: { ble.setBrightness($0) }
                 ), in: 0...1)
+                .accessibilityLabel("Brightness")
+                .accessibilityValue("\(Int(ble.brightness * 100))%")
             }
 
             Divider()
@@ -442,6 +504,8 @@ private struct SyncControlView: View {
                             set: { ble.beatSensitivity = $0 }
                         ), in: 0...1)
                         .controlSize(.mini)
+                        .accessibilityLabel("Beat Sensitivity")
+                        .accessibilityValue("\(Int(ble.beatSensitivity * 100))%")
                         Text("\(Int(ble.beatSensitivity * 100))%")
                             .font(.system(size: 9))
                             .foregroundStyle(.secondary)
@@ -483,6 +547,8 @@ private struct SyncControlView: View {
                         set: { ble.syncResponsiveness = $0 }
                     ), in: 0.1...1.0)
                     .controlSize(.mini)
+                    .accessibilityLabel("Responsiveness")
+                    .accessibilityValue("\(Int(ble.syncResponsiveness * 100))%")
                 }
 
                 if ble.syncMode == .video {

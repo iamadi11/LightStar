@@ -38,6 +38,23 @@ extension LightBLEManager {
         await screenSampler.stop()
     }
 
+    // MARK: - Display sleep/wake
+
+    func pauseScreenSync() {
+        guard isSyncingVideo else { return }
+        screenSampler.onColor = nil
+        Task { await self.screenSampler.stop() }
+    }
+
+    func resumeScreenSync() {
+        guard isSyncingVideo else { return }
+        Task { [weak self] in
+            guard let self else { return }
+            try? await self.screenSampler.start()
+            await MainActor.run { self.setupScreenCallback() }
+        }
+    }
+
     // Synchronously tears down all sync state — safe to call from non-async context.
     func stopSyncInline() {
         transitionTask?.cancel(); transitionTask = nil

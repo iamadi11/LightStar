@@ -20,13 +20,18 @@ import Foundation
         guard isConnected(), bytes.count >= 2 else { return }
         queue[bytes[1]] = Data(bytes)
         guard timer == nil else { return }
-        // Use a repeating Task instead of Timer+assumeIsolated to avoid
-        // __abort_with_payload if the run loop fires the callback off-actor.
+        startTimer()
+    }
+
+    private func startTimer() {
         let t = Timer(timeInterval: 0.020, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in
                 guard let self else { return }
                 guard self.isConnected() else { self.flush(); return }
-                guard let (cmd, data) = self.queue.first else { self.flush(); return }
+                guard let (cmd, data) = self.queue.first else {
+                    // Queue drained — stop timer; don't clear queue (flush does that on disconnect)
+                    self.timer?.invalidate(); self.timer = nil; return
+                }
                 self.queue.removeValue(forKey: cmd)
                 self.send(data)
             }
