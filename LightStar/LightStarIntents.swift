@@ -10,7 +10,7 @@ enum LSIntentError: Error, LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .notConnected:      return "LightStar is not connected to a light bar."
+        case .notConnected:          return "LightStar is not connected to a light bar."
         case .presetNotFound(let n): return "No preset named \"\(n)\" found."
         }
     }
@@ -19,9 +19,7 @@ enum LSIntentError: Error, LocalizedError {
 // MARK: - Helpers
 
 @MainActor
-private func appDelegate() -> AppDelegate? {
-    NSApp.delegate as? AppDelegate
-}
+private func appDelegate() -> AppDelegate? { NSApp.delegate as? AppDelegate }
 
 @MainActor
 private func requireConnected() throws -> LightBLEManager {
@@ -30,11 +28,61 @@ private func requireConnected() throws -> LightBLEManager {
     return d.ble
 }
 
+// MARK: - Preset entity (enables Siri autocomplete for preset names)
+
+struct PresetEntity: AppEntity {
+    var id: String      // preset name
+    var displayRepresentation: DisplayRepresentation { .init(title: "\(id)") }
+    nonisolated(unsafe) static var typeDisplayRepresentation: TypeDisplayRepresentation = "Preset"
+    nonisolated(unsafe) static var defaultQuery = PresetQuery()
+}
+
+struct PresetQuery: EntityQuery {
+    @MainActor
+    func entities(for ids: [String]) async throws -> [PresetEntity] {
+        let delegate = appDelegate()
+        return ids.compactMap { id in
+            guard delegate?.presets.presets.contains(where: { $0.name == id }) == true
+            else { return nil }
+            return PresetEntity(id: id)
+        }
+    }
+
+    @MainActor
+    func suggestedEntities() async throws -> [PresetEntity] {
+        (appDelegate()?.presets.presets ?? []).map { PresetEntity(id: $0.name) }
+    }
+}
+
+// MARK: - Sync mode enum
+
+enum SyncModeOption: String, AppEnum {
+    case off, video, audio, combined
+
+    nonisolated(unsafe) static var typeDisplayRepresentation: TypeDisplayRepresentation = "Sync Mode"
+    nonisolated(unsafe) static var caseDisplayRepresentations: [SyncModeOption: DisplayRepresentation] = [
+        .off:      "Off",
+        .video:    "Screen",
+        .audio:    "Audio",
+        .combined: "Video + Audio",
+    ]
+
+    var syncMode: LightBLEManager.SyncMode {
+        switch self {
+        case .off:      return .off
+        case .video:    return .video
+        case .audio:    return .audio
+        case .combined: return .combined
+        }
+    }
+}
+
 // MARK: - Power
 
 struct TurnOnLightIntent: AppIntent {
     nonisolated(unsafe) static var title: LocalizedStringResource = "Turn On LightStar"
     nonisolated(unsafe) static var description = IntentDescription("Turn on the LED light bar.")
+    nonisolated(unsafe) static var openAppWhenRun: Bool = false
 
     @MainActor func perform() async throws -> some IntentResult {
         try requireConnected().setPower(on: true)
@@ -45,6 +93,7 @@ struct TurnOnLightIntent: AppIntent {
 struct TurnOffLightIntent: AppIntent {
     nonisolated(unsafe) static var title: LocalizedStringResource = "Turn Off LightStar"
     nonisolated(unsafe) static var description = IntentDescription("Turn off the LED light bar.")
+    nonisolated(unsafe) static var openAppWhenRun: Bool = false
 
     @MainActor func perform() async throws -> some IntentResult {
         try requireConnected().setPower(on: false)
@@ -57,9 +106,10 @@ struct TurnOffLightIntent: AppIntent {
 struct SetBrightnessIntent: AppIntent {
     nonisolated(unsafe) static var title: LocalizedStringResource = "Set LightStar Brightness"
     nonisolated(unsafe) static var description = IntentDescription("Set the brightness of the LED bar (0–100).")
+    nonisolated(unsafe) static var openAppWhenRun: Bool = false
 
-    @Parameter(title: "Brightness", description: "0 = off, 100 = full", default: 100,
-                inclusiveRange: (lowerBound: 0, upperBound: 100))
+    @Parameter(title: "Brightness", description: "0 = dim, 100 = full",
+               default: 100, inclusiveRange: (0, 100))
     var brightness: Int
 
     @MainActor func perform() async throws -> some IntentResult {
@@ -72,14 +122,13 @@ struct SetBrightnessIntent: AppIntent {
 
 struct SetLightColorIntent: AppIntent {
     nonisolated(unsafe) static var title: LocalizedStringResource = "Set LightStar Color"
-    nonisolated(unsafe) static var description = IntentDescription("Set the LED bar to a specific color.")
+    nonisolated(unsafe) static var description = IntentDescription("Set the LED bar to a specific hue and saturation.")
+    nonisolated(unsafe) static var openAppWhenRun: Bool = false
 
-    @Parameter(title: "Hue", description: "0–360 degrees", default: 0,
-                inclusiveRange: (lowerBound: 0, upperBound: 360))
+    @Parameter(title: "Hue", description: "0–360°", default: 0, inclusiveRange: (0, 360))
     var hue: Int
 
-    @Parameter(title: "Saturation", description: "0 = white, 100 = vivid", default: 100,
-                inclusiveRange: (lowerBound: 0, upperBound: 100))
+    @Parameter(title: "Saturation", description: "0 = white, 100 = vivid", default: 100, inclusiveRange: (0, 100))
     var saturation: Int
 
     @MainActor func perform() async throws -> some IntentResult {
@@ -89,11 +138,65 @@ struct SetLightColorIntent: AppIntent {
     }
 }
 
+// MARK: - Color temperature
+
+enum ColorTempOption: String, AppEnum {
+    case warm, neutral, cool, energizing
+
+    nonisolated(unsafe) static var typeDisplayRepresentation: TypeDisplayRepresentation = "Color Temperature"
+    nonisolated(unsafe) static var caseDisplayRepresentations: [ColorTempOption: DisplayRepresentation] = [
+        .warm:       "Warm (2700 K)",
+        .neutral:    "Neutral (4000 K)",
+        .cool:       "Cool (5500 K)",
+        .energizing: "Energizing (6500 K)",
+    ]
+
+    var kelvin: Double {
+        switch self {
+        case .warm: return 2700
+        case .neutral: return 4000
+        case .cool: return 5500
+        case .energizing: return 6500
+        }
+    }
+}
+
+struct SetColorTemperatureIntent: AppIntent {
+    nonisolated(unsafe) static var title: LocalizedStringResource = "Set LightStar Color Temperature"
+    nonisolated(unsafe) static var description = IntentDescription("Set the LED bar to a warm, neutral, or cool white.")
+    nonisolated(unsafe) static var openAppWhenRun: Bool = false
+
+    @Parameter(title: "Temperature", default: ColorTempOption.neutral)
+    var temperature: ColorTempOption
+
+    @MainActor func perform() async throws -> some IntentResult {
+        let ble = try requireConnected()
+        ble.setColorTemperature(temperature.kelvin)
+        return .result()
+    }
+}
+
 // MARK: - Sync
+
+struct SetSyncModeIntent: AppIntent {
+    nonisolated(unsafe) static var title: LocalizedStringResource = "Set LightStar Sync Mode"
+    nonisolated(unsafe) static var description = IntentDescription("Enable or disable screen/audio sync.")
+    nonisolated(unsafe) static var openAppWhenRun: Bool = false
+
+    @Parameter(title: "Mode", default: SyncModeOption.video)
+    var mode: SyncModeOption
+
+    @MainActor func perform() async throws -> some IntentResult {
+        guard let ble = appDelegate()?.ble else { throw LSIntentError.notConnected }
+        ble.setSyncMode(mode.syncMode)
+        return .result()
+    }
+}
 
 struct ToggleSyncIntent: AppIntent {
     nonisolated(unsafe) static var title: LocalizedStringResource = "Toggle LightStar Sync"
     nonisolated(unsafe) static var description = IntentDescription("Toggle screen/audio sync on or off.")
+    nonisolated(unsafe) static var openAppWhenRun: Bool = false
 
     @MainActor func perform() async throws -> some IntentResult {
         appDelegate()?.ble.toggleSync()
@@ -105,22 +208,20 @@ struct ToggleSyncIntent: AppIntent {
 
 struct ApplyPresetIntent: AppIntent {
     nonisolated(unsafe) static var title: LocalizedStringResource = "Apply LightStar Preset"
-    nonisolated(unsafe) static var description = IntentDescription("Apply a saved color preset by name.")
+    nonisolated(unsafe) static var description = IntentDescription("Apply a saved color preset — Reading, Movie, Party, Relax, or any custom preset.")
+    nonisolated(unsafe) static var openAppWhenRun: Bool = false
 
-    @Parameter(title: "Preset Name")
-    var presetName: String
+    @Parameter(title: "Preset")
+    var preset: PresetEntity
 
     @MainActor func perform() async throws -> some IntentResult {
         guard let d = appDelegate() else { throw LSIntentError.notConnected }
-        guard let preset = d.presets.presets.first(where: {
-            $0.name.localizedCaseInsensitiveCompare(presetName) == .orderedSame
-        }) else {
-            throw LSIntentError.presetNotFound(presetName)
-        }
+        guard let p = d.presets.presets.first(where: { $0.name == preset.id })
+        else { throw LSIntentError.presetNotFound(preset.id) }
         let ble = try requireConnected()
         if !ble.isOn { ble.setPower(on: true) }
-        ble.setColor(preset.color)
-        ble.setBrightness(preset.brightness)
+        ble.setColor(p.color)
+        ble.setBrightness(p.brightness)
         return .result()
     }
 }
@@ -129,8 +230,69 @@ struct ApplyPresetIntent: AppIntent {
 
 struct LightStarShortcuts: AppShortcutsProvider {
     static var appShortcuts: [AppShortcut] {
-        AppShortcut(intent: TurnOnLightIntent(),  phrases: ["Turn on \(.applicationName)"])
-        AppShortcut(intent: TurnOffLightIntent(), phrases: ["Turn off \(.applicationName)"])
-        AppShortcut(intent: ToggleSyncIntent(),   phrases: ["Toggle \(.applicationName) sync"])
+        AppShortcut(
+            intent: TurnOnLightIntent(),
+            phrases: [
+                "Turn on \(.applicationName)",
+                "Turn on my lights with \(.applicationName)",
+            ],
+            shortTitle: "Turn On",
+            systemImageName: "lightbulb.fill"
+        )
+        AppShortcut(
+            intent: TurnOffLightIntent(),
+            phrases: [
+                "Turn off \(.applicationName)",
+                "Turn off my lights with \(.applicationName)",
+            ],
+            shortTitle: "Turn Off",
+            systemImageName: "lightbulb"
+        )
+        AppShortcut(
+            intent: ApplyPresetIntent(),
+            phrases: [
+                "Set \(.applicationName) to \(\.$preset)",
+                "Switch \(.applicationName) to \(\.$preset) mode",
+                "Activate \(\.$preset) mode on \(.applicationName)",
+            ],
+            shortTitle: "Apply Preset",
+            systemImageName: "dial.max.fill"
+        )
+        AppShortcut(
+            intent: ToggleSyncIntent(),
+            phrases: [
+                "Toggle \(.applicationName) sync",
+                "Toggle sync on \(.applicationName)",
+            ],
+            shortTitle: "Toggle Sync",
+            systemImageName: "waveform"
+        )
+        AppShortcut(
+            intent: SetSyncModeIntent(),
+            phrases: [
+                "Set \(.applicationName) to \(\.$mode) sync",
+                "Enable \(\.$mode) sync on \(.applicationName)",
+            ],
+            shortTitle: "Set Sync Mode",
+            systemImageName: "waveform.badge.magnifyingglass"
+        )
+        AppShortcut(
+            intent: SetColorTemperatureIntent(),
+            phrases: [
+                "Set \(.applicationName) to \(\.$temperature)",
+                "Make \(.applicationName) \(\.$temperature)",
+            ],
+            shortTitle: "Set Temperature",
+            systemImageName: "thermometer.medium"
+        )
+        AppShortcut(
+            intent: SetBrightnessIntent(),
+            phrases: [
+                "Set \(.applicationName) brightness",
+                "Adjust \(.applicationName) brightness",
+            ],
+            shortTitle: "Set Brightness",
+            systemImageName: "sun.max.fill"
+        )
     }
 }
