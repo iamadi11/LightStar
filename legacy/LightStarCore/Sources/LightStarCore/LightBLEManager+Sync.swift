@@ -215,9 +215,13 @@ public extension LightBLEManager {
                     silenceStart = 0
                     Task { @MainActor [weak self] in
                         guard let self, self.syncMode == .audio else { return }
-                        self.lastSyncMode = .audio
-                        UserDefaults.standard.set(SyncMode.audio.rawValue, forKey: "lastSyncMode")
-                        self.setSyncMode(.off)
+                        self.silenceTask?.cancel()
+                        self.silenceTask = Task { @MainActor [weak self] in
+                            guard let self, self.syncMode == .audio else { return }
+                            self.lastSyncMode = .audio
+                            UserDefaults.standard.set(SyncMode.audio.rawValue, forKey: "lastSyncMode")
+                            self.setSyncMode(.off)
+                        }
                     }
                     return
                 }

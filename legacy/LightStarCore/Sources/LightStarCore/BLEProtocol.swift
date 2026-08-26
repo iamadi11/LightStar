@@ -15,8 +15,8 @@ public enum Cmd {
     public static let powerOff: [UInt8] = [0xBC, 0x01, 0x01, 0x00, 0x55]
 
     public static func hue(_ h: Double, saturation s: Double) -> [UInt8] {
-        let H = UInt16(max(0, min(360, Int(ColorMath.correctedHueDeg(h)))))
-        let S = UInt16(max(0, min(1000, Int(s * 1000))))
+        let H = UInt16(max(0, min(360, Int(ColorMath.correctedHueDeg(h).rounded()))))
+        let S = UInt16(max(0, min(1000, Int((s * 1000).rounded()))))
         return [0xBC, 0x04, 0x06,
                 UInt8(H >> 8), UInt8(H & 0xFF),
                 UInt8(S >> 8), UInt8(S & 0xFF),
@@ -26,8 +26,8 @@ public enum Cmd {
     // BC09: streaming color — same encoding as BC04 but used for rapid audio-reactive updates.
     // OEM app (com.frok.mrstar VoiceUtils.java) sends this at 200ms intervals during mic mode.
     public static func audioHue(_ h: Double, saturation s: Double) -> [UInt8] {
-        let H = UInt16(max(0, min(360, Int(ColorMath.correctedHueDeg(h)))))
-        let S = UInt16(max(0, min(1000, Int(s * 1000))))
+        let H = UInt16(max(0, min(360, Int(ColorMath.correctedHueDeg(h).rounded()))))
+        let S = UInt16(max(0, min(1000, Int((s * 1000).rounded()))))
         return [0xBC, 0x09, 0x06,
                 UInt8(H >> 8), UInt8(H & 0xFF),
                 UInt8(S >> 8), UInt8(S & 0xFF),

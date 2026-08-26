@@ -186,6 +186,7 @@ public final class LightBLEManager: NSObject {
     public var writeChar: CBCharacteristic?
     public var extraLights: [(peripheral: CBPeripheral, writeChar: CBCharacteristic?)] = []
     public var reconnectTask: Task<Void, Never>?
+    public var silenceTask: Task<Void, Never>?
     public var probeTask: Task<Void, Never>?
     // Set during probe sweeps to mirror BLE notifications into probeLog
     public var notifyTapHandler: ((Data) -> Void)?
@@ -239,6 +240,8 @@ public final class LightBLEManager: NSObject {
 
     public func connect() {
         guard connectionState == .disconnected else { return }
+        reconnectTask?.cancel()
+        reconnectTask = nil
         reconnectAttempts = 0
         userInitiatedDisconnect = false
         connectionError = nil
@@ -365,6 +368,7 @@ public final class LightBLEManager: NSObject {
         }
         reconnectAttempts += 1
         let delay = UInt64(min(30, pow(2.0, Double(reconnectAttempts)))) * 1_000_000_000
+        reconnectTask?.cancel()
         reconnectTask = Task { @MainActor in
             do { try await Task.sleep(nanoseconds: delay) } catch { return }
             guard !Task.isCancelled, !self.userInitiatedDisconnect else { return }
@@ -401,6 +405,8 @@ public extension LightBLEManager: CBCentralManagerDelegate {
                     self.startScan()
                 } else if self.shouldAutoReconnect && self.connectionState == .disconnected {
                     // BT came back on (wake-from-sleep) after an unexpected drop — reconnect
+                    self.reconnectTask?.cancel()
+                    self.reconnectTask = nil
                     self.shouldAutoReconnect = false
                     self.reconnectAttempts = 0
                     if let p = self.peripheral {
@@ -470,6 +476,8 @@ public extension LightBLEManager: CBCentralManagerDelegate {
     public nonisolated func centralManager(_ central: CBCentralManager,
                                     didConnect peripheral: CBPeripheral) {
         Task { @MainActor in
+            self.reconnectTask?.cancel()
+            self.reconnectTask = nil
             self.reconnectAttempts = 0
             self.deviceLog = ["Connecting to \(peripheral.name ?? "unknown")…"]
             // nil = discover ALL services (finds Device Info, DFU, etc.)

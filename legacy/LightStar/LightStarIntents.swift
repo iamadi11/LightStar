@@ -202,7 +202,7 @@ struct ToggleSyncIntent: AppIntent {
     nonisolated(unsafe) static var openAppWhenRun: Bool = false
 
     @MainActor func perform() async throws -> some IntentResult {
-        (LightStarRuntime.ble ?? appDelegate()?.ble)?.toggleSync()
+        try requireConnected().toggleSync()
         return .result()
     }
 }
