@@ -344,7 +344,9 @@ struct ModifierKeyButton: View {
             .frame(maxWidth: .infinity)
             .frame(height: 56)
         }
-        .buttonStyle(isPressed ? .borderedProminent : .bordered)
+        .buttonStyle(.bordered)
+        .tint(isPressed ? .accentColor : .secondary)
+        .background(isPressed ? Color.accentColor.opacity(0.2) : Color.clear, in: RoundedRectangle(cornerRadius: 8))
     }
 }
 

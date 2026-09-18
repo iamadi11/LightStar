@@ -131,7 +131,7 @@ public struct PairAckMessage: Codable, Sendable {
 
 // MARK: - State Messages
 
-public struct LightStarState: Codable, Sendable {
+public struct LightStarState: Codable, Sendable, Equatable {
     public let isConnected: Bool
     public let isOn: Bool
     public let brightness: Double
@@ -180,7 +180,7 @@ public struct LightStarState: Codable, Sendable {
     }
 }
 
-public struct DisplayInfo: Codable, Sendable, Identifiable {
+public struct DisplayInfo: Codable, Sendable, Identifiable, Equatable {
     public let id: UInt32
     public let name: String
     
@@ -190,7 +190,7 @@ public struct DisplayInfo: Codable, Sendable, Identifiable {
     }
 }
 
-public struct ColorInfo: Codable, Sendable {
+public struct ColorInfo: Codable, Sendable, Equatable {
     public let hue: Double
     public let saturation: Double
     public let brightness: Double
