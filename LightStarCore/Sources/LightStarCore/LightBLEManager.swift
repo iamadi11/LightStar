@@ -455,8 +455,10 @@ extension LightBLEManager: CBCentralManagerDelegate {
             }
         }
         let rssi = RSSI.intValue
-        let discoveredPeripheral = peripheral
-        let centralManager = central
+        // nonisolated(unsafe) suppresses Swift 6 sending checks for CoreBluetooth delegate parameters
+        // which are thread-safe in practice as CoreBluetooth manages their lifecycle.
+        nonisolated(unsafe) let discoveredPeripheral = peripheral
+        nonisolated(unsafe) let centralManager = central
         Task { @MainActor in
             if self.multiLightEnabled && self.peripheral != nil {
                 // Extra light — connect without stopping scan (more may appear)
@@ -479,7 +481,7 @@ extension LightBLEManager: CBCentralManagerDelegate {
 
     public nonisolated func centralManager(_ central: CBCentralManager,
                                     didConnect peripheral: CBPeripheral) {
-        let connectedPeripheral = peripheral
+        nonisolated(unsafe) let connectedPeripheral = peripheral
         Task { @MainActor in
             self.reconnectTask?.cancel()
             self.reconnectTask = nil
@@ -499,7 +501,7 @@ extension LightBLEManager: CBCentralManagerDelegate {
     public nonisolated func centralManager(_ central: CBCentralManager,
                                     didDisconnectPeripheral peripheral: CBPeripheral,
                                     error: (any Error)?) {
-        let disconnectedPeripheral = peripheral
+        nonisolated(unsafe) let disconnectedPeripheral = peripheral
         Task { @MainActor in
             // Extra light drop — just remove it, don't affect primary connection state
             if let idx = self.extraLights.firstIndex(where: { $0.peripheral === disconnectedPeripheral }) {
@@ -561,7 +563,7 @@ extension LightBLEManager: CBPeripheralDelegate {
         let line = "--- \(svcUUID): \(summary)"
         print("[LightStar] \(line)")
         Task { @MainActor in self.deviceLog.append(line) }
-        let discoveredPeripheral = peripheral
+        nonisolated(unsafe) let discoveredPeripheral = peripheral
         Task { @MainActor in
             // Check if this is an extra light
             if let idx = self.extraLights.firstIndex(where: { $0.peripheral === discoveredPeripheral }) {
