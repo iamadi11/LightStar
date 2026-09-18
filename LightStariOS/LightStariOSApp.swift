@@ -18,6 +18,12 @@ struct LightStariOSApp: App {
                     ble.onConnect = {
                         schedules.drainPendingActions()
                         schedules.pushFirmwareTimers()
+                        guard ble.syncMode == .off,
+                              let id = presets.defaultPresetID,
+                              let preset = presets.presets.first(where: { $0.id == id })
+                        else { return }
+                        ble.setColor(preset.color)
+                        ble.setBrightness(preset.brightness)
                     }
                     if UserDefaults.standard.object(forKey: "autoConnectOnLaunch") as? Bool ?? true {
                         ble.connect()
