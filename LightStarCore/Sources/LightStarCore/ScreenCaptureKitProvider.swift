@@ -5,12 +5,15 @@ import CoreMedia
 import AppKit
 
 /// ScreenCaptureKit-based frame provider. Primary capture method for macOS 12.3+.
-/// Captures at low resolution (48x27) for efficient color analysis.
+/// Uses Metal GPU acceleration when available for efficient color analysis.
 @MainActor
 public final class ScreenCaptureKitProvider: NSObject, ScreenFrameProvider {
     
     public var onFrame: ((FrameAnalysis) -> Void)?
     public var selectedDisplayID: CGDirectDisplayID?
+    
+    /// Whether to use GPU-accelerated analysis (Metal). Defaults to true when available.
+    public var useMetalAnalysis: Bool = true
     
     public private(set) var isRunning = false
     
@@ -18,11 +21,15 @@ public final class ScreenCaptureKitProvider: NSObject, ScreenFrameProvider {
     private let queue = DispatchQueue(label: "screen.capture.kit", qos: .userInteractive)
     private var generation = 0
     
+    // Metal analyzer for GPU acceleration
+    private let metalAnalyzer = MetalColorAnalyzer.shared
+    
     // Diagnostics
     private var frameCount = 0
     private var lastFrameTime: Double = 0
     private var recentBlackPercentages: [Double] = []
     private let blackPercentageWindowSize = 30
+    private var usingMetal = false
     
     @MainActor
     public static func availableDisplays() async -> [(id: CGDirectDisplayID, name: String)] {
@@ -88,13 +95,18 @@ public final class ScreenCaptureKitProvider: NSObject, ScreenFrameProvider {
     public func getDiagnostics() -> CaptureProviderDiagnostics {
         let avgBlackPercentage = recentBlackPercentages.isEmpty ? 0 : recentBlackPercentages.reduce(0, +) / Double(recentBlackPercentages.count)
         return CaptureProviderDiagnostics(
-            providerName: "ScreenCaptureKit",
+            providerName: usingMetal ? "ScreenCaptureKit (Metal GPU)" : "ScreenCaptureKit (CPU)",
             frameRate: frameCount > 1 ? Double(frameCount) / max(0.001, CACurrentMediaTime() - lastFrameTime) : 0,
             resolution: (48, 27),
             captureLatencyMs: 0,
             protectedContentDetected: avgBlackPercentage > 0.6,
             blackFramePercentage: avgBlackPercentage
         )
+    }
+    
+    /// Check if Metal GPU acceleration is available.
+    public static var isMetalAvailable: Bool {
+        MetalColorAnalyzer.shared != nil
     }
 }
 
@@ -105,11 +117,21 @@ extension ScreenCaptureKitProvider: SCStreamOutput {
         guard type == .screen else { return }
         guard let pb = sb.imageBuffer else { return }
         
-        let analysis = analyzePixelBuffer(pb)
+        // Use Metal GPU analysis when available and enabled
+        let analysis: FrameAnalysis
+        let usedMetal: Bool
+        if let metal = MetalColorAnalyzer.shared {
+            analysis = metal.analyze(pb)
+            usedMetal = true
+        } else {
+            analysis = analyzePixelBuffer(pb)
+            usedMetal = false
+        }
         
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
             self.frameCount += 1
+            self.usingMetal = usedMetal
             if self.frameCount == 1 { self.lastFrameTime = CACurrentMediaTime() }
             
             self.recentBlackPercentages.append(analysis.blackPixelPercentage)
