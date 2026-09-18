@@ -17,21 +17,25 @@ pub struct FrequencyBands {
     pub flux: f64,
 }
 
+fn monitor_id(m: &Monitor) -> u32 {
+    m.id().unwrap_or(0)
+}
+
+fn monitor_name(m: &Monitor, index: usize) -> String {
+    m.name()
+        .ok()
+        .filter(|n| !n.is_empty())
+        .unwrap_or_else(|| format!("Display {}", index + 1))
+}
+
 pub fn list_displays() -> Vec<DisplayInfo> {
     match Monitor::all() {
         Ok(monitors) => monitors
             .into_iter()
             .enumerate()
             .map(|(i, m)| DisplayInfo {
-                id: m.id(),
-                name: {
-                    let n = m.name();
-                    if n.is_empty() {
-                        format!("Display {}", i + 1)
-                    } else {
-                        n.to_string()
-                    }
-                },
+                id: monitor_id(&m),
+                name: monitor_name(&m, i),
             })
             .collect(),
         Err(err) => {
@@ -46,7 +50,7 @@ pub fn sample_screen(selected: Option<u32>) -> Result<(f64, f64, f64), String> {
     let monitor = if let Some(id) = selected {
         monitors
             .iter()
-            .find(|m| m.id() == id)
+            .find(|m| monitor_id(m) == id)
             .or_else(|| monitors.first())
     } else {
         monitors.first()
