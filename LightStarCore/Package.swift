@@ -11,7 +11,12 @@ let package = Package(
         .library(name: "LightStarCore", targets: ["LightStarCore"])
     ],
     targets: [
-        .target(name: "LightStarCore"),
+        .target(
+            name: "LightStarCore",
+            resources: [
+                .process("MetalColorAnalyzer.metal")
+            ]
+        ),
         .testTarget(
             name: "LightStarCoreTests",
             dependencies: ["LightStarCore"]

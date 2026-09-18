@@ -18,6 +18,9 @@ public final class ScreenColorSampler: NSObject {
     /// Called with detailed frame analysis for diagnostics.
     public var onFrameAnalysis: ((FrameAnalysis) -> Void)?
     
+    /// Called when diagnostics status changes (for UI updates).
+    public var onDiagnosticsUpdate: ((CaptureDiagnostics) -> Void)?
+    
     public var responsiveness: Double = 1.0   // unused, kept for API compat
 
     /// Display selection — set before calling start()
@@ -37,6 +40,9 @@ public final class ScreenColorSampler: NSObject {
     /// The underlying frame provider (defaults to ScreenCaptureKit).
     private let provider: ScreenCaptureKitProvider
     
+    /// Capture diagnostics for DRM detection and browser guidance.
+    public let diagnostics = CaptureDiagnostics()
+    
     public override init() {
         self.provider = ScreenCaptureKitProvider()
         super.init()
@@ -54,6 +60,9 @@ public final class ScreenColorSampler: NSObject {
         provider.onFrame = { [weak self] analysis in
             guard let self else { return }
             
+            // Update diagnostics with frame data
+            self.diagnostics.processFrame(analysis)
+            
             // Track protected content detection
             if analysis.suspectedProtectedContent {
                 self.consecutiveProtectedFrames += 1
@@ -68,6 +77,9 @@ public final class ScreenColorSampler: NSObject {
             
             // Fire detailed analysis callback
             self.onFrameAnalysis?(analysis)
+            
+            // Fire diagnostics update callback
+            self.onDiagnosticsUpdate?(self.diagnostics)
             
             // Fire legacy HSV callback
             self.onColor?(analysis.dominantHue, analysis.dominantSaturation, analysis.dominantBrightness)
