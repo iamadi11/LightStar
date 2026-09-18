@@ -7,20 +7,27 @@
 
 ## Project Overview
 
-macOS menu-bar app (LSUIElement, no Dock icon) plus a sideloaded iOS remote, controlling a BC/55 BLE RGB LED bar. Replaces the "Miracles Star" OEM app.
+Tauri v2 + Next.js (static export) desktop app controlling a BC/55 BLE RGB LED bar.
+Replaces the OEM “Miracles Star” app. The previous native Swift app lives in `legacy/`
+and is not the product.
 
-- **Platforms**: macOS 14.0+, iOS 17+, Swift 6, strict concurrency
-- **Shared core**: `LightStarCore` Swift package (protocol, LUT, coalescer, BLE manager, presets, schedules)
-- **macOS extras**: ScreenCaptureKit ambilight, system-audio FFT, Carbon hotkeys, menu bar, control window
-- **iOS extras**: remote control, mic/strip-mic sync, AppIntents, widget, BC0D firmware timers
-- **Build**: `xcodegen generate` then `xcodebuild -scheme LightStar`
-- **Do not rewrite in Tauri.** TCC, AppIntents, WidgetKit and ScreenCaptureKit are Apple-framework problems.
+- **UI**: Next.js App Router, `output: 'export'` — no SSR, no API routes
+- **Host**: Rust / Tauri 2 (`src-tauri`), tray icon, global shortcuts ⌘⇧L / ⌘⇧S
+- **Protocol**: `crates/lightstar-core` (LUT, BC/55 frames, coalescer, schedules)
+- **BLE**: `btleplug` write-with-response to FFF3
+- **Sync**: screen via `xcap` (~20 fps HSV); audio via `cpal` microphone or strip BC0F
+- **iOS**: same Rust/JS codebase; `npm run tauri ios init` on a Mac (personal sideload)
+- **Build**: `npm run tauri:dev` / `npm run tauri:build` → macOS `.app` + `.dmg`
+
+Siri, Shortcuts, Focus Filters, and WidgetKit are Swift-only and are not part of this
+app. System-audio capture (ScreenCaptureKit) is also not available; use Microphone or
+the strip's onboard mic.
 
 ---
 
 ## BLE Protocol (BC/55)
 
-Frame format: `BC [cmd] [data_len] [data × data_len] 55`. Invariant: `bytes[2] == bytes.count - 4`.
+Frame format: `BC [cmd] [data_len] [data × data_len] 55`. Invariant: `bytes[2] == bytes.len() - 4`.
 
 | Cmd | Function |
 |-----|----------|
@@ -31,7 +38,7 @@ Frame format: `BC [cmd] [data_len] [data × data_len] 55`. Invariant: `bytes[2] 
 | `0x05` | Brightness 16-bit BE **100–1000** |
 | `0x06` | Effect select (58 IDs) |
 | `0x07` | Effect direction |
-| `0x08` | Effect speed (1 byte; range unconfirmed vs hardware) |
+| `0x08` | Effect speed (1 byte) |
 | `0x09` | Streaming colour |
 | `0x0B` | Time sync (auto on connect) |
 | `0x0D` | Weekly firmware timer |
@@ -42,56 +49,38 @@ Frame format: `BC [cmd] [data_len] [data × data_len] 55`. Invariant: `bytes[2] 
 
 GATT: advertised `0x2022`, service `FFF0`, write `FFF3` (with response), notify `FFF4` (never fires).
 
-All BLE writes go through `BLEWriteCoalescer.enqueue()`. Dedup key is `bytes[1]`. Insertion-ordered, replace-in-place.
+All BLE writes go through `WriteCoalescer`. Dedup key is `bytes[1]`. Insertion-ordered, replace-in-place. Drain one frame per 20 ms.
 
-Hue LUT lives in `ColorMath.hueLUT` — do not regenerate casually.
+Hue LUT lives in `crates/lightstar-core/src/color.rs` — do not regenerate casually.
 
 ---
 
 ## Architecture
 
 ```
-LightStarCore/          Swift package, macOS + iOS
-  ColorMath.swift       hue LUT, kelvinToHS, circadian
-  BLEProtocol.swift     Cmd builders + effects table
-  BLEWriteCoalescer.swift
-  LightBLEManager*.swift
-  Preset / Schedule stores
-  WidgetState.swift     App Group JSON
-  CaptureStubs.swift    iOS stand-ins for SCStream types
-
-LightStar/              macOS app (menu bar + control window)
-LightStariOS/           iOS remote (sideload)
-LightStarWidget/        WidgetKit source shared by both widget extensions
+crates/lightstar-core/   protocol, LUT, coalescer, schedules (no BLE)
+src-tauri/               Tauri host, btleplug, xcap, cpal
+app/ + src/              Next.js UI
+legacy/                  previous Swift / Xcode project
 ```
 
-Views get state via `@Environment(LightBLEManager.self)`. AppIntents use `LightStarRuntime`.
+Frontend talks to Rust only via `invoke` + the `state` event. Snapshot fields are camelCase.
 
 ### Key invariants
 
-- New fields on `Preset` or `LightSchedule` must be `Optional`.
-- No `try?` around `Task.sleep` in fade/power-cycle loops.
-- Corrupt stores are quarantined in later hardening; current stores decode-fail closed.
-- `lastFiredAt` is stamped `.now` at schedule creation so catch-up cannot fire for a time that passed before the schedule existed.
-- Silence auto-off applies to `.audio` only — never `.combined`.
-- `connectionError` is cleared when `connectionState` becomes `.connected`.
-- `.connecting` has a 10s timeout so wake-from-sleep can self-heal.
-- User disconnect is `userInitiatedDisconnect`, not `reconnectAttempts == max`.
-
----
-
-## Signing / distribution
-
-- `project.yml` is the source of truth. `LightStar.xcodeproj` is generated and gitignored.
-- Release tags are `vX.Y.Z`. CI (`release.yml`) archives only on those tags, using the tag name (not `build-N-sha`).
-- Prefer **one** Developer ID identity for local and CI so TCC grants survive updates.
-- `scripts/notarize.sh` archives, codesign-verifies, notarizes, staples, *then* `spctl`. Never `spctl` a not-yet-notarized app.
-- `.github/install-lightstar.command` must not `tccutil reset` and must not delete `/Applications/LightStar.app` before the new copy verifies.
+- New fields on `Preset` or `Schedule` must be `Option` / `#[serde(default)]`.
+- `last_fired_at` is stamped now at schedule creation so catch-up cannot fire for a time that passed before the schedule existed.
+- Silence auto-off applies to audio sync only — never combined.
+- `connection_error` is cleared when `connection_state` becomes `connected`.
+- Connecting / scan have a 10s timeout.
+- User disconnect is an explicit flag, not reconnect exhaustion.
+- TCC is per-bundle (`com.adityaraj.LightStar`) and signing identity — not per language.
 
 ---
 
 ## Conventions
 
 - Comments explain non-obvious **why**. No multi-line docstrings.
-- A new `Cmd` builder must be added to `allFrames` in `LightStarCore/Tests`.
+- A new `Cmd` builder must be covered by `all_frames` in `lightstar-core` tests.
 - Recalibration procedure for the hue LUT: sweep 10° steps, fixed WB/exposure, keep `obs` strictly increasing.
+- Run `cargo test -p lightstar-core` after protocol changes.

@@ -1,4 +1,4 @@
-# Xcode
+# Xcode / Swift (legacy)
 *.xcuserstate
 xcuserdata/
 *.xcworkspace/xcuserdata/
@@ -12,11 +12,22 @@ DerivedData/
 *.dSYM.zip
 *.dSYM
 LightStar.xcodeproj/
-
-# Swift Package Manager (LightStarCore/ is the local package — keep it)
 .build/
 .swiftpm/
 Packages/
+
+# Node / Next
+node_modules/
+.next/
+out/
+npm-debug.log*
+tsconfig.tsbuildinfo
+
+# Rust / Tauri
+target/
+src-tauri/target/
+src-tauri/gen/
+src-tauri/WixTools/
 
 # macOS
 .DS_Store

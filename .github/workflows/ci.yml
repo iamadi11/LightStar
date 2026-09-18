@@ -10,41 +10,43 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  test:
-    name: Generate, test, build
+  core:
+    name: Protocol tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo test -p lightstar-core
+        env:
+          CARGO_TERM_COLOR: always
+
+  ui:
+    name: Next.js export
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+
+  tauri:
+    name: Tauri macOS build
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
-
-      - name: Select Xcode
-        run: sudo xcode-select -s /Applications/Xcode_26.3.app
-
-      - name: Install xcodegen
-        run: brew install xcodegen
-
-      - name: Generate Xcode project
-        run: xcodegen generate
-
-      - name: Test LightStarCore
-        run: swift test --package-path LightStarCore
-
-      - name: Build macOS (unsigned)
-        run: |
-          xcodebuild build \
-            -project LightStar.xcodeproj \
-            -scheme LightStar \
-            -configuration Debug \
-            -derivedDataPath /tmp/ls-dd \
-            CODE_SIGNING_ALLOWED=NO
-
-      - name: Verify widget is embedded
-        run: test -d /tmp/ls-dd/Build/Products/Debug/LightStar.app/Contents/PlugIns/LightStarWidget.appex
-
-      - name: Build iOS (unsigned)
-        run: |
-          xcodebuild build \
-            -project LightStar.xcodeproj \
-            -scheme LightStariOS \
-            -destination 'generic/platform=iOS' \
-            -configuration Debug \
-            CODE_SIGNING_ALLOWED=NO
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - run: npm ci
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tauriScript: npm run tauri
+          args: --bundles app
+          uploadRelease: false

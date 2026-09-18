@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>LSUIElement</key>
+	<false/>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>LightStar uses Bluetooth to discover and control your BLE LED light bar. Without this permission the app cannot connect to any device.</string>
+	<key>NSBluetoothPeripheralUsageDescription</key>
+	<string>LightStar uses Bluetooth to discover and control your BLE LED light bar. Without this permission the app cannot connect to any device.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>LightStar listens to microphone input to sync the light to music beats when the Microphone source is selected in Audio Sync.</string>
+	<key>NSScreenCaptureUsageDescription</key>
+	<string>LightStar captures the screen to sync your LED bar colors to what's on display (Ambilight-style).</string>
+	<key>NSCameraUsageDescription</key>
+	<string>LightStar does not use the camera. This key is required by some macOS screen-capture APIs.</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.adityaraj.LightStar</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>lightstar</string>
+			</array>
+		</dict>
+	</array>
+</dict>
+</plist>

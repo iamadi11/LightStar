@@ -1,0 +1,61 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "LightStar",
+  "version": "1.0.0",
+  "identifier": "com.adityaraj.LightStar",
+  "build": {
+    "frontendDist": "../out",
+    "devUrl": "http://localhost:3000",
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "LightStar",
+        "width": 440,
+        "height": 820,
+        "minWidth": 400,
+        "minHeight": 640,
+        "resizable": true,
+        "fullscreen": false,
+        "visible": true,
+        "decorations": true,
+        "transparent": false,
+        "center": true
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["dmg", "app"],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/icon.icns",
+      "icons/icon.ico",
+      "icons/128x128@2x.png",
+      "icons/icon.png"
+    ],
+    "macOS": {
+      "minimumSystemVersion": "14.0",
+      "entitlements": "entitlements.plist",
+      "infoPlist": "Info.plist",
+      "dmg": {
+        "appPosition": { "x": 180, "y": 220 },
+        "applicationFolderPosition": { "x": 480, "y": 220 }
+      }
+    },
+    "iOS": {
+      "minimumSystemVersion": "17.0"
+    },
+    "category": "Lifestyle",
+    "shortDescription": "Control a BC/55 BLE RGB LED bar from the menu bar.",
+    "longDescription": "LightStar is a Tauri + Next.js controller for reverse-engineered BC/55 LED strips. Connect over Bluetooth, set color and brightness, run firmware effects, sync to the screen or microphone, and schedule power on/off."
+  },
+  "plugins": {}
+}
