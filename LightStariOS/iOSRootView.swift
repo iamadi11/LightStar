@@ -47,131 +47,12 @@ private struct iOSControlTab: View {
     var body: some View {
         NavigationStack {
             List {
-                Section("Connection") {
-                    LabeledContent("Status") {
-                        Text(statusText)
-                            .foregroundStyle(ble.connectionError == nil ? .secondary : .red)
-                    }
-                    if ble.connectionState == .connected {
-                        Button("Disconnect", role: .destructive) { ble.disconnect() }
-                    } else if ble.connectionState == .scanning || ble.connectionState == .connecting {
-                        HStack {
-                            ProgressView()
-                            Button("Cancel") { ble.disconnect() }
-                        }
-                    } else {
-                        Button("Connect") { ble.connect() }
-                    }
-                }
-
+                connectionSection
                 if ble.connectionState == .connected {
-                    Section("Power") {
-                        Toggle("Light", isOn: Binding(
-                            get: { ble.isOn },
-                            set: { ble.setPower(on: $0) }
-                        ))
-                        VStack(alignment: .leading) {
-                            Text("Brightness \(Int(ble.brightness * 100))%")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                            Slider(value: Binding(
-                                get: { ble.brightness },
-                                set: { ble.setBrightness($0) }
-                            ), in: 0...1)
-                        }
-                    }
-
-                    Section("Color") {
-                        ColorPicker("Picker", selection: Binding(
-                            get: { ble.color },
-                            set: { ble.setColor($0) }
-                        ), supportsOpacity: false)
-                        VStack(alignment: .leading) {
-                            Text("Hue")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                            Slider(value: $hue, in: 0...1)
-                                .tint(Color(hue: hue, saturation: 1, brightness: 1))
-                                .onChange(of: hue) { _, _ in ble.setHue(hue, saturation: sat) }
-                        }
-                        VStack(alignment: .leading) {
-                            Text("Saturation")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                            Slider(value: $sat, in: 0...1)
-                                .onChange(of: sat) { _, _ in ble.setHue(hue, saturation: sat) }
-                        }
-                        if !ble.colorHistory.isEmpty {
-                            ScrollView(.horizontal, showsIndicators: false) {
-                                HStack(spacing: 8) {
-                                    ForEach(Array(ble.colorHistory.prefix(12).enumerated()), id: \.offset) { _, entry in
-                                        Circle()
-                                            .fill(Color(hue: entry.h, saturation: entry.s, brightness: 1))
-                                            .frame(width: 28, height: 28)
-                                            .onTapGesture {
-                                                hue = entry.h
-                                                sat = entry.s
-                                                ble.setHue(entry.h, saturation: entry.s)
-                                            }
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    Section("White") {
-                        VStack(alignment: .leading) {
-                            Text(cctLabel)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                            Slider(value: Binding(
-                                get: { ble.colorTemperature },
-                                set: { ble.setColorTemperature($0) }
-                            ), in: 0...1)
-                            .disabled(ble.circadianEnabled)
-                        }
-                        Toggle("Circadian auto-adjust", isOn: Binding(
-                            get: { ble.circadianEnabled },
-                            set: { ble.circadianEnabled = $0 }
-                        ))
-                    }
-
-                    Section("Scenes") {
-                        ForEach(presets.presets) { preset in
-                            Button {
-                                ble.apply(preset: preset)
-                                syncFromBLE()
-                            } label: {
-                                HStack {
-                                    Circle().fill(preset.color).frame(width: 14, height: 14)
-                                    Text(preset.name)
-                                    Spacer()
-                                    if presets.defaultPresetID == preset.id {
-                                        Image(systemName: "star.fill")
-                                            .font(.caption)
-                                            .foregroundStyle(.yellow)
-                                    }
-                                }
-                            }
-                            .contextMenu {
-                                Button(presets.defaultPresetID == preset.id ? "Clear Default" : "Set as Default on Connect") {
-                                    presets.defaultPresetID = presets.defaultPresetID == preset.id ? nil : preset.id
-                                }
-                                Button("Delete", role: .destructive) {
-                                    if presets.defaultPresetID == preset.id { presets.defaultPresetID = nil }
-                                    presets.presets.removeAll { $0.id == preset.id }
-                                    presets.save()
-                                }
-                            }
-                        }
-                        Button("Save current as scene…") { showSave = true }
-                        if presets.presets.isEmpty {
-                            Button("Restore Defaults") {
-                                presets.presets = Preset.defaults
-                                presets.save()
-                            }
-                        }
-                    }
+                    powerSection
+                    colorSection
+                    whiteSection
+                    scenesSection
                 }
             }
             .navigationTitle("LightStar")
@@ -181,6 +62,146 @@ private struct iOSControlTab: View {
                 TextField("Name", text: $saveName)
                 Button("Save") { saveCurrentPreset() }
                 Button("Cancel", role: .cancel) {}
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var connectionSection: some View {
+        Section("Connection") {
+            LabeledContent("Status") {
+                Text(statusText)
+                    .foregroundStyle(ble.connectionError == nil ? Color.secondary : Color.red)
+            }
+            if ble.connectionState == .connected {
+                Button("Disconnect", role: .destructive) { ble.disconnect() }
+            } else if ble.connectionState == .scanning || ble.connectionState == .connecting {
+                HStack {
+                    ProgressView()
+                    Button("Cancel") { ble.disconnect() }
+                }
+            } else {
+                Button("Connect") { ble.connect() }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var powerSection: some View {
+        Section("Power") {
+            Toggle("Light", isOn: Binding(
+                get: { ble.isOn },
+                set: { ble.setPower(on: $0) }
+            ))
+            VStack(alignment: .leading) {
+                Text("Brightness \(Int(ble.brightness * 100))%")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Slider(value: Binding(
+                    get: { ble.brightness },
+                    set: { ble.setBrightness($0) }
+                ), in: 0...1)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var colorSection: some View {
+        Section("Color") {
+            ColorPicker("Picker", selection: Binding(
+                get: { ble.color },
+                set: { ble.setColor($0) }
+            ), supportsOpacity: false)
+            VStack(alignment: .leading) {
+                Text("Hue")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Slider(value: $hue, in: 0...1)
+                    .tint(Color(hue: hue, saturation: 1, brightness: 1))
+                    .onChange(of: hue) { _, _ in ble.setHue(hue, saturation: sat) }
+            }
+            VStack(alignment: .leading) {
+                Text("Saturation")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Slider(value: $sat, in: 0...1)
+                    .onChange(of: sat) { _, _ in ble.setHue(hue, saturation: sat) }
+            }
+            if !ble.colorHistory.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(Array(ble.colorHistory.prefix(12).enumerated()), id: \.offset) { _, entry in
+                            Circle()
+                                .fill(Color(hue: entry.h, saturation: entry.s, brightness: 1))
+                                .frame(width: 28, height: 28)
+                                .onTapGesture {
+                                    hue = entry.h
+                                    sat = entry.s
+                                    ble.setHue(entry.h, saturation: entry.s)
+                                }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var whiteSection: some View {
+        Section("White") {
+            VStack(alignment: .leading) {
+                Text(cctLabel)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Slider(value: Binding(
+                    get: { ble.colorTemperature },
+                    set: { ble.setColorTemperature($0) }
+                ), in: 0...1)
+                .disabled(ble.circadianEnabled)
+            }
+            Toggle("Circadian auto-adjust", isOn: Binding(
+                get: { ble.circadianEnabled },
+                set: { ble.circadianEnabled = $0 }
+            ))
+        }
+    }
+
+    @ViewBuilder
+    private var scenesSection: some View {
+        Section("Scenes") {
+            ForEach(presets.presets) { preset in
+                Button {
+                    ble.apply(preset: preset)
+                    syncFromBLE()
+                } label: {
+                    HStack {
+                        Circle().fill(preset.color).frame(width: 14, height: 14)
+                        Text(preset.name)
+                        Spacer()
+                        if presets.defaultPresetID == preset.id {
+                            Image(systemName: "star.fill")
+                                .font(.caption)
+                                .foregroundStyle(.yellow)
+                        }
+                    }
+                }
+                .contextMenu {
+                    Button(presets.defaultPresetID == preset.id ? "Clear Default" : "Set as Default on Connect") {
+                        presets.defaultPresetID = presets.defaultPresetID == preset.id ? nil : preset.id
+                    }
+                    Button("Delete", role: .destructive) {
+                        if presets.defaultPresetID == preset.id { presets.defaultPresetID = nil }
+                        presets.presets.removeAll { $0.id == preset.id }
+                        presets.save()
+                    }
+                }
+            }
+            Button("Save current as scene…") { showSave = true }
+            if presets.presets.isEmpty {
+                Button("Restore Defaults") {
+                    presets.presets = Preset.defaults
+                    presets.save()
+                }
             }
         }
     }

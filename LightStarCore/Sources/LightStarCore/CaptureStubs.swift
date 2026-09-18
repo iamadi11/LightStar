@@ -2,6 +2,8 @@
 import CoreGraphics
 import Foundation
 
+public typealias CGDirectDisplayID = UInt32
+
 @MainActor
 public final class ScreenColorSampler: NSObject {
     public var onColor: ((Double, Double, Double) -> Void)?
