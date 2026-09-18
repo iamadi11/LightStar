@@ -27,10 +27,8 @@ public final class MacInputController: ObservableObject {
     
     /// Request Accessibility permission (opens System Settings).
     public func requestAccessibility() {
-        // Use nonisolated(unsafe) for the accessibility constant which is safe to access
-        nonisolated(unsafe) let promptKey = kAXTrustedCheckOptionPrompt.takeUnretainedValue()
-        let options = [promptKey: true] as CFDictionary
-        AXIsProcessTrustedWithOptions(options)
+        // Safe because the Accessibility prompt key is effectively a constant
+        requestAccessibilityPermissionPrompt()
     }
     
     // MARK: - Mouse Control
@@ -301,6 +299,14 @@ public final class MacInputController: ObservableObject {
             currentMouseLocation.y = screen.frame.height - currentMouseLocation.y
         }
     }
+}
+
+// MARK: - Accessibility Helper
+
+// Isolated to avoid strict concurrency issues with kAXTrustedCheckOptionPrompt
+private nonisolated func requestAccessibilityPermissionPrompt() {
+    let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue(): true] as CFDictionary
+    AXIsProcessTrustedWithOptions(options)
 }
 
 // MARK: - Media Key Constants
