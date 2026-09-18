@@ -1,4 +1,5 @@
 import SwiftUI
+import LightStarCore
 
 struct ScheduleView: View {
     @Environment(ScheduleStore.self) private var store
@@ -55,6 +56,12 @@ private struct ScheduleRow: View {
             Spacer()
             Text(actionLabel)
                 .font(.caption2).foregroundStyle(.secondary)
+            if schedule.firmwareTimerEnabled {
+                Image(systemName: "cpu")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                    .help("Firmware timer")
+            }
             Button(role: .destructive) {
                 store.schedules.removeAll { $0.id == schedule.id }
                 store.save()
@@ -96,6 +103,7 @@ private struct AddScheduleSheet: View {
     @State private var time = Calendar.current.date(bySettingHour: 8, minute: 0, second: 0, of: Date()) ?? Date()
     @State private var days: Set<Int> = [2, 3, 4, 5, 6]   // Mon–Fri default
     @State private var actionType = 0   // 0=On, 1=Off, 2=Current color
+    @State private var useFirmwareTimer = false
 
     private let dayLabels = [(1,"Su"),(2,"Mo"),(3,"Tu"),(4,"We"),(5,"Th"),(6,"Fr"),(7,"Sa")]
 
@@ -134,6 +142,11 @@ private struct AddScheduleSheet: View {
                 .pickerStyle(.segmented)
             }
 
+            Toggle("Firmware timer (works with Mac asleep)", isOn: $useFirmwareTimer)
+                .font(.caption)
+                .toggleStyle(.checkbox)
+                .help("Pushes BC0D weekly timers to the strip so bedtime still works when this Mac is off.")
+
             HStack {
                 Button("Cancel") { dismiss() }
                 Spacer()
@@ -156,7 +169,11 @@ private struct AddScheduleSheet: View {
             action = .preset(colorHue: h, colorSat: s, brightness: ble.brightness)
         default: action = .powerOn
         }
-        store.schedules.append(LightSchedule(label: name, time: time, days: days, action: action))
+        // lastFiredAt: .now — creating "08:00 weekdays" at 08:05 must not catch-up-fire.
+        store.schedules.append(LightSchedule(
+            label: name, time: time, days: days, action: action,
+            lastFiredAt: .now, useFirmwareTimer: useFirmwareTimer
+        ))
         store.save()
     }
 }

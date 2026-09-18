@@ -1,3 +1,4 @@
+#if os(macOS)
 import ScreenCaptureKit
 import CoreMedia
 import Accelerate
@@ -6,9 +7,9 @@ import Accelerate
 // Fires onBands at ~86 Hz (512 samples / 44100 Hz) with adaptive FFT analysis.
 // Same FrequencyBands struct and spectral-flux beat detection as MicSyncManager.
 @MainActor
-final class SystemAudioSampler: NSObject {
+public final class SystemAudioSampler: NSObject {
 
-    var onBands: ((FrequencyBands) -> Void)?
+    public var onBands: ((FrequencyBands) -> Void)?
     private(set) var isRunning = false
 
     private var stream: SCStream?
@@ -24,7 +25,7 @@ final class SystemAudioSampler: NSObject {
     // @MainActor so no extra synchronization needed between start/stop.
     private var generation = 0
 
-    func start() async throws {
+    public func start() async throws {
         guard !isRunning else { return }
         generation &+= 1
         let gen = generation
@@ -60,7 +61,7 @@ final class SystemAudioSampler: NSObject {
         isRunning = true
     }
 
-    func stop() async {
+    public func stop() async {
         guard isRunning else { return }
         generation &+= 1  // invalidate any concurrent start()
         isRunning = false
@@ -86,8 +87,8 @@ final class SystemAudioSampler: NSObject {
 
 // MARK: - SCStreamOutput
 
-extension SystemAudioSampler: SCStreamOutput {
-    nonisolated func stream(_ stream: SCStream,
+public extension SystemAudioSampler: SCStreamOutput {
+    public nonisolated func stream(_ stream: SCStream,
                             didOutputSampleBuffer sb: CMSampleBuffer,
                             of type: SCStreamOutputType) {
         guard type == .audio else { return }
@@ -130,7 +131,7 @@ extension SystemAudioSampler: SCStreamOutput {
 
 // MARK: - FFT (same algorithm as MicSyncManager — adaptive normalisation + spectral flux)
 
-extension SystemAudioSampler {
+public extension SystemAudioSampler {
     nonisolated private func analyze(_ samples: [Float], sampleRate: Double) -> FrequencyBands {
         let n = samples.count
         var rmsVal: Float = 0
@@ -199,3 +200,5 @@ extension SystemAudioSampler {
         return Double(sqrtf(sum / Float(slice.count)))
     }
 }
+
+#endif

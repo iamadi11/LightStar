@@ -1,20 +1,6 @@
 import WidgetKit
 import SwiftUI
-
-struct WidgetState: Codable {
-    var connected: Bool = false
-    var isOn: Bool = false
-    var hue: Double = 0.6
-    var saturation: Double = 1.0
-}
-
-private func readWidgetState() -> WidgetState {
-    guard let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first,
-          let data = try? Data(contentsOf: support.appendingPathComponent("LightStar/widget-state.json")),
-          let state = try? JSONDecoder().decode(WidgetState.self, from: data)
-    else { return WidgetState() }
-    return state
-}
+import LightStarCore
 
 struct LightStarEntry: TimelineEntry {
     let date: Date
@@ -26,10 +12,10 @@ struct LightStarProvider: TimelineProvider {
         LightStarEntry(date: .now, state: WidgetState(connected: true, isOn: true, hue: 0.6, saturation: 1))
     }
     func getSnapshot(in context: Context, completion: @escaping (LightStarEntry) -> Void) {
-        completion(LightStarEntry(date: .now, state: readWidgetState()))
+        completion(LightStarEntry(date: .now, state: WidgetState.load()))
     }
     func getTimeline(in context: Context, completion: @escaping (Timeline<LightStarEntry>) -> Void) {
-        let entry = LightStarEntry(date: .now, state: readWidgetState())
+        let entry = LightStarEntry(date: .now, state: WidgetState.load())
         let next = Calendar.current.date(byAdding: .minute, value: 5, to: .now)!
         completion(Timeline(entries: [entry], policy: .after(next)))
     }

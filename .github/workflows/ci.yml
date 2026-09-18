@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Generate, test, build
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_26.3.app
+
+      - name: Install xcodegen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Test LightStarCore
+        run: swift test --package-path LightStarCore
+
+      - name: Build macOS (unsigned)
+        run: |
+          xcodebuild build \
+            -project LightStar.xcodeproj \
+            -scheme LightStar \
+            -configuration Debug \
+            -derivedDataPath /tmp/ls-dd \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Verify widget is embedded
+        run: test -d /tmp/ls-dd/Build/Products/Debug/LightStar.app/Contents/PlugIns/LightStarWidget.appex
+
+      - name: Build iOS (unsigned)
+        run: |
+          xcodebuild build \
+            -project LightStar.xcodeproj \
+            -scheme LightStariOS \
+            -destination 'generic/platform=iOS' \
+            -configuration Debug \
+            CODE_SIGNING_ALLOWED=NO

@@ -1,4 +1,5 @@
 import SwiftUI
+import LightStarCore
 
 struct SyncModePickerView: View {
     @Environment(LightBLEManager.self) private var ble

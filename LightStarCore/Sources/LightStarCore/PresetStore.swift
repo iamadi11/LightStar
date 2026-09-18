@@ -1,18 +1,20 @@
 import Foundation
-import AppKit
 import UniformTypeIdentifiers
+#if os(macOS)
+import AppKit
+#endif
 
 @MainActor @Observable
-final class PresetStore {
-    var presets: [Preset] = []
-    var iCloudEnabled: Bool {
+public final class PresetStore {
+    public var presets: [Preset] = []
+    public var iCloudEnabled: Bool {
         get { UserDefaults.standard.bool(forKey: "iCloudPresetSync") }
         set {
             UserDefaults.standard.set(newValue, forKey: "iCloudPresetSync")
             if newValue { pushToiCloud() } else { save() }
         }
     }
-    var defaultPresetID: UUID? {
+    public var defaultPresetID: UUID? {
         get {
             UserDefaults.standard.string(forKey: "defaultPresetID").flatMap { UUID(uuidString: $0) }
         }
@@ -34,13 +36,13 @@ final class PresetStore {
         return dir.appendingPathComponent("presets.json")
     }
 
-    init() {
+    public init() {
         load()
         if presets.isEmpty { presets = Preset.defaults }
         observeiCloud()
     }
 
-    func save() {
+    public func save() {
         guard let data = try? JSONEncoder().encode(presets) else { return }
         try? data.write(to: Self.storeURL)
         if iCloudEnabled { pushToiCloud() }
@@ -48,7 +50,7 @@ final class PresetStore {
 
     // MARK: - iCloud
 
-    var iCloudAvailable: Bool { kvStore != nil }
+    public var iCloudAvailable: Bool { kvStore != nil }
 
     private func pushToiCloud() {
         guard let kv = kvStore,
@@ -90,8 +92,20 @@ final class PresetStore {
 
     // MARK: - Export / Import
 
-    func exportToFile() {
-        guard let data = try? JSONEncoder().encode(presets) else { return }
+    public func encodedJSON() -> Data? {
+        try? JSONEncoder().encode(presets)
+    }
+
+    public func mergeImported(_ imported: [Preset]) {
+        presets.append(contentsOf: imported.filter { imp in
+            !presets.contains(where: { $0.id == imp.id })
+        })
+        save()
+    }
+
+    #if os(macOS)
+    public func exportToFile() {
+        guard let data = encodedJSON() else { return }
         let panel = NSSavePanel()
         panel.nameFieldStringValue = "LightStar Presets.json"
         panel.allowedContentTypes = [.json]
@@ -101,7 +115,7 @@ final class PresetStore {
         }
     }
 
-    func importFromFile() {
+    public func importFromFile() {
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [.json]
         panel.allowsMultipleSelection = false
@@ -111,13 +125,11 @@ final class PresetStore {
                 guard let data = try? Data(contentsOf: url),
                       let imported = try? JSONDecoder().decode([Preset].self, from: data)
                 else { return }
-                self?.presets.append(contentsOf: imported.filter { imp in
-                    !(self?.presets.contains(where: { $0.id == imp.id }) ?? false)
-                })
-                self?.save()
+                self?.mergeImported(imported)
             }
         }
     }
+    #endif
 
     private func load() {
         guard let data = try? Data(contentsOf: Self.storeURL),

@@ -3,15 +3,15 @@ import SwiftUI
 
 @MainActor
 @Observable
-final class LightBLEManager: NSObject {
+public final class LightBLEManager: NSObject {
 
     // MARK: - Types
 
-    enum ConnectionState: String {
+    public enum ConnectionState: String {
         case disconnected, scanning, connecting, connected
     }
 
-    enum SyncMode: String, CaseIterable, Equatable {
+    public enum SyncMode: String, CaseIterable, Equatable {
         case off      = "Off"
         case video    = "Video"
         case audio    = "Audio"
@@ -20,36 +20,36 @@ final class LightBLEManager: NSObject {
 
     // MARK: - Observable state
 
-    var connectionState: ConnectionState = .disconnected
-    var connectionError: String?   // set on scan timeout or reconnect exhaustion
-    var bleNeedsPermission = false  // true when BT is .unauthorized → show settings button
-    var isOn: Bool = UserDefaults.standard.object(forKey: "lastPowerState") as? Bool ?? false {
+    public var connectionState: ConnectionState = .disconnected
+    public var connectionError: String?   // set on scan timeout or reconnect exhaustion
+    public var bleNeedsPermission = false  // true when BT is .unauthorized → show settings button
+    public var isOn: Bool = UserDefaults.standard.object(forKey: "lastPowerState") as? Bool ?? false {
         didSet { UserDefaults.standard.set(isOn, forKey: "lastPowerState") }
     }
-    var color: Color = {
+    public var color: Color = {
         guard let h = UserDefaults.standard.object(forKey: "colorHue") as? Double,
               let s = UserDefaults.standard.object(forKey: "colorSat") as? Double else { return .white }
         return Color(hue: h, saturation: s, brightness: 1)
     }()
-    var brightness: Double = UserDefaults.standard.object(forKey: "brightness") as? Double ?? 1.0 {
+    public var brightness: Double = UserDefaults.standard.object(forKey: "brightness") as? Double ?? 1.0 {
         didSet { UserDefaults.standard.set(brightness, forKey: "brightness") }
     }
-    var effectID: UInt8 = 0x01
-    var effectSpeed: Double = 0.5   // 0–1 mapped to 0–100
-    var effectModeActive = false
+    public var effectID: UInt8 = 0x01
+    public var effectSpeed: Double = 0.5   // 0–1 mapped to 0–100
+    public var effectModeActive = false
     // Sync state machine
-    var syncMode: SyncMode = .off
-    var syncColor: Color? = nil          // live color during sync; nil when sync is off
-    var syncError: String?
-    var syncNeedsPermission = false   // true when syncError is a Screen Recording denial
-    var pendingSyncMode: SyncMode?  // mode to retry when permission is granted
-    var syncTransitioning = false
+    public var syncMode: SyncMode = .off
+    public var syncColor: Color? = nil          // live color during sync; nil when sync is off
+    public var syncError: String?
+    public var syncNeedsPermission = false   // true when syncError is a Screen Recording denial
+    public var pendingSyncMode: SyncMode?  // mode to retry when permission is granted
+    public var syncTransitioning = false
     // Called after the connect sequence completes with no sync mode to restore
-    var onConnect: (@MainActor () -> Void)?
-    enum AudioSyncMode: String, CaseIterable { case rainbow = "Rainbow"; case pulse = "Pulse"; case frequency = "Frequency" }
-    var audioSyncMode: AudioSyncMode = .rainbow
-    enum AudioInputSource: String, CaseIterable { case system = "System Audio"; case mic = "Microphone"; case stripMic = "Strip Mic" }
-    var audioInputSource: AudioInputSource = {
+    public var onConnect: (@MainActor () -> Void)?
+    public enum AudioSyncMode: String, CaseIterable { case rainbow = "Rainbow"; case pulse = "Pulse"; case frequency = "Frequency" }
+    public var audioSyncMode: AudioSyncMode = .rainbow
+    public enum AudioInputSource: String, CaseIterable { case system = "System Audio"; case mic = "Microphone"; case stripMic = "Strip Mic" }
+    public var audioInputSource: AudioInputSource = {
         guard let raw = UserDefaults.standard.string(forKey: "audioInputSource"),
               let v = AudioInputSource(rawValue: raw) else { return .system }
         return v
@@ -61,17 +61,17 @@ final class LightBLEManager: NSObject {
         }
     }
     // Strip onboard mic settings (BC11 style, BC12 sensitivity)
-    enum MicStyle: Int, CaseIterable {
+    public enum MicStyle: Int, CaseIterable {
         case classic = 1, soft = 2, dynamic = 3, disco = 4
         var label: String {
             switch self { case .classic: "Classic"; case .soft: "Soft"; case .dynamic: "Dynamic"; case .disco: "Disco" }
         }
     }
-    var micStyle: MicStyle = .classic {
+    public var micStyle: MicStyle = .classic {
         didSet { if audioInputSource == .stripMic { write(Cmd.micStyle(UInt8(micStyle.rawValue))) } }
     }
     // 0–255 mapped to 0.0–1.0 for slider
-    var micSensitivity: Double = UserDefaults.standard.object(forKey: "micSensitivity") as? Double ?? 0.5 {
+    public var micSensitivity: Double = UserDefaults.standard.object(forKey: "micSensitivity") as? Double ?? 0.5 {
         didSet {
             UserDefaults.standard.set(micSensitivity, forKey: "micSensitivity")
             if audioInputSource == .stripMic { write(Cmd.micSensitivity(Int(micSensitivity * 255))) }
@@ -79,49 +79,49 @@ final class LightBLEManager: NSObject {
     }
 
     // LED strip hardware config
-    enum LEDChannelOrder: Int, CaseIterable {
+    public enum LEDChannelOrder: Int, CaseIterable {
         case rgb = 1, rbg = 2, grb = 3, gbr = 4, brg = 5, bgr = 6
         var label: String {
             switch self { case .rgb: "RGB"; case .rbg: "RBG"; case .grb: "GRB"; case .gbr: "GBR"; case .brg: "BRG"; case .bgr: "BGR" }
         }
     }
-    var ledChannelOrder: LEDChannelOrder = .rgb {
-        didSet { write([0xBC, 0x02, 0x01, UInt8(ledChannelOrder.rawValue), 0x55]) }
+    public var ledChannelOrder: LEDChannelOrder = .rgb {
+        didSet { write(Cmd.channelOrder(UInt8(ledChannelOrder.rawValue))) }
     }
-    var ledPixelCount: Int = 30 {
+    public var ledPixelCount: Int = 30 {
         didSet {
             let n = max(8, min(300, ledPixelCount))
-            ledPixelCount = n
-            write([0xBC, 0x03, 0x02, UInt8(n >> 8), UInt8(n & 0xFF), 0x55])
+            if n != ledPixelCount { ledPixelCount = n; return }
+            write(Cmd.pixelCount(n))
         }
     }
 
     // Display picker
-    var availableDisplays: [(id: CGDirectDisplayID, name: String)] = []
-    var selectedDisplayID: CGDirectDisplayID? = nil {
+    public var availableDisplays: [(id: CGDirectDisplayID, name: String)] = []
+    public var selectedDisplayID: CGDirectDisplayID? = nil {
         didSet {
             guard isSyncingVideo, oldValue != selectedDisplayID else { return }
             setSyncMode(syncMode)  // restart with the new display
         }
     }
-    var syncResponsiveness: Double = UserDefaults.standard.object(forKey: "syncResponsiveness") as? Double ?? 0.7 {
+    public var syncResponsiveness: Double = UserDefaults.standard.object(forKey: "syncResponsiveness") as? Double ?? 0.7 {
         didSet { UserDefaults.standard.set(syncResponsiveness, forKey: "syncResponsiveness") }
     }
     // Beat sensitivity: 0 = very hard to trigger, 0.5 = default (flux > 0.60), 1 = very sensitive (flux > 0.20)
-    var beatSensitivity: Double = UserDefaults.standard.object(forKey: "beatSensitivity") as? Double ?? 0.5 {
+    public var beatSensitivity: Double = UserDefaults.standard.object(forKey: "beatSensitivity") as? Double ?? 0.5 {
         didSet { UserDefaults.standard.set(beatSensitivity, forKey: "beatSensitivity") }
     }
     // When true, video sync also drives strip brightness from average screen brightness
-    var videoSyncBrightness: Bool = UserDefaults.standard.bool(forKey: "videoSyncBrightness") {
+    public var videoSyncBrightness: Bool = UserDefaults.standard.bool(forKey: "videoSyncBrightness") {
         didSet { UserDefaults.standard.set(videoSyncBrightness, forKey: "videoSyncBrightness") }
     }
 
-    var isSyncingVideo: Bool { syncMode == .video || syncMode == .combined }
-    var isSyncingAudio: Bool { syncMode == .audio || syncMode == .combined }
+    public var isSyncingVideo: Bool { syncMode == .video || syncMode == .combined }
+    public var isSyncingAudio: Bool { syncMode == .audio || syncMode == .combined }
 
     // MARK: - Color history (last 12 manually set colors)
 
-    var colorHistory: [(h: Double, s: Double)] = {
+    public var colorHistory: [(h: Double, s: Double)] = {
         guard let data = UserDefaults.standard.data(forKey: "colorHistory"),
               let arr = try? JSONDecoder().decode([[Double]].self, from: data) else { return [] }
         return arr.map { ($0[0], $0[1]) }
@@ -129,22 +129,22 @@ final class LightBLEManager: NSObject {
 
     // MARK: - Circadian auto color temperature
 
-    var circadianEnabled: Bool = UserDefaults.standard.bool(forKey: "circadianEnabled") {
+    public var circadianEnabled: Bool = UserDefaults.standard.bool(forKey: "circadianEnabled") {
         didSet {
             UserDefaults.standard.set(circadianEnabled, forKey: "circadianEnabled")
             if circadianEnabled { startCircadianTimer() } else { stopCircadianTimer() }
         }
     }
-    var circadianTimer: Timer?
+    public var circadianTimer: Timer?
 
     // MARK: - Protocol probe
-    var probeLog: [String] = []
-    var probeRunning = false
+    public var probeLog: [String] = []
+    public var probeRunning = false
 
     // MARK: - Device discovery log
-    var deviceLog: [String] = []
-    var capturedAdvertisementStrings: [String: String] = [:]
-    var capturedRSSI: Int = 0
+    public var deviceLog: [String] = []
+    public var capturedAdvertisementStrings: [String: String] = [:]
+    public var capturedRSSI: Int = 0
     // MARK: - BLE UUIDs
 
     nonisolated(unsafe) private static let serviceUUID    = CBUUID(string: "FFF0")
@@ -154,14 +154,14 @@ final class LightBLEManager: NSObject {
 
     // MARK: - Multi-light
 
-    var multiLightEnabled: Bool = UserDefaults.standard.bool(forKey: "multiLightEnabled") {
+    public var multiLightEnabled: Bool = UserDefaults.standard.bool(forKey: "multiLightEnabled") {
         didSet {
             UserDefaults.standard.set(multiLightEnabled, forKey: "multiLightEnabled")
             if !multiLightEnabled { disconnectExtraLights() }
         }
     }
     // Names of all connected lights (primary first, then extras)
-    var connectedLightNames: [String] {
+    public var connectedLightNames: [String] {
         var names: [String] = []
         if let n = peripheral?.name { names.append(n) }
         names += extraLights.compactMap { $0.peripheral.name }
@@ -170,39 +170,42 @@ final class LightBLEManager: NSObject {
 
     // MARK: - Private state
 
-    var central: CBCentralManager!
-    var peripheral: CBPeripheral?
-    var writeChar: CBCharacteristic?
-    var extraLights: [(peripheral: CBPeripheral, writeChar: CBCharacteristic?)] = []
-    var reconnectTask: Task<Void, Never>?
-    var probeTask: Task<Void, Never>?
+    public var central: CBCentralManager!
+    public var peripheral: CBPeripheral?
+    public var writeChar: CBCharacteristic?
+    public var extraLights: [(peripheral: CBPeripheral, writeChar: CBCharacteristic?)] = []
+    public var reconnectTask: Task<Void, Never>?
+    public var probeTask: Task<Void, Never>?
     // Set during probe sweeps to mirror BLE notifications into probeLog
-    var notifyTapHandler: ((Data) -> Void)?
-    var connectSequenceTask: Task<Void, Never>?
-    var connectWhenReady = false
-    var shouldAutoReconnect = false
+    public var notifyTapHandler: ((Data) -> Void)?
+    public var connectSequenceTask: Task<Void, Never>?
+    public var connectWhenReady = false
+    public var shouldAutoReconnect = false
     // Restored after reconnect and after full app restart
-    var lastSyncMode: SyncMode = {
+    public var lastSyncMode: SyncMode = {
         guard let raw = UserDefaults.standard.string(forKey: "lastSyncMode"),
               let v = SyncMode(rawValue: raw) else { return .off }
         return v
     }()
-    var colorDebounce: Task<Void, Never>?
-    var reconnectAttempts = 0
-    let maxReconnectAttempts = 5
-    let systemAudio = SystemAudioSampler()
-    let micAudio = MicAudioSampler()
-    var transitionTask: Task<Void, Never>?
-    var fadeTask: Task<Void, Never>?
-    var coalescer: BLEWriteCoalescer!
-    var beatHue: Double = 0
-    var flashLevel: Double = 0
-    var lastScreenH: Double = 0
-    var lastScreenS: Double = 1
-    var audioPulseH: Double = 0   // cached hue for pulse mode — avoids 30Hz hsvComponents
-    let screenSampler = ScreenColorSampler()
+    public var colorDebounce: Task<Void, Never>?
+    public var reconnectAttempts = 0
+    public let maxReconnectAttempts = 5
+    public var userInitiatedDisconnect = false
+    public var connectingTimeoutTask: Task<Void, Never>?
+    public let connectingTimeoutNanos: UInt64 = 10_000_000_000
+    public let systemAudio = SystemAudioSampler()
+    public let micAudio = MicAudioSampler()
+    public var transitionTask: Task<Void, Never>?
+    public var fadeTask: Task<Void, Never>?
+    public var coalescer: BLEWriteCoalescer!
+    public var beatHue: Double = 0
+    public var flashLevel: Double = 0
+    public var lastScreenH: Double = 0
+    public var lastScreenS: Double = 1
+    public var audioPulseH: Double = 0   // cached hue for pulse mode — avoids 30Hz hsvComponents
+    public let screenSampler = ScreenColorSampler()
 
-    override init() {
+    public override init() {
         super.init()
         if circadianEnabled { startCircadianTimer() }
         central = CBCentralManager(delegate: self, queue: .main)
@@ -223,9 +226,10 @@ final class LightBLEManager: NSObject {
 
     // MARK: - Public API
 
-    func connect() {
+    public func connect() {
         guard connectionState == .disconnected else { return }
         reconnectAttempts = 0
+        userInitiatedDisconnect = false
         connectionError = nil
         bleNeedsPermission = false
 
@@ -247,7 +251,7 @@ final class LightBLEManager: NSObject {
     // Call when the user returns from System Settings after (potentially) granting
     // Bluetooth permission. Recreates CBCentralManager so it re-evaluates current
     // auth state and triggers the permission dialog if still notDetermined.
-    func retryBluetoothPermission() {
+    public func retryBluetoothPermission() {
         guard bleNeedsPermission else { return }
         bleNeedsPermission = false
         connectionError = nil
@@ -256,19 +260,24 @@ final class LightBLEManager: NSObject {
         central = CBCentralManager(delegate: self, queue: .main)
     }
 
-    func disconnect() {
+    public func disconnect() {
         reconnectTask?.cancel()
         reconnectTask = nil
         probeTask?.cancel()
         probeTask = nil
         connectSequenceTask?.cancel()
         connectSequenceTask = nil
+        connectingTimeoutTask?.cancel()
+        connectingTimeoutTask = nil
         connectWhenReady = false
         shouldAutoReconnect = false
-        lastSyncMode = .off
-        reconnectAttempts = maxReconnectAttempts
+        userInitiatedDisconnect = true
+        reconnectAttempts = 0
         bleNeedsPermission = false
         connectionError = nil
+        stopSyncInline()
+        lastSyncMode = .off
+        UserDefaults.standard.set(SyncMode.off.rawValue, forKey: "lastSyncMode")
         coalescer.flush()
         if probeRunning {
             probeRunning = false
@@ -279,28 +288,19 @@ final class LightBLEManager: NSObject {
         connectionState = .disconnected
     }
 
-    func sendRaw(_ bytes: [UInt8]) {
+    public func sendRaw(_ bytes: [UInt8]) {
         print("[LightStar] sendRaw: \(bytes.map { String(format: "%02X", $0) }.joined(separator: " "))")
         write(bytes)
     }
 
-    func setPower(on: Bool) {
+    public func setPower(on: Bool) {
         isOn = on
         if !on {
             // Cancel ALL pending async work before powerOff — any hue/brightness
             // packet arriving after powerOff wakes the BC/55 strip back up.
-            transitionTask?.cancel(); transitionTask = nil
             connectSequenceTask?.cancel(); connectSequenceTask = nil
-            probeTask?.cancel(); probeTask = nil
-            fadeTask?.cancel(); fadeTask = nil
             colorDebounce?.cancel(); colorDebounce = nil
-            syncTransitioning = false
-            systemAudio.onBands = nil
-            screenSampler.onColor = nil
-            flashLevel = 0
-            syncMode = .off
-            // Stop samplers async — no fade, nothing writes after powerOff
-            Task { await self.systemAudio.stop(); await self.screenSampler.stop() }
+            stopSyncInline()
         }
         write(on ? Cmd.powerOn : Cmd.powerOff)
     }
@@ -318,7 +318,7 @@ final class LightBLEManager: NSObject {
         connectionState = .scanning
         central.scanForPeripherals(withServices: [Self.advertisedUUID], options: nil)
         Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 10_000_000_000)
+            do { try await Task.sleep(nanoseconds: 10_000_000_000) } catch { return }
             guard self.connectionState == .scanning else { return }
             self.central.stopScan()
             self.connectionState = .disconnected
@@ -326,10 +326,27 @@ final class LightBLEManager: NSObject {
         }
     }
 
+    public func armConnectingTimeout(for peripheral: CBPeripheral) {
+        connectingTimeoutTask?.cancel()
+        connectingTimeoutTask = Task { @MainActor in
+            do { try await Task.sleep(nanoseconds: self.connectingTimeoutNanos) } catch { return }
+            guard self.connectionState == .connecting else { return }
+            self.central.cancelPeripheralConnection(peripheral)
+            self.connectionState = .disconnected
+            self.connectionError = "Connection timed out — is the light powered on?"
+        }
+    }
+
+    public func enterConnecting(_ peripheral: CBPeripheral) {
+        connectionState = .connecting
+        armConnectingTimeout(for: peripheral)
+    }
+
     // FFF3 supports write-with-response (.write) — CB queues internally, ACK guaranteed.
-    func write(_ bytes: [UInt8]) { coalescer.enqueue(bytes) }
+    public func write(_ bytes: [UInt8]) { coalescer.enqueue(bytes) }
 
     private func scheduleReconnect() {
+        guard !userInitiatedDisconnect else { return }
         guard reconnectAttempts < maxReconnectAttempts else {
             connectionState = .disconnected
             connectionError = "Could not reconnect — tap Connect to retry"
@@ -338,10 +355,10 @@ final class LightBLEManager: NSObject {
         reconnectAttempts += 1
         let delay = UInt64(min(30, pow(2.0, Double(reconnectAttempts)))) * 1_000_000_000
         reconnectTask = Task { @MainActor in
-            try? await Task.sleep(nanoseconds: delay)
-            guard !Task.isCancelled else { return }
+            do { try await Task.sleep(nanoseconds: delay) } catch { return }
+            guard !Task.isCancelled, !self.userInitiatedDisconnect else { return }
             if let p = self.peripheral {
-                self.connectionState = .connecting
+                self.enterConnecting(p)
                 self.central.connect(p, options: nil)
             } else {
                 self.startScan()
@@ -352,9 +369,9 @@ final class LightBLEManager: NSObject {
 
 // MARK: - CBCentralManagerDelegate
 
-extension LightBLEManager: CBCentralManagerDelegate {
+public extension LightBLEManager: CBCentralManagerDelegate {
 
-    nonisolated func centralManagerDidUpdateState(_ central: CBCentralManager) {
+    public nonisolated func centralManagerDidUpdateState(_ central: CBCentralManager) {
         Task { @MainActor in
             switch central.state {
             case .poweredOn:
@@ -376,7 +393,7 @@ extension LightBLEManager: CBCentralManagerDelegate {
                     self.shouldAutoReconnect = false
                     self.reconnectAttempts = 0
                     if let p = self.peripheral {
-                        self.connectionState = .connecting
+                        self.enterConnecting(p)
                         self.central.connect(p, options: nil)
                     } else {
                         self.startScan()
@@ -402,7 +419,7 @@ extension LightBLEManager: CBCentralManagerDelegate {
         }
     }
 
-    nonisolated func centralManager(_ central: CBCentralManager,
+    public nonisolated func centralManager(_ central: CBCentralManager,
                                     didDiscover peripheral: CBPeripheral,
                                     advertisementData: [String: Any],
                                     rssi RSSI: NSNumber) {
@@ -434,12 +451,12 @@ extension LightBLEManager: CBCentralManagerDelegate {
             self.capturedAdvertisementStrings = advStrings
             self.capturedRSSI = rssi
             peripheral.delegate = self
-            self.connectionState = .connecting
+            self.enterConnecting(peripheral)
             central.connect(peripheral, options: nil)
         }
     }
 
-    nonisolated func centralManager(_ central: CBCentralManager,
+    public nonisolated func centralManager(_ central: CBCentralManager,
                                     didConnect peripheral: CBPeripheral) {
         Task { @MainActor in
             self.reconnectAttempts = 0
@@ -449,13 +466,13 @@ extension LightBLEManager: CBCentralManagerDelegate {
         }
     }
 
-    nonisolated func centralManager(_ central: CBCentralManager,
+    public nonisolated func centralManager(_ central: CBCentralManager,
                                     didFailToConnect peripheral: CBPeripheral,
                                     error: (any Error)?) {
         Task { @MainActor in self.scheduleReconnect() }
     }
 
-    nonisolated func centralManager(_ central: CBCentralManager,
+    public nonisolated func centralManager(_ central: CBCentralManager,
                                     didDisconnectPeripheral peripheral: CBPeripheral,
                                     error: (any Error)?) {
         Task { @MainActor in
@@ -465,6 +482,8 @@ extension LightBLEManager: CBCentralManagerDelegate {
                 return
             }
             self.writeChar = nil
+            self.connectingTimeoutTask?.cancel()
+            self.connectingTimeoutTask = nil
             self.connectionState = .disconnected
             self.coalescer.flush()
             self.transitionTask?.cancel()
@@ -472,17 +491,11 @@ extension LightBLEManager: CBCentralManagerDelegate {
             self.connectSequenceTask = nil
             self.probeTask?.cancel()
             self.probeTask = nil
-            self.systemAudio.onBands = nil
-            self.screenSampler.onColor = nil
-            // Save active sync mode before clearing — restored on reconnect and next app launch
-            self.lastSyncMode = self.syncMode
-            UserDefaults.standard.set(self.syncMode.rawValue, forKey: "lastSyncMode")
-            self.syncMode = .off
-            self.syncTransitioning = false
-            Task { await self.systemAudio.stop() }
-            Task { await self.screenSampler.stop() }
-            // reconnectAttempts == maxReconnectAttempts means user called disconnect() — skip auto-reconnect
-            if error != nil && self.reconnectAttempts < self.maxReconnectAttempts {
+            self.stopSyncInline()
+            // reconnectAttempts == max was the old "user disconnect" sentinel.
+            // userInitiatedDisconnect is the explicit flag; backoff exhaustion
+            // no longer silently kills future auto-reconnect.
+            if error != nil && !self.userInitiatedDisconnect && self.reconnectAttempts < self.maxReconnectAttempts {
                 self.shouldAutoReconnect = true
                 self.scheduleReconnect()
             }
@@ -492,9 +505,9 @@ extension LightBLEManager: CBCentralManagerDelegate {
 
 // MARK: - CBPeripheralDelegate
 
-extension LightBLEManager: CBPeripheralDelegate {
+public extension LightBLEManager: CBPeripheralDelegate {
 
-    nonisolated func peripheral(_ peripheral: CBPeripheral,
+    public nonisolated func peripheral(_ peripheral: CBPeripheral,
                                 didDiscoverServices error: (any Error)?) {
         guard let services = peripheral.services else { return }
         let uuids = services.map { $0.uuid.uuidString }
@@ -506,7 +519,7 @@ extension LightBLEManager: CBPeripheralDelegate {
         }
     }
 
-    nonisolated func peripheral(_ peripheral: CBPeripheral,
+    public nonisolated func peripheral(_ peripheral: CBPeripheral,
                                 didDiscoverCharacteristicsFor service: CBService,
                                 error: (any Error)?) {
         let chars = service.characteristics ?? []
@@ -546,7 +559,10 @@ extension LightBLEManager: CBPeripheralDelegate {
                 }
             }
             if self.writeChar != nil {
+                self.connectingTimeoutTask?.cancel()
+                self.connectingTimeoutTask = nil
                 self.connectionState = .connected
+                self.connectionError = nil
                 self.sendTimeSync()
                 let targetOn = self.isOn  // respect persisted power state from before disconnect
                 // Power-cycle on connect (mirrors OEM app init), then clear animation
@@ -569,13 +585,14 @@ extension LightBLEManager: CBPeripheralDelegate {
                     } else if self.circadianEnabled {
                         self.applyCircadianCCT()
                     }
+                    self.onConnect?()
                 }
             }
         }
     }
 
     // ACK from write-with-response — log failures only
-    nonisolated func peripheral(_ peripheral: CBPeripheral,
+    public nonisolated func peripheral(_ peripheral: CBPeripheral,
                                 didWriteValueFor characteristic: CBCharacteristic,
                                 error: (any Error)?) {
         if let error {
@@ -586,7 +603,7 @@ extension LightBLEManager: CBPeripheralDelegate {
         }
     }
 
-    nonisolated func peripheral(_ peripheral: CBPeripheral,
+    public nonisolated func peripheral(_ peripheral: CBPeripheral,
                                 didUpdateValueFor characteristic: CBCharacteristic,
                                 error: (any Error)?) {
         guard let data = characteristic.value else { return }

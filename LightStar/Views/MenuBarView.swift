@@ -1,4 +1,6 @@
 import SwiftUI
+import LightStarCore
+import AppKit
 import AVFoundation
 import ServiceManagement
 
@@ -29,6 +31,20 @@ struct MenuBarView: View {
                         .animation(.easeInOut(duration: 0.3), value: ble.connectionState)
                 }
                 Spacer()
+                Button {
+                    openLightStarControlWindow()
+                } label: {
+                    Image(systemName: "macwindow")
+                }
+                .buttonStyle(.plain)
+                .help("Open LightStar window")
+                Button {
+                    openLightStarSettings()
+                } label: {
+                    Image(systemName: "gearshape")
+                }
+                .buttonStyle(.plain)
+                .help("Settings (⌘,)")
                 connectionButton
             }
             .padding(.horizontal, 16)

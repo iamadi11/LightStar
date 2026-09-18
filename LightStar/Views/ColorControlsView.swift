@@ -1,4 +1,5 @@
 import SwiftUI
+import LightStarCore
 
 // Inline hue + saturation picker — no popup window.
 struct ColorControlView: View {

@@ -1,44 +1,49 @@
 #!/bin/bash
 # LightStar installer
-# Strips Gatekeeper quarantine, resets stale TCC entries, installs, launches.
-set -e
+# Strips Gatekeeper quarantine, copies to /Applications, launches.
+# Does NOT reset TCC — a stable Developer ID / self-signed identity must keep
+# Bluetooth, Screen Recording and Microphone grants across updates.
+set -euo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
 APP="$DIR/LightStar.app"
-BUNDLE_ID="com.adityaraj.LightStar"
+DEST="/Applications/LightStar.app"
 
-echo "Removing Gatekeeper quarantine..."
+if [ ! -d "$APP" ]; then
+    echo "error: LightStar.app not found next to this script" >&2
+    exit 1
+fi
+
+echo "Removing Gatekeeper quarantine from the disk image copy..."
 xattr -rd com.apple.quarantine "$APP" 2>/dev/null || true
 
-# If an old version exists, quit it and remove it cleanly.
-if [ -d /Applications/LightStar.app ]; then
+STAGE="$(mktemp -d /tmp/lightstar-install.XXXXXX)"
+trap 'rm -rf "$STAGE"' EXIT
+echo "Staging copy..."
+cp -R "$APP" "$STAGE/LightStar.app"
+if [ ! -x "$STAGE/LightStar.app/Contents/MacOS/LightStar" ]; then
+    echo "error: staged copy is missing the LightStar executable — aborting without touching /Applications" >&2
+    exit 1
+fi
+
+if [ -d "$DEST" ]; then
     echo "Quitting old LightStar if running..."
     osascript -e 'quit app "LightStar"' 2>/dev/null || true
     sleep 1
     echo "Removing old version..."
-    rm -rf /Applications/LightStar.app
+    rm -rf "$DEST"
 fi
 
-# Reset TCC permission entries for this bundle ID.
-# macOS ties unsigned-app permissions to the binary hash, so the new binary
-# would be silently denied with the old entry. A clean reset forces a fresh
-# permission prompt on first launch instead of a silent denial.
-echo "Resetting permission entries for clean install..."
-tccutil reset Bluetooth "$BUNDLE_ID" 2>/dev/null || true
-tccutil reset ScreenCapture "$BUNDLE_ID" 2>/dev/null || true
-tccutil reset Microphone "$BUNDLE_ID" 2>/dev/null || true
-tccutil reset Camera "$BUNDLE_ID" 2>/dev/null || true
-
 echo "Installing to /Applications..."
-cp -R "$APP" /Applications/LightStar.app
-xattr -rd com.apple.quarantine /Applications/LightStar.app 2>/dev/null || true
+cp -R "$STAGE/LightStar.app" "$DEST"
+xattr -rd com.apple.quarantine "$DEST" 2>/dev/null || true
 
 echo ""
-echo "✓ LightStar installed."
+echo "LightStar installed."
 echo ""
-echo "On first launch you will be asked to grant:"
+echo "On first launch (or after a signing-identity change) grant:"
 echo "  • Bluetooth  — required to connect to your LED bar"
 echo "  • Screen Recording  — required for Video/Audio sync"
 echo "  • Microphone  — only if you use the Microphone sync source"
 echo ""
 echo "Launching LightStar..."
-open /Applications/LightStar.app
+open "$DEST"

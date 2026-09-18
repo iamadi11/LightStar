@@ -1,4 +1,5 @@
 import SwiftUI
+import LightStarCore
 
 struct EffectsView: View {
     @Environment(LightBLEManager.self) private var ble
@@ -109,6 +110,6 @@ struct AnimationsView: View {
 
     private func sendAnimation() {
         ble.setSyncMode(.off)
-        ble.sendRaw([0xBC, 0x13, 0x01, currentID, 0x55])
+        ble.write(Cmd.animation(id: currentID))
     }
 }

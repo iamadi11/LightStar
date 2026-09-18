@@ -1,15 +1,21 @@
 import SwiftUI
 import CoreGraphics
 
-extension LightBLEManager {
+public extension LightBLEManager {
 
     // MARK: - Sync state machine
 
-    func toggleSync() {
-        setSyncMode(syncMode == .off ? (lastSyncMode == .off ? .video : lastSyncMode) : .off)
+    public func toggleSync() {
+        let fallback: SyncMode
+        #if os(macOS)
+        fallback = .video
+        #else
+        fallback = .audio
+        #endif
+        setSyncMode(syncMode == .off ? (lastSyncMode == .off ? fallback : lastSyncMode) : .off)
     }
 
-    func setSyncMode(_ mode: SyncMode) {
+    public func setSyncMode(_ mode: SyncMode) {
         let prevMode = syncMode
         transitionTask?.cancel()
         syncTransitioning = true
@@ -26,7 +32,7 @@ extension LightBLEManager {
         }
     }
 
-    func teardownSync() async {
+    public func teardownSync() async {
         fadeTask?.cancel()
         systemAudio.onBands = nil
         micAudio.onBands = nil
@@ -40,13 +46,13 @@ extension LightBLEManager {
 
     // MARK: - Display sleep/wake
 
-    func pauseScreenSync() {
+    public func pauseScreenSync() {
         guard isSyncingVideo else { return }
         screenSampler.onColor = nil
         Task { await self.screenSampler.stop() }
     }
 
-    func resumeScreenSync() {
+    public func resumeScreenSync() {
         guard isSyncingVideo else { return }
         Task { [weak self] in
             guard let self else { return }
@@ -56,10 +62,15 @@ extension LightBLEManager {
     }
 
     // Synchronously tears down all sync state — safe to call from non-async context.
-    func stopSyncInline() {
+    public func stopSyncInline() {
         transitionTask?.cancel(); transitionTask = nil
+        fadeTask?.cancel(); fadeTask = nil
         probeTask?.cancel(); probeTask = nil
         syncTransitioning = false
+        if syncMode != .off {
+            lastSyncMode = syncMode
+            UserDefaults.standard.set(syncMode.rawValue, forKey: "lastSyncMode")
+        }
         systemAudio.onBands = nil
         micAudio.onBands = nil
         screenSampler.onColor = nil
@@ -69,7 +80,7 @@ extension LightBLEManager {
         Task { await self.systemAudio.stop(); await self.micAudio.stop(); await self.screenSampler.stop() }
     }
 
-    func buildSync(_ mode: SyncMode, previousMode: SyncMode = .off) async {
+    public func buildSync(_ mode: SyncMode, previousMode: SyncMode = .off) async {
         effectModeActive = false
         guard mode == .off || connectionState == .connected else {
             syncMode = .off
@@ -119,16 +130,35 @@ extension LightBLEManager {
 
         case .combined:
             setupScreenCallback()
-            setupAudioCallback()
             screenSampler.selectedDisplayID = selectedDisplayID
             var screenErr: Error? = nil
             var audioErr:  Error? = nil
             async let screenStart: () = screenSampler.start()
-            async let audioStart: () = systemAudio.start()
             do { try await screenStart } catch { screenSampler.onColor = nil; screenErr = error }
-            do { try await audioStart  } catch { systemAudio.onBands  = nil; audioErr  = error }
+
+            if audioInputSource == .stripMic {
+                write(Cmd.stripMic(enabled: true))
+                write(Cmd.micStyle(UInt8(micStyle.rawValue)))
+                write(Cmd.micSensitivity(Int(micSensitivity * 255)))
+            } else {
+                let useMic = audioInputSource == .mic
+                setupAudioCallback(useMic: useMic)
+                do {
+                    if useMic { try await micAudio.start() } else { try await systemAudio.start() }
+                } catch {
+                    if useMic { micAudio.onBands = nil } else { systemAudio.onBands = nil }
+                    audioErr = error
+                }
+            }
             let screenOk = screenSampler.onColor != nil
-            let audioOk  = systemAudio.onBands  != nil
+            let audioOk: Bool
+            if audioInputSource == .stripMic {
+                audioOk = true
+            } else if audioInputSource == .mic {
+                audioOk = micAudio.onBands != nil
+            } else {
+                audioOk = systemAudio.onBands != nil
+            }
             syncMode = screenOk && audioOk ? .combined
                      : screenOk           ? .video
                      : audioOk            ? .audio
@@ -138,7 +168,7 @@ extension LightBLEManager {
         }
     }
 
-    func setupScreenCallback() {
+    public func setupScreenCallback() {
         var smoothH: Double = -1
         var smoothS: Double = 0
         var smoothV: Double = -1
@@ -170,7 +200,7 @@ extension LightBLEManager {
         }
     }
 
-    func setupAudioCallback(useMic: Bool = false) {
+    public func setupAudioCallback(useMic: Bool = false) {
         var lastWrite: Double = 0
         var silenceStart: Double = 0
         let callback: (FrequencyBands) -> Void = { [weak self] (bands: FrequencyBands) in
@@ -179,10 +209,14 @@ extension LightBLEManager {
 
             if bands.rms < 0.01 {
                 if silenceStart == 0 { silenceStart = now }
+                // Silence auto-off is audio-only. Combined would kill screen sync
+                // during a quiet film scene, and must not clobber lastSyncMode.
                 if now - silenceStart >= 2.0 {
                     silenceStart = 0
                     Task { @MainActor [weak self] in
-                        guard let self, self.isSyncingAudio else { return }
+                        guard let self, self.syncMode == .audio else { return }
+                        self.lastSyncMode = .audio
+                        UserDefaults.standard.set(SyncMode.audio.rawValue, forKey: "lastSyncMode")
                         self.setSyncMode(.off)
                     }
                     return
@@ -236,7 +270,7 @@ extension LightBLEManager {
         if useMic { micAudio.onBands = callback } else { systemAudio.onBands = callback }
     }
 
-    func setSyncError(_ error: Error) {
+    public func setSyncError(_ error: Error) {
         let nsErr = error as NSError
         if nsErr.domain == "MicAudio" && nsErr.code == -5001 {
             syncNeedsPermission = true
@@ -256,7 +290,7 @@ extension LightBLEManager {
     }
 
     // Called by AppDelegate when app becomes active (returns from System Settings).
-    func retryPendingSyncIfNeeded() {
+    public func retryPendingSyncIfNeeded() {
         guard syncNeedsPermission, let mode = pendingSyncMode else { return }
         pendingSyncMode = nil
         syncNeedsPermission = false
@@ -264,14 +298,14 @@ extension LightBLEManager {
         setSyncMode(mode)
     }
 
-    func restoreSteadyState() {
+    public func restoreSteadyState() {
         guard isOn else { return }
         let (h, s, _) = color.hsvComponents
         write(Cmd.hue(h, saturation: s))
         write(Cmd.brightness(brightness))
     }
 
-    func fadeToSteadyState(from prevMode: SyncMode) {
+    public func fadeToSteadyState(from prevMode: SyncMode) {
         guard isOn else { return }
         let (targetH, targetS, _) = color.hsvComponents
         let targetBri = brightness
@@ -321,7 +355,7 @@ extension LightBLEManager {
         }
     }
 
-    func loadAvailableDisplays() {
+    public func loadAvailableDisplays() {
         Task {
             let displays = await ScreenColorSampler.availableDisplays()
             await MainActor.run { self.availableDisplays = displays }

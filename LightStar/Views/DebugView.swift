@@ -1,4 +1,5 @@
 import SwiftUI
+import LightStarCore
 
 struct DebugTabView: View {
     @Environment(LightBLEManager.self) private var ble
