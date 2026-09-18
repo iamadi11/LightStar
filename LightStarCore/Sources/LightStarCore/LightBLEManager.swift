@@ -455,35 +455,48 @@ extension LightBLEManager: CBCentralManagerDelegate {
             }
         }
         let rssi = RSSI.intValue
+        // nonisolated(unsafe) suppresses Swift 6 sending checks for CoreBluetooth delegate parameters
+        // which are thread-safe in practice as CoreBluetooth manages their lifecycle.
+        nonisolated(unsafe) let discoveredPeripheral = peripheral
+        nonisolated(unsafe) let centralManager = central
         Task { @MainActor in
             if self.multiLightEnabled && self.peripheral != nil {
                 // Extra light — connect without stopping scan (more may appear)
-                guard peripheral !== self.peripheral else { return }
-                guard !self.extraLights.contains(where: { $0.peripheral === peripheral }) else { return }
-                peripheral.delegate = self
-                self.extraLights.append((peripheral: peripheral, writeChar: nil))
-                central.connect(peripheral, options: nil)
+                guard discoveredPeripheral !== self.peripheral else { return }
+                // Manual loop instead of contains(where:) to avoid nested closure capture concurrency issues
+                var alreadyTracked = false
+                for light in self.extraLights {
+                    if light.peripheral === discoveredPeripheral {
+                        alreadyTracked = true
+                        break
+                    }
+                }
+                guard !alreadyTracked else { return }
+                discoveredPeripheral.delegate = self
+                self.extraLights.append((peripheral: discoveredPeripheral, writeChar: nil))
+                centralManager.connect(discoveredPeripheral, options: nil)
                 return
             }
-            central.stopScan()
-            self.peripheral = peripheral
+            centralManager.stopScan()
+            self.peripheral = discoveredPeripheral
             self.capturedAdvertisementStrings = advStrings
             self.capturedRSSI = rssi
-            peripheral.delegate = self
-            self.enterConnecting(peripheral)
-            central.connect(peripheral, options: nil)
+            discoveredPeripheral.delegate = self
+            self.enterConnecting(discoveredPeripheral)
+            centralManager.connect(discoveredPeripheral, options: nil)
         }
     }
 
     public nonisolated func centralManager(_ central: CBCentralManager,
                                     didConnect peripheral: CBPeripheral) {
+        nonisolated(unsafe) let connectedPeripheral = peripheral
         Task { @MainActor in
             self.reconnectTask?.cancel()
             self.reconnectTask = nil
             self.reconnectAttempts = 0
-            self.deviceLog = ["Connecting to \(peripheral.name ?? "unknown")…"]
+            self.deviceLog = ["Connecting to \(connectedPeripheral.name ?? "unknown")…"]
             // nil = discover ALL services (finds Device Info, DFU, etc.)
-            peripheral.discoverServices(nil)
+            connectedPeripheral.discoverServices(nil)
         }
     }
 
@@ -496,9 +509,18 @@ extension LightBLEManager: CBCentralManagerDelegate {
     public nonisolated func centralManager(_ central: CBCentralManager,
                                     didDisconnectPeripheral peripheral: CBPeripheral,
                                     error: (any Error)?) {
+        nonisolated(unsafe) let disconnectedPeripheral = peripheral
         Task { @MainActor in
             // Extra light drop — just remove it, don't affect primary connection state
-            if let idx = self.extraLights.firstIndex(where: { $0.peripheral === peripheral }) {
+            // Manual loop instead of firstIndex(where:) to avoid nested closure capture concurrency issues
+            var foundIdx: Int? = nil
+            for (idx, light) in self.extraLights.enumerated() {
+                if light.peripheral === disconnectedPeripheral {
+                    foundIdx = idx
+                    break
+                }
+            }
+            if let idx = foundIdx {
                 self.extraLights.remove(at: idx)
                 return
             }
@@ -557,12 +579,21 @@ extension LightBLEManager: CBPeripheralDelegate {
         let line = "--- \(svcUUID): \(summary)"
         print("[LightStar] \(line)")
         Task { @MainActor in self.deviceLog.append(line) }
+        nonisolated(unsafe) let discoveredPeripheral = peripheral
         Task { @MainActor in
             // Check if this is an extra light
-            if let idx = self.extraLights.firstIndex(where: { $0.peripheral === peripheral }) {
+            // Manual loop instead of firstIndex(where:) to avoid nested closure capture concurrency issues
+            var extraLightIdx: Int? = nil
+            for (idx, light) in self.extraLights.enumerated() {
+                if light.peripheral === discoveredPeripheral {
+                    extraLightIdx = idx
+                    break
+                }
+            }
+            if let idx = extraLightIdx {
                 if let ch = chars.first(where: { $0.uuid == Self.writeCharUUID }) {
                     self.extraLights[idx].writeChar = ch
-                    print("[LightStar] extra light ready: \(peripheral.name ?? "unknown")")
+                    print("[LightStar] extra light ready: \(discoveredPeripheral.name ?? "unknown")")
                 }
                 return
             }
@@ -572,11 +603,11 @@ extension LightBLEManager: CBPeripheralDelegate {
                     print("[LightStar] write char ready: \(char.uuid) props:\(char.properties.rawValue)")
                 }
                 if char.properties.contains(.notify) {
-                    peripheral.setNotifyValue(true, for: char)
+                    discoveredPeripheral.setNotifyValue(true, for: char)
                 }
                 // Read any readable characteristic — gets manufacturer, model, firmware version
                 if char.properties.contains(.read) {
-                    peripheral.readValue(for: char)
+                    discoveredPeripheral.readValue(for: char)
                 }
             }
             if self.writeChar != nil {

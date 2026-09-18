@@ -5,17 +5,25 @@ import UIKit
 
 struct iOSRootView: View {
     @Environment(LightBLEManager.self) private var ble
+    @State private var selectedTab = 0
 
     var body: some View {
-        TabView {
+        TabView(selection: $selectedTab) {
             iOSControlTab()
                 .tabItem { Label("Control", systemImage: "lightbulb.fill") }
+                .tag(0)
             iOSEffectsTab()
                 .tabItem { Label("Effects", systemImage: "sparkles") }
+                .tag(1)
             iOSSyncTab()
                 .tabItem { Label("Sync", systemImage: "waveform") }
+                .tag(2)
+            RemoteControlView()
+                .tabItem { Label("Remote", systemImage: "desktopcomputer") }
+                .tag(3)
             iOSMoreTab()
                 .tabItem { Label("More", systemImage: "ellipsis.circle") }
+                .tag(4)
         }
         .onChange(of: ble.isOn) { _, _ in writeWidget() }
         .onChange(of: ble.connectionState) { _, _ in writeWidget() }

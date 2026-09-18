@@ -37,6 +37,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         s.ble = ble
         return s
     }()
+    
+    /// Remote control coordinator for iPhone connectivity.
+    lazy var remoteControl: RemoteControlCoordinator = {
+        RemoteControlCoordinator(ble: ble)
+    }()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
@@ -62,6 +67,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self.ble.setBrightness(preset.brightness)
         }
         schedules.fireDue()
+        
+        // Start remote control server for iPhone connectivity
+        if UserDefaults.standard.object(forKey: "remoteControlEnabled") as? Bool ?? true {
+            remoteControl.start()
+        }
     }
 
     // MARK: - Menu bar icon
