@@ -179,7 +179,9 @@ struct TrackpadView: View {
                 }
                 .frame(maxWidth: .infinity)
             }
-            .buttonStyle(isDragging ? .borderedProminent : .bordered)
+            .buttonStyle(.bordered)
+            .tint(isDragging ? .accentColor : .secondary)
+            .background(isDragging ? Color.accentColor.opacity(0.2) : Color.clear, in: RoundedRectangle(cornerRadius: 8))
             
             Menu {
                 ForEach([0.5, 1.0, 1.5, 2.0, 2.5], id: \.self) { value in
