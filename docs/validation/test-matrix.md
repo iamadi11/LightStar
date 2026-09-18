@@ -1,37 +1,50 @@
 # LightStar Test Matrix
 
 > Generated: September 2026
-> Environment: Cloud Agent
+> Environment: Cloud Agent (Linux, no Swift runtime)
 > Legend: A=CLOUD_EXECUTABLE, B=MAC_REQUIRED, C=IPHONE_REQUIRED, D=MAC_AND_IPHONE_REQUIRED, E=EXTERNAL_HARDWARE_REQUIRED, F=RESEARCH_ONLY
+
+---
+
+## CRITICAL CORRECTION
+
+**The tests listed below were NOT executed in this cloud environment.**
+
+- Swift compiler: NOT AVAILABLE
+- macOS SDK: NOT AVAILABLE  
+- Xcode: NOT AVAILABLE
+- Command executed: `which swift` → "Swift not available"
+
+The "INFERRED_FROM_CI" status means the test exists in code and CI workflow logs indicate it passes on the GitHub Actions macos-15 runner. This is NOT the same as direct execution verification.
 
 ---
 
 ## Test Classification
 
-### A. Cloud-Executable Tests
+### A. Tests With Existing Code (Execution Blocked)
 
-| Test ID | Feature | Preconditions | Execution | Auto/Manual | Expected | Actual | Status | Evidence |
-|---------|---------|---------------|-----------|-------------|----------|--------|--------|----------|
-| A001 | BLE Protocol Framing | None | Cloud | Auto | All frames have BC prefix, 55 suffix | Verified | PASS | CoreTests.swift:testAllFrames |
-| A002 | Hue LUT Monotonicity | None | Cloud | Auto | LUT values non-decreasing | Verified | PASS | CoreTests.swift:testHueLUTIsMonotonicNonDecreasing |
-| A003 | Purple Recalibration | None | Cloud | Auto | 305-360° maps to 351-360 | Verified | PASS | CoreTests.swift:testPurpleMagentaRecalibrationRegion |
-| A004 | Circadian Night Warm | None | Cloud | Auto | 2AM returns CCT 0.0 | Verified | PASS | CoreTests.swift:testCircadianNightIsWarm |
-| A005 | Kelvin Neutral Saturation | None | Cloud | Auto | 4000K has low saturation | Verified | PASS | CoreTests.swift:testKelvinNeutralIsLowSaturation |
-| A006 | Schedule Not Due After | None | Cloud | Auto | Created after due time doesn't fire | Verified | PASS | CoreTests.swift:testCreatedAfterDueTimeDoesNotFire |
-| A007 | Schedule Nil LastFired | None | Cloud | Auto | Nil lastFiredAt is never due | Verified | PASS | CoreTests.swift:testNilLastFiredAtIsNeverDue |
-| A008 | Schedule Catch-up | None | Cloud | Auto | Fires when lastFired before scheduled | Verified | PASS | CoreTests.swift:testCatchUpFiresWhenLastFiredBeforeScheduledInstant |
-| A009 | Schedule Next Fire Future | None | Cloud | Auto | Next fire date is in future | Verified | PASS | CoreTests.swift:testNextFireIsInTheFuture |
-| A010 | Write Coalescer Order | None | Cloud | Auto | Same cmd replaces in place | Verified | PASS | CoreTests.swift:testReplaceInPlacePreservesInsertionOrder |
-| A011 | Pending Actions Cap | None | Cloud | Auto | Queue capped at limit | Verified | PASS | CoreTests.swift:testPendingActionsCap |
-| A012 | Drain Clears Once | None | Cloud | Auto | Drain empties queue | Verified | PASS | CoreTests.swift:testDrainClearsQueueOnce |
-| A013 | Legacy Preset Decode | None | Cloud | Auto | Old JSON format decodes | Verified | PASS | CoreTests.swift:testLegacyPresetJSONWithoutOptionalFieldsDecodes |
-| A014 | Legacy Schedule Decode | None | Cloud | Auto | Old JSON format decodes | Verified | PASS | CoreTests.swift:testLegacyScheduleJSONWithoutLastFiredAtDecodes |
-| A015 | Protocol Message Encode | None | Cloud | Auto | encodeMessage produces valid data | NOT_TESTED | NOT_TESTED | No test exists |
-| A016 | Protocol Message Decode | None | Cloud | Auto | decodeMessage round-trips | NOT_TESTED | NOT_TESTED | No test exists |
-| A017 | Protocol Message Types | None | Cloud | Auto | All message types serialize | NOT_TESTED | NOT_TESTED | No test exists |
-| A018 | Synthetic Frame Red | None | Cloud | Auto | Pure red frame → hue ~0 | NOT_TESTED | NOT_TESTED | No test exists |
-| A019 | Synthetic Frame Blue | None | Cloud | Auto | Pure blue frame → hue ~0.67 | NOT_TESTED | NOT_TESTED | No test exists |
-| A020 | Synthetic Frame Black | None | Cloud | Auto | All black → 100% black pixels | NOT_TESTED | NOT_TESTED | No test exists |
+| Test ID | Feature | Test File | Test Function | CI Status | Local Execution | Status | Evidence |
+|---------|---------|-----------|---------------|-----------|-----------------|--------|----------|
+| A001 | BLE Protocol Framing | CoreTests.swift | testAllFrames | Passes in CI | NOT_EXECUTED | INFERRED_FROM_CI | CI workflow logs |
+| A002 | Hue LUT Monotonicity | CoreTests.swift | testHueLUTIsMonotonicNonDecreasing | Passes in CI | NOT_EXECUTED | INFERRED_FROM_CI | CI workflow logs |
+| A003 | Purple Recalibration | CoreTests.swift | testPurpleMagentaRecalibrationRegion | Passes in CI | NOT_EXECUTED | INFERRED_FROM_CI | CI workflow logs |
+| A004 | Circadian Night Warm | CoreTests.swift | testCircadianNightIsWarm | Passes in CI | NOT_EXECUTED | INFERRED_FROM_CI | CI workflow logs |
+| A005 | Kelvin Neutral Saturation | CoreTests.swift | testKelvinNeutralIsLowSaturation | Passes in CI | NOT_EXECUTED | INFERRED_FROM_CI | CI workflow logs |
+| A006 | Schedule Not Due After | CoreTests.swift | testCreatedAfterDueTimeDoesNotFire | Passes in CI | NOT_EXECUTED | INFERRED_FROM_CI | CI workflow logs |
+| A007 | Schedule Nil LastFired | CoreTests.swift | testNilLastFiredAtIsNeverDue | Passes in CI | NOT_EXECUTED | INFERRED_FROM_CI | CI workflow logs |
+| A008 | Schedule Catch-up | CoreTests.swift | testCatchUpFiresWhenLastFiredBeforeScheduledInstant | Passes in CI | NOT_EXECUTED | INFERRED_FROM_CI | CI workflow logs |
+| A009 | Schedule Next Fire Future | CoreTests.swift | testNextFireIsInTheFuture | Passes in CI | NOT_EXECUTED | INFERRED_FROM_CI | CI workflow logs |
+| A010 | Write Coalescer Order | CoreTests.swift | testReplaceInPlacePreservesInsertionOrder | Passes in CI | NOT_EXECUTED | INFERRED_FROM_CI | CI workflow logs |
+| A011 | Pending Actions Cap | CoreTests.swift | testPendingActionsCap | Passes in CI | NOT_EXECUTED | INFERRED_FROM_CI | CI workflow logs |
+| A012 | Drain Clears Once | CoreTests.swift | testDrainClearsQueueOnce | Passes in CI | NOT_EXECUTED | INFERRED_FROM_CI | CI workflow logs |
+| A013 | Legacy Preset Decode | CoreTests.swift | testLegacyPresetJSONWithoutOptionalFieldsDecodes | Passes in CI | NOT_EXECUTED | INFERRED_FROM_CI | CI workflow logs |
+| A014 | Legacy Schedule Decode | CoreTests.swift | testLegacyScheduleJSONWithoutLastFiredAtDecodes | Passes in CI | NOT_EXECUTED | INFERRED_FROM_CI | CI workflow logs |
+| A015 | Protocol Ping Round-trip | CoreTests.swift | testPingMessageRoundTrip | Unknown | NOT_EXECUTED | TEST_CODE_EXISTS | Test added this session |
+| A016 | Protocol Power Round-trip | CoreTests.swift | testSetPowerMessageRoundTrip | Unknown | NOT_EXECUTED | TEST_CODE_EXISTS | Test added this session |
+| A017 | Protocol Brightness Round-trip | CoreTests.swift | testSetBrightnessMessageRoundTrip | Unknown | NOT_EXECUTED | TEST_CODE_EXISTS | Test added this session |
+| A018 | Protocol Mouse Round-trip | CoreTests.swift | testMouseMoveMessageRoundTrip | Unknown | NOT_EXECUTED | TEST_CODE_EXISTS | Test added this session |
+| A019 | Protocol Multi-message | CoreTests.swift | testMultipleMessagesInStream | Unknown | NOT_EXECUTED | TEST_CODE_EXISTS | Test added this session |
+| A020 | Protocol Length Prefix | CoreTests.swift | testLengthPrefixIsBigEndian | Unknown | NOT_EXECUTED | TEST_CODE_EXISTS | Test added this session |
 
 ### B. Mac-Required Tests
 
@@ -112,26 +125,28 @@
 
 ## Test Coverage Summary
 
-| Category | Total | Pass | Fail | Blocked | Not Tested | Research |
-|----------|-------|------|------|---------|------------|----------|
-| A (Cloud) | 20 | 14 | 0 | 0 | 6 | 0 |
-| B (Mac) | 20 | 0 | 0 | 20 | 0 | 0 |
-| C (iPhone) | 5 | 0 | 0 | 5 | 0 | 0 |
-| D (Mac+iPhone) | 11 | 0 | 0 | 11 | 0 | 0 |
-| E (Hardware) | 10 | 0 | 0 | 10 | 0 | 0 |
-| F (Research) | 4 | 0 | 0 | 0 | 0 | 4 |
-| **Total** | **70** | **14** | **0** | **46** | **6** | **4** |
+| Category | Total | Inferred from CI | Test Code Exists | Not Executed | Blocked | Research |
+|----------|-------|------------------|------------------|--------------|---------|----------|
+| A (Cloud-theoretically) | 20 | 14 | 6 | 20 | 20 | 0 |
+| B (Mac) | 20 | 0 | 0 | 20 | 20 | 0 |
+| C (iPhone) | 5 | 0 | 0 | 5 | 5 | 0 |
+| D (Mac+iPhone) | 11 | 0 | 0 | 11 | 11 | 0 |
+| E (Hardware) | 10 | 0 | 0 | 10 | 10 | 0 |
+| F (Research) | 4 | 0 | 0 | 4 | 0 | 4 |
+| **Total** | **70** | **14** | **6** | **70** | **66** | **4** |
+
+**IMPORTANT**: "Inferred from CI" means the test exists and CI logs suggest it passes on the GitHub Actions runner. This is NOT the same as verified execution. All 70 tests remain NOT_EXECUTED in this local environment.
 
 ---
 
-## Known Limitations
+## Known Limitations (CRITICAL)
 
-1. **Cloud environment has no Swift compiler** — Cannot execute swift build/test
-2. **No macOS SDK** — Cannot compile macOS-specific code
-3. **No iOS SDK** — Cannot compile iOS-specific code
-4. **No Metal** — Cannot verify shader compilation or GPU execution
-5. **No network loopback testing** — TCP server/client tests require runtime
-6. **No BLE simulation** — LED strip testing requires physical hardware
+1. **Cloud environment has no Swift compiler** — `which swift` returns nothing
+2. **No macOS SDK** — Cannot compile any macOS-specific code
+3. **No iOS SDK** — Cannot compile iOS-specific code  
+4. **No Metal framework** — Cannot verify shader compilation
+5. **No test execution** — Zero tests were actually run
+6. **CI inference only** — Previous test passage inferred from CI workflow, not directly observed
 
 ---
 

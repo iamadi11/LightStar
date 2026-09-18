@@ -1,32 +1,55 @@
 # LightStar Final Validation Report
 
 > Generated: September 2026
-> Environment: Cloud Agent (Linux)
+> Environment: Cloud Agent (Linux, NO Swift runtime)
 > Hardware Testing: NOT PERFORMED — Requires macOS/iOS
+
+---
+
+## CRITICAL NOTICE
+
+**This audit was conducted via CODE INSPECTION ONLY.**
+
+- Swift compiler: NOT AVAILABLE (`which swift` → empty)
+- Xcode: NOT AVAILABLE
+- macOS SDK: NOT AVAILABLE
+- iOS SDK: NOT AVAILABLE
+- **Zero tests were executed in this environment**
 
 ---
 
 ## Executive Summary
 
-### What Is Genuinely Working (Verified via Code Inspection)
+### What Was Actually Verified
 
-| Feature | Evidence | Confidence |
-|---------|----------|------------|
-| BLE Protocol Encoding | Unit tests pass in CI | HIGH |
-| Color Math (Hue LUT, Circadian) | Unit tests pass in CI | HIGH |
-| Schedule Logic | Unit tests pass in CI | HIGH |
-| Write Coalescing | Unit tests pass in CI | HIGH |
-| Protocol Message Framing | Code review + CI build | MEDIUM |
-| Remote Protocol Messages | Code review | MEDIUM |
+| Verification Type | What Was Done | What Was NOT Done |
+|-------------------|---------------|-------------------|
+| Code inspection | Read source files | Execute code |
+| CI inference | Noted CI passes | Run tests locally |
+| Documentation review | Read Apple docs | Test actual behavior |
+| Architecture analysis | Diagrammed data flow | Measure actual performance |
+
+### Feature Status (HONEST ASSESSMENT)
+
+| Feature | Code Exists | Compiles (CI) | Runtime Verified | Hardware Verified |
+|---------|-------------|---------------|------------------|-------------------|
+| BLE Protocol Encoding | ✅ Yes | Inferred | ❌ No | ❌ No |
+| Color Math | ✅ Yes | Inferred | ❌ No | ❌ No |
+| Schedule Logic | ✅ Yes | Inferred | ❌ No | ❌ No |
+| Remote Protocol | ✅ Yes | Inferred | ❌ No | ❌ No |
+| Screen Capture | ✅ Yes | Inferred | ❌ No | ❌ No |
+| Metal GPU Analysis | ✅ Yes | Inferred | ❌ No | ❌ No |
+| Mac Input Control | ✅ Yes | Inferred | ❌ No | ❌ No |
 
 ### What Cannot Be Verified Without Hardware
 
 | Feature | Requirement |
 |---------|-------------|
-| Screen capture actually works | Mac with Screen Recording permission |
-| Metal shaders compile | Mac with Metal GPU |
+| ANY runtime behavior | Mac with Swift runtime |
+| Screen capture | Mac with Screen Recording permission |
+| Metal shaders | Mac with Metal GPU |
 | BLE communication | Mac + LED strip |
-| Remote control connection | Mac + iPhone on same network |
+| Remote control | Mac + iPhone on same network |
 | Input injection | Mac with Accessibility permission |
 | DRM capture workaround | Mac + Netflix/Prime subscription |
 
@@ -38,10 +61,17 @@
 
 | Test | Status | Evidence |
 |------|--------|----------|
-| CI Build Passes | ✅ VERIFIED | GitHub Actions history |
-| Unit Tests Pass | ✅ VERIFIED | CI logs |
-| Code Compiles | ✅ VERIFIED | CI workflow |
-| Swift 6 Concurrency Compliance | ✅ VERIFIED | Strict concurrency enabled, CI passes |
+| Local Swift test execution | ❌ NOT POSSIBLE | No Swift runtime |
+| Local build | ❌ NOT POSSIBLE | No Xcode/SDK |
+| Any runtime test | ❌ NOT POSSIBLE | No macOS environment |
+
+### CI-Inferred Status (NOT LOCALLY VERIFIED)
+
+| Inference | Basis | Limitation |
+|-----------|-------|------------|
+| Build passes | CI workflow exists | Not run locally |
+| Unit tests pass | CI includes `swift test` | Not run locally |
+| Concurrency compliant | CI uses Swift 6 strict | Not run locally |
 
 ### Tests Blocked by Environment
 
@@ -137,58 +167,57 @@ Follow the interactive test matrix.
 
 ## DRM Research Findings
 
-### Verified Findings
+### Documentation-Based Observations (NOT HARDWARE TESTED)
 
-| Finding | Source | Confidence |
-|---------|--------|------------|
-| `AVSampleBufferDisplayLayer.preventsCapture` causes black | Apple docs | HIGH |
-| Safari/FairPlay has no software fallback | Apple design | HIGH |
-| Metal cannot access other processes' textures | Metal architecture | HIGH |
-| No public API for WindowServer compositor | macOS architecture | HIGH |
+| Observation | Source Type | Verification Status |
+|-------------|-------------|---------------------|
+| `preventsCapture` property exists | Apple documentation | DOCUMENTATION_ONLY |
+| Safari uses FairPlay | Apple documentation | DOCUMENTATION_ONLY |
+| Metal is process-isolated | Apple documentation | DOCUMENTATION_ONLY |
+| No public WindowServer API | Absence of documentation | INFERENCE_ONLY |
 
-### Unverified Claims (Require Mac Testing)
+### All DRM Claims Require Hardware Testing
 
-| Claim | Status | Test Required |
-|-------|--------|---------------|
-| Chrome HW-off enables Netflix capture | UNVERIFIED | DRM test matrix |
-| Chrome HW-off enables Prime capture | UNVERIFIED | DRM test matrix |
-| Quality limited to 1080p when HW-off | UNVERIFIED | DRM test matrix |
+| Claim | Current Status |
+|-------|----------------|
+| Chrome HW-off enables Netflix capture | UNVERIFIED HYPOTHESIS |
+| Chrome HW-off enables Prime capture | UNVERIFIED HYPOTHESIS |
+| Safari always produces black frames | UNVERIFIED INFERENCE |
+| Virtual displays don't bypass protection | UNVERIFIED INFERENCE |
+| No software-only solution exists | UNVERIFIED HYPOTHESIS |
 
-### Unsupported Approaches
+### Unsupported Approaches (THEORETICAL ANALYSIS)
 
-| Approach | Why Unsupported |
-|----------|-----------------|
-| Virtual display bypass | `preventsCapture` applies per-layer |
-| GPU memory access | No API on Apple Silicon |
-| Kernel extension | Protection above kernel level |
-| DriverKit | No display capture capabilities |
+| Approach | Analysis Basis | Tested? |
+|----------|----------------|---------|
+| Virtual display bypass | Community reports | ❌ No |
+| GPU memory access | Architecture inference | ❌ No |
+| Kernel extension | Architecture inference | ❌ No |
+| DriverKit | API review | ❌ No |
 
 ---
 
-## GPU Driver Feasibility
+## DRM Feasibility (CORRECTED)
 
-### Conclusion
+### What This Audit Established
 
-**There is no viable software-only approach to capture DRM-protected video content at full quality on macOS.**
+Based on the evidence currently collected through documentation review and code inspection, no reliable software-only method for capturing DRM-protected video content has been demonstrated. The Chrome hardware-acceleration-disabled approach remains an **unverified hypothesis** requiring testing on the target Mac, browser version, macOS version, and streaming service.
 
-### Evidence
+### What This Audit Did NOT Establish
 
-1. **WindowServer Protection**: `preventsCapture` is enforced at the compositor level before any API can access pixels.
+1. Whether ANY DRM workaround actually works
+2. Whether Chrome HW-off enables capture on current versions
+3. Whether protected content is actually black (vs. some other failure mode)
+4. Whether alternative approaches might exist
 
-2. **Apple Silicon Architecture**: DCP (Display Coprocessor) has no user-space interface; no way to tap into display pipeline.
+### Hypothesis (NOT FACT)
 
-3. **Metal Isolation**: Process isolation prevents accessing other applications' GPU resources.
+The Chrome hardware-acceleration workaround **may** work because:
+- Chromium source suggests `preventsCapture` is conditional on DRM level
+- Community reports exist (unverified)
+- The logic is plausible
 
-4. **IOFramebuffer Deprecation**: Direct framebuffer access removed since macOS 10.13.
-
-### Viable Workaround
-
-The Chrome hardware-acceleration-off approach:
-- **Mechanism**: Forces Widevine L3 software decryption
-- **Result**: Video renders through standard window compositor, capturable
-- **Limitations**: Quality may be limited, higher CPU usage
-- **Scope**: Chrome/Edge/Brave only; Safari never works
-- **Status**: REQUIRES TESTING on current macOS/Chrome versions
+**This is NOT a verified claim. Do not present it as fact.**
 
 ---
 
@@ -273,47 +302,100 @@ xcodebuild build -scheme LightStar -configuration Debug CODE_SIGNING_ALLOWED=NO
 
 ## Audit Trail
 
-| Document | Purpose |
-|----------|---------|
-| `docs/validation/repository-audit.md` | Code inspection findings |
-| `docs/validation/test-matrix.md` | Complete test classification |
-| `docs/validation/build-validation.md` | Build system analysis |
-| `docs/validation/remote-control-validation.md` | Remote control review |
-| `docs/validation/metal-validation.md` | GPU shader analysis |
-| `docs/validation/drm-research-audit.md` | DRM claim verification |
-| `docs/validation/display-pipeline-feasibility.md` | Architecture analysis |
-| `docs/validation/security-review.md` | Security audit |
-| `docs/validation/external-display-testing.md` | External display test plan |
+| Document | Purpose | Verification Level |
+|----------|---------|-------------------|
+| `repository-audit.md` | Code inspection findings | CODE_REVIEW |
+| `test-matrix.md` | Test classification | NOT_EXECUTED |
+| `build-validation.md` | Build system analysis | DOCUMENTATION |
+| `remote-control-validation.md` | Remote control review | CODE_REVIEW |
+| `metal-validation.md` | GPU shader analysis | CODE_REVIEW |
+| `drm-research-audit.md` | DRM claim verification | DOCUMENTATION |
+| `display-pipeline-feasibility.md` | Architecture analysis | HYPOTHESIS |
+| `security-review.md` | Security audit | CODE_REVIEW |
+| `security-remediation-plan.md` | Fix requirements | PLAN_ONLY |
+| `product-readiness-status.md` | Feature status | ASSESSMENT |
+| `external-display-testing.md` | External display test plan | PLAN_ONLY |
+
+---
+
+## Unsupported Claims Corrected
+
+| Original Claim | Location | Correction |
+|----------------|----------|------------|
+| "14 tests PASS" | test-matrix.md | Changed to INFERRED_FROM_CI — NOT_EXECUTED locally |
+| "Unit tests pass" | final-report | Changed to "CI suggests tests pass" — NOT verified locally |
+| "VERIFIED" for DRM claims | drm-research-audit.md | Changed to DOCUMENTATION_ONLY or INFERENCE |
+| "No software-only solution exists" | display-pipeline-feasibility.md | Changed to HYPOTHESIS |
+| "Chrome HW-off is only viable option" | display-pipeline-feasibility.md | Changed to UNVERIFIED HYPOTHESIS |
+| "Code quality is good" | final-report | Changed to "Code appears well-structured" |
+| "HIGH confidence" | multiple | Changed to HYPOTHESIS or INFERENCE where appropriate |
+
+---
+
+## Known Security Vulnerabilities (NOT FIXED)
+
+| Vulnerability | File | Line | Severity | Status |
+|---------------|------|------|----------|--------|
+| Fake pairing | RemoteControlServer.swift | 205-207 | CRITICAL | NOT_FIXED |
+| Plaintext transport | RemoteControlServer.swift | 42 | CRITICAL | NOT_FIXED |
+| No rate limiting | RemoteControlServer.swift | multiple | HIGH | NOT_FIXED |
+| Session token unused | RemoteControlServer.swift | 207 | HIGH | NOT_FIXED |
+| No input validation | MacInputController.swift | multiple | MEDIUM | NOT_FIXED |
+| Unauthenticated input control | MacInputController.swift | multiple | HIGH | NOT_FIXED |
+
+See `security-remediation-plan.md` for implementation requirements.
 
 ---
 
 ## Conclusion
 
-### What This Audit Established
+### What This Audit Actually Did
 
-1. **Code Quality**: The implementation is well-structured with proper Swift 6 concurrency support.
+1. **Code Inspection**: Read and analyzed source files
+2. **Documentation Review**: Reviewed Apple and third-party documentation
+3. **Architecture Analysis**: Mapped data flows and identified potential issues
+4. **Security Review**: Identified vulnerabilities through code inspection
+5. **Test Preparation**: Created test scripts for future Mac execution
 
-2. **Test Coverage**: Existing unit tests cover BLE protocol, color math, and scheduling logic.
+### What This Audit Did NOT Do
 
-3. **Security Gaps**: Remote control has significant security vulnerabilities that must be addressed.
+1. ❌ Execute any Swift code
+2. ❌ Compile any project files
+3. ❌ Run any unit tests
+4. ❌ Verify any runtime behavior
+5. ❌ Test any hardware interaction
+6. ❌ Verify any DRM claims
 
-4. **DRM Reality**: Protected content capture is fundamentally limited by macOS design; the Chrome workaround is the only viable option and requires verification.
+### Corrected Claims
 
-5. **Hardware Dependency**: Most functionality cannot be verified without Mac/iPhone/LED strip hardware.
-
-### What This Audit Could NOT Establish
-
-1. Whether Metal shaders actually produce correct results
-2. Whether screen capture works in practice
-3. Whether Chrome HW-off workaround works on current versions
-4. Whether remote input control works reliably
-5. Whether BLE communication with LED strip is reliable
+| Original Claim | Corrected Status |
+|----------------|------------------|
+| "14 tests pass" | 14 tests exist, CI suggests they pass, NOT locally verified |
+| "Code quality is good" | Code appears well-structured, NOT runtime tested |
+| "No software DRM solution exists" | HYPOTHESIS based on documentation, NOT tested |
+| "Chrome workaround is only viable option" | UNVERIFIED HYPOTHESIS |
 
 ### Recommended Next Steps
 
 When Mac access is restored:
 
-1. Run `./scripts/validation/validate-build.sh`
-2. Run `./scripts/mac-validation/test-drm-capture.sh`
-3. Complete manual testing of remote control
-4. Implement security fixes before any broader release
+1. **Actually run tests**: `cd LightStarCore && swift test`
+2. **Actually build**: `xcodebuild build -scheme LightStar`
+3. **Actually test DRM**: Follow `test-drm-capture.sh` procedure
+4. **Actually verify remote control**: Connect Mac and iPhone
+5. **Then** implement security fixes based on actual behavior
+
+### Honest Summary
+
+This audit provides:
+- ✅ Comprehensive code review
+- ✅ Architecture documentation
+- ✅ Security vulnerability identification
+- ✅ Test scripts for future use
+- ✅ Honest assessment of limitations
+
+This audit does NOT provide:
+- ❌ Proof that anything works
+- ❌ Verified test results
+- ❌ DRM behavior confirmation
+- ❌ Runtime performance data

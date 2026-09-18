@@ -300,29 +300,44 @@ DriverKit does NOT provide:
 
 ## Conclusions
 
-### Technically Justified Conclusions
+### Observations from Documentation Review (NOT Hardware-Verified)
 
-1. **There is no software-only way to capture protected video content at full quality on macOS.**
-   - Evidence: Apple documentation, Chromium source, WindowServer architecture
-   - Confidence: VERY HIGH
+1. **Based on available documentation, no public macOS API appears to provide access to DRM-protected video pixels.**
+   - Source: Apple `preventsCapture` documentation, Chromium source code review
+   - Limitation: NOT tested on actual hardware; documentation may be incomplete or outdated
+   - Status: HYPOTHESIS based on documentation
 
-2. **The Chrome hardware-acceleration workaround is the only viable option.**
-   - Evidence: Chromium source code, community reports
-   - Confidence: MEDIUM (requires hardware verification)
+2. **The Chrome hardware-acceleration workaround is a HYPOTHESIS requiring testing.**
+   - Source: Chromium source code logic, community anecdotes
+   - Limitation: NOT verified on current macOS/Chrome/Netflix versions
+   - Status: UNVERIFIED HYPOTHESIS
 
-3. **Safari and native streaming apps cannot be captured regardless of any workaround.**
-   - Evidence: FairPlay design, no software rendering mode
-   - Confidence: VERY HIGH
+3. **Safari appears to have no user-accessible software rendering mode based on documentation.**
+   - Source: Apple FairPlay documentation review
+   - Limitation: NOT tested; Apple may have undocumented options
+   - Status: DOCUMENTATION-BASED INFERENCE
 
-4. **Kernel extensions or system extensions cannot bypass this protection.**
-   - Evidence: Protection is at WindowServer/IOSurface level, above kernel hooks
-   - Confidence: HIGH
+4. **Kernel and system extensions appear unlikely to help based on architecture analysis.**
+   - Source: Inference from WindowServer protection level
+   - Limitation: No actual kext or DriverKit development was attempted
+   - Status: THEORETICAL ANALYSIS ONLY
 
-### NOT Justified Without Testing
+### What Was NOT Tested
 
-- "Chrome HW-off works on macOS 14 with current Netflix"
-- "GPU histogram produces identical results to CPU"
-- "Black region detection has low false positive rate"
+- Whether Chrome HW-off actually enables capture on any macOS version
+- Whether any software workaround exists
+- Whether the protection mechanisms work as documented
+- Whether alternative browsers behave differently
+- Actual DRM behavior on any real hardware
+
+### Claims That Require Hardware Testing Before Acceptance
+
+| Claim | Status |
+|-------|--------|
+| "No software-only solution exists" | HYPOTHESIS — not tested |
+| "Chrome HW-off is only viable option" | HYPOTHESIS — not tested |
+| "Safari always produces black" | INFERENCE — not tested |
+| "Virtual displays don't help" | INFERENCE from community reports |
 
 ---
 
