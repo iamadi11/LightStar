@@ -204,3 +204,134 @@ final class PresetMigrationTests: XCTestCase {
         XCTAssertFalse(decoded[0].isDue(at: .now))
     }
 }
+
+// MARK: - Remote Protocol Tests
+
+final class RemoteProtocolTests: XCTestCase {
+    
+    func testPingMessageRoundTrip() throws {
+        let original = RemoteMessage(type: .ping)
+        let encoded = try encodeMessage(original)
+        let (decoded, consumed) = try decodeMessage(from: encoded)
+        
+        XCTAssertEqual(decoded.type, .ping)
+        XCTAssertEqual(consumed, encoded.count)
+    }
+    
+    func testSetPowerMessageRoundTrip() throws {
+        let payload = SetPowerMessage(on: true)
+        let original = try RemoteMessage(type: .setPower, content: payload)
+        let encoded = try encodeMessage(original)
+        let (decoded, _) = try decodeMessage(from: encoded)
+        
+        XCTAssertEqual(decoded.type, .setPower)
+        let decodedPayload = try decoded.decode(SetPowerMessage.self)
+        XCTAssertEqual(decodedPayload.on, true)
+    }
+    
+    func testSetBrightnessMessageRoundTrip() throws {
+        let payload = SetBrightnessMessage(brightness: 0.75)
+        let original = try RemoteMessage(type: .setBrightness, content: payload)
+        let encoded = try encodeMessage(original)
+        let (decoded, _) = try decodeMessage(from: encoded)
+        
+        XCTAssertEqual(decoded.type, .setBrightness)
+        let decodedPayload = try decoded.decode(SetBrightnessMessage.self)
+        XCTAssertEqual(decodedPayload.brightness, 0.75, accuracy: 0.0001)
+    }
+    
+    func testMouseMoveMessageRoundTrip() throws {
+        let payload = MouseMoveMessage(deltaX: 10.5, deltaY: -20.3)
+        let original = try RemoteMessage(type: .mouseMove, content: payload)
+        let encoded = try encodeMessage(original)
+        let (decoded, _) = try decodeMessage(from: encoded)
+        
+        XCTAssertEqual(decoded.type, .mouseMove)
+        let decodedPayload = try decoded.decode(MouseMoveMessage.self)
+        XCTAssertEqual(decodedPayload.deltaX, 10.5, accuracy: 0.0001)
+        XCTAssertEqual(decodedPayload.deltaY, -20.3, accuracy: 0.0001)
+    }
+    
+    func testMultipleMessagesInStream() throws {
+        var stream = Data()
+        stream.append(try encodeMessage(RemoteMessage(type: .ping)))
+        stream.append(try encodeMessage(RemoteMessage(type: .pong)))
+        
+        let (msg1, consumed1) = try decodeMessage(from: stream)
+        stream.removeFirst(consumed1)
+        let (msg2, _) = try decodeMessage(from: stream)
+        
+        XCTAssertEqual(msg1.type, .ping)
+        XCTAssertEqual(msg2.type, .pong)
+    }
+    
+    func testLengthPrefixIsBigEndian() throws {
+        let msg = RemoteMessage(type: .ping)
+        let encoded = try encodeMessage(msg)
+        
+        // Big-endian means most significant byte first
+        // For small messages (<256 bytes), first 3 bytes should be 0
+        XCTAssertEqual(encoded[0], 0)
+        XCTAssertEqual(encoded[1], 0)
+        XCTAssertEqual(encoded[2], 0)
+    }
+    
+    func testIncompleteMessageThrows() {
+        // Only 2 bytes of the 4-byte length prefix
+        let incomplete = Data([0x00, 0x00])
+        XCTAssertThrowsError(try decodeMessage(from: incomplete))
+    }
+    
+    func testHelloMessageRoundTrip() throws {
+        let payload = HelloMessage(deviceName: "Test iPhone", deviceType: "iOS")
+        let original = try RemoteMessage(type: .hello, content: payload)
+        let encoded = try encodeMessage(original)
+        let (decoded, _) = try decodeMessage(from: encoded)
+        
+        XCTAssertEqual(decoded.type, .hello)
+        let decodedPayload = try decoded.decode(HelloMessage.self)
+        XCTAssertEqual(decodedPayload.deviceName, "Test iPhone")
+        XCTAssertEqual(decodedPayload.deviceType, "iOS")
+        XCTAssertEqual(decodedPayload.protocolVersion, kLightStarProtocolVersion)
+    }
+    
+    func testLightStarStateEquatable() {
+        let state1 = LightStarState(
+            isConnected: true, isOn: true, brightness: 0.8,
+            colorHue: 0.5, colorSaturation: 0.7, colorTemperature: 4000,
+            syncMode: "video"
+        )
+        let state2 = LightStarState(
+            isConnected: true, isOn: true, brightness: 0.8,
+            colorHue: 0.5, colorSaturation: 0.7, colorTemperature: 4000,
+            syncMode: "video"
+        )
+        let state3 = LightStarState(
+            isConnected: true, isOn: false, brightness: 0.8,
+            colorHue: 0.5, colorSaturation: 0.7, colorTemperature: 4000,
+            syncMode: "video"
+        )
+        
+        XCTAssertEqual(state1, state2)
+        XCTAssertNotEqual(state1, state3)
+    }
+    
+    func testAllMessageTypesHaveDistinctRawValues() {
+        let types: [RemoteMessageType] = [
+            .hello, .helloAck, .pair, .pairAck, .ping, .pong, .disconnect,
+            .getState, .stateUpdate,
+            .setPower, .setBrightness, .setColor, .setColorTemperature,
+            .setEffect, .setEffectSpeed, .setEffectDirection, .setSyncMode, .selectDisplay,
+            .mouseMove, .mouseDown, .mouseUp, .rightClick, .scroll,
+            .keyDown, .keyUp, .textInput, .mediaKey,
+            .getDiagnostics, .diagnosticsUpdate,
+            .error
+        ]
+        
+        var seen = Set<UInt8>()
+        for type in types {
+            XCTAssertFalse(seen.contains(type.rawValue), "Duplicate raw value: \(type.rawValue)")
+            seen.insert(type.rawValue)
+        }
+    }
+}
