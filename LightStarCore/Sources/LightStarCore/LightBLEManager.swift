@@ -463,7 +463,15 @@ extension LightBLEManager: CBCentralManagerDelegate {
             if self.multiLightEnabled && self.peripheral != nil {
                 // Extra light — connect without stopping scan (more may appear)
                 guard discoveredPeripheral !== self.peripheral else { return }
-                guard !self.extraLights.contains(where: { $0.peripheral === discoveredPeripheral }) else { return }
+                // Manual loop instead of contains(where:) to avoid nested closure capture concurrency issues
+                var alreadyTracked = false
+                for light in self.extraLights {
+                    if light.peripheral === discoveredPeripheral {
+                        alreadyTracked = true
+                        break
+                    }
+                }
+                guard !alreadyTracked else { return }
                 discoveredPeripheral.delegate = self
                 self.extraLights.append((peripheral: discoveredPeripheral, writeChar: nil))
                 centralManager.connect(discoveredPeripheral, options: nil)
@@ -504,7 +512,15 @@ extension LightBLEManager: CBCentralManagerDelegate {
         nonisolated(unsafe) let disconnectedPeripheral = peripheral
         Task { @MainActor in
             // Extra light drop — just remove it, don't affect primary connection state
-            if let idx = self.extraLights.firstIndex(where: { $0.peripheral === disconnectedPeripheral }) {
+            // Manual loop instead of firstIndex(where:) to avoid nested closure capture concurrency issues
+            var foundIdx: Int? = nil
+            for (idx, light) in self.extraLights.enumerated() {
+                if light.peripheral === disconnectedPeripheral {
+                    foundIdx = idx
+                    break
+                }
+            }
+            if let idx = foundIdx {
                 self.extraLights.remove(at: idx)
                 return
             }
@@ -566,7 +582,15 @@ extension LightBLEManager: CBPeripheralDelegate {
         nonisolated(unsafe) let discoveredPeripheral = peripheral
         Task { @MainActor in
             // Check if this is an extra light
-            if let idx = self.extraLights.firstIndex(where: { $0.peripheral === discoveredPeripheral }) {
+            // Manual loop instead of firstIndex(where:) to avoid nested closure capture concurrency issues
+            var extraLightIdx: Int? = nil
+            for (idx, light) in self.extraLights.enumerated() {
+                if light.peripheral === discoveredPeripheral {
+                    extraLightIdx = idx
+                    break
+                }
+            }
+            if let idx = extraLightIdx {
                 if let ch = chars.first(where: { $0.uuid == Self.writeCharUUID }) {
                     self.extraLights[idx].writeChar = ch
                     print("[LightStar] extra light ready: \(discoveredPeripheral.name ?? "unknown")")
