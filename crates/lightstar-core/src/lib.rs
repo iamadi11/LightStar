@@ -73,9 +73,9 @@ mod tests {
 
     #[test]
     fn hue_half_is_lut_corrected() {
-        // h=0.5 → 180° → LUT (173,130)–(188,140) → 134.66 → trunc 134 = 0x0086
+        // h=0.5 → 180° → LUT (173,130)–(188,140) → 134.66 → rounded 135 = 0x0087
         let f = Cmd::hue(0.5, 1.0);
-        assert_eq!(f, vec![0xBC, 0x04, 0x06, 0x00, 0x86, 0x03, 0xE8, 0x00, 0x00, 0x55]);
+        assert_eq!(f, vec![0xBC, 0x04, 0x06, 0x00, 0x87, 0x03, 0xE8, 0x00, 0x00, 0x55]);
     }
 
     #[test]

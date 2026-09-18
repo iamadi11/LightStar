@@ -277,6 +277,8 @@ public final class LightBLEManager: NSObject {
     public func disconnect() {
         reconnectTask?.cancel()
         reconnectTask = nil
+        silenceTask?.cancel()
+        silenceTask = nil
         probeTask?.cancel()
         probeTask = nil
         connectSequenceTask?.cancel()

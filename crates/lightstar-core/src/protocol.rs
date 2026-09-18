@@ -144,9 +144,9 @@ impl Cmd {
 
 fn encode_hs(cmd: u8, h: f64, s: f64) -> Vec<u8> {
     let hue_deg = ColorMath::corrected_hue_deg(h);
-    // Swift `Int(Double)` truncates toward zero.
-    let h16 = clamp_u16(hue_deg, 0, 360);
-    let s16 = clamp_u16(s * 1000.0, 0, 1000);
+    // Swift `Int(x.rounded())` — nearest, ties away from zero via f64::round.
+    let h16 = clamp_u16(hue_deg.round(), 0, 360);
+    let s16 = clamp_u16((s * 1000.0).round(), 0, 1000);
     vec![
         0xBC,
         cmd,

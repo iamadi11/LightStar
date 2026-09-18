@@ -28,6 +28,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     lazy var ble = LightBLEManager()
     lazy var presets = PresetStore()
     private var widgetStateTask: Task<Void, Never>?
+    private var cachedIconImage: NSImage?
+    private var cachedIconColor: NSColor?
+    private var cachedIconIsOn: Bool = false
+    private var cachedIconSyncing: Bool = false
     lazy var schedules: ScheduleStore = {
         let s = ScheduleStore()
         s.ble = ble
@@ -140,7 +144,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     // Draws a colored lightbulb (syncing → waveform); gray when off/disconnected.
+    // Cached: returns the same NSImage when color+state haven't changed (skips alloc + CA redraw).
     private func iconImage(color: NSColor?, isOn: Bool, syncing: Bool = false) -> NSImage {
+        let colorUnchanged: Bool = {
+            switch (cachedIconColor, color) {
+            case (nil, nil): return true
+            case (nil, _), (_, nil): return false
+            case let (a?, b?):
+                var r1: CGFloat = 0, g1: CGFloat = 0, b1: CGFloat = 0
+                var r2: CGFloat = 0, g2: CGFloat = 0, b2: CGFloat = 0
+                a.getRed(&r1, green: &g1, blue: &b1, alpha: nil)
+                b.getRed(&r2, green: &g2, blue: &b2, alpha: nil)
+                return abs(r1-r2) < 0.008 && abs(g1-g2) < 0.008 && abs(b1-b2) < 0.008
+            }
+        }()
+        if colorUnchanged, isOn == cachedIconIsOn, syncing == cachedIconSyncing,
+           let cached = cachedIconImage { return cached }
+
         let size = NSSize(width: 18, height: 18)
         let symbolName = syncing ? "waveform" : "lightbulb.fill"
         let img = NSImage(size: size, flipped: false) { rect in
@@ -156,6 +176,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return true
         }
         img.isTemplate = false
+        cachedIconImage = img
+        cachedIconColor = color
+        cachedIconIsOn = isOn
+        cachedIconSyncing = syncing
         return img
     }
 
@@ -215,8 +239,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(NSMenuItem(title: "Settings…", action: #selector(showSettings), keyEquivalent: ","))
         menu.addItem(.separator())
 
+        menu.addItem(NSMenuItem(title: "Send Feedback…", action: #selector(contextSendFeedback), keyEquivalent: ""))
+        menu.addItem(.separator())
         menu.addItem(NSMenuItem(title: "Quit LightStar", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
         return menu
+    }
+
+    @objc private func contextSendFeedback() {
+        let subject = "LightStar Feedback".addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+        NSWorkspace.shared.open(URL(string: "mailto:adityaraj92.20@gmail.com?subject=\(subject)")!)
     }
 
     @objc private func contextTogglePower() {

@@ -53,6 +53,21 @@ struct EffectsView: View {
                         get: { ble.effectSpeed },
                         set: { ble.setEffectSpeed($0) }
                     ), in: 0...1)
+                    .accessibilityLabel("Effect Speed")
+                    .accessibilityValue("\(Int(ble.effectSpeed * 100))%")
+
+                    HStack {
+                        Label("Direction", systemImage: "arrow.left.arrow.right")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Toggle("Forward", isOn: Binding(
+                            get: { ble.effectForward },
+                            set: { ble.setEffectDirection(forward: $0) }
+                        ))
+                        .toggleStyle(.checkbox)
+                        .font(.caption)
+                    }
                 }
             }
         }

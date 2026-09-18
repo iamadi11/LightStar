@@ -100,6 +100,11 @@ public extension LightBLEManager {
         write(Cmd.speed(value))
     }
 
+    public func setEffectDirection(forward: Bool) {
+        effectForward = forward
+        write(Cmd.effectDirection(forward: forward))
+    }
+
     public func exitEffectMode() {
         effectModeActive = false
         fadeTask?.cancel()
