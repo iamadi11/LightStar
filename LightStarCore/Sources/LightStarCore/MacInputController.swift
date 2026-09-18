@@ -303,9 +303,11 @@ public final class MacInputController: ObservableObject {
 
 // MARK: - Accessibility Helper
 
-// Isolated to avoid strict concurrency issues with kAXTrustedCheckOptionPrompt
+// Use the string key directly to avoid Swift strict concurrency issues with the global variable.
+// The key "AXTrustedCheckOptionPrompt" is the documented value of kAXTrustedCheckOptionPrompt.
 private nonisolated func requestAccessibilityPermissionPrompt() {
-    let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue(): true] as CFDictionary
+    let promptKey = "AXTrustedCheckOptionPrompt" as CFString
+    let options = [promptKey: true] as CFDictionary
     AXIsProcessTrustedWithOptions(options)
 }
 
