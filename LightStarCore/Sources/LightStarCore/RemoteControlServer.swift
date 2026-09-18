@@ -241,7 +241,9 @@ public final class RemoteControlServer: ObservableObject {
 
 // MARK: - Client Connection
 
-private class ClientConnection {
+// @unchecked Sendable because NWConnection callbacks require Sendable
+// and we manage thread safety through the serial dispatch queue
+private final class ClientConnection: @unchecked Sendable {
     let id: String
     let connection: NWConnection
     var deviceName: String?

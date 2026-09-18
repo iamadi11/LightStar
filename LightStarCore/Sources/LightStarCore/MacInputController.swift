@@ -27,7 +27,9 @@ public final class MacInputController: ObservableObject {
     
     /// Request Accessibility permission (opens System Settings).
     public func requestAccessibility() {
-        let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue(): true] as CFDictionary
+        // Use nonisolated(unsafe) for the accessibility constant which is safe to access
+        nonisolated(unsafe) let promptKey = kAXTrustedCheckOptionPrompt.takeUnretainedValue()
+        let options = [promptKey: true] as CFDictionary
         AXIsProcessTrustedWithOptions(options)
     }
     
