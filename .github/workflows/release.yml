@@ -10,38 +10,52 @@ concurrency:
 
 jobs:
   build-and-release:
-    name: Build DMG
+    name: Build & Release
     runs-on: macos-15
     permissions:
       contents: write
+
+    # Hoist secret existence checks to env — secrets.* in if: conditions is
+    # rejected by GitHub's workflow validator since late 2024.
     env:
       HAS_CERT: ${{ secrets.APPLE_CERTIFICATE != '' }}
       HAS_NOTARY: ${{ secrets.APPLE_ID != '' }}
       HAS_SELF_CERT: ${{ secrets.APPLE_SELF_CERT != '' }}
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          fetch-depth: 0  # full history so git rev-list --count HEAD gives real commit count
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
+      # ── Xcode version ────────────────────────────────────────────────────────
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_26.3.app
 
-      - uses: dtolnay/rust-toolchain@stable
+      - name: Generate Xcode project
+        run: |
+          brew install xcodegen
+          xcodegen generate
 
+      # ── Version from git ─────────────────────────────────────────────────────
+      # Tag format: v1.2.3  → marketing version 1.2.3, build = commit count
       - name: Compute version
         id: version
         run: |
           SHORT_SHA="${GITHUB_SHA::7}"
+          COMMIT_COUNT=$(git rev-list --count HEAD)
           MARKETING="${GITHUB_REF_NAME#v}"
-          echo "marketing=$MARKETING" >> "$GITHUB_OUTPUT"
-          echo "sha=$SHORT_SHA" >> "$GITHUB_OUTPUT"
+          echo "marketing=$MARKETING"  >> "$GITHUB_OUTPUT"
+          echo "build=$COMMIT_COUNT"   >> "$GITHUB_OUTPUT"
+          echo "sha=$SHORT_SHA"        >> "$GITHUB_OUTPUT"
           echo "tag=$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
 
-      - run: npm ci
-
+      # ── Code signing (Developer ID) ──────────────────────────────────────────
+      # Set up these secrets in Settings → Secrets → Actions:
+      #   APPLE_CERTIFICATE          — base64-encoded Developer ID Application .p12
+      #   APPLE_CERTIFICATE_PASSWORD — passphrase for the .p12
+      #   APPLE_TEAM_ID              — 10-char team ID (e.g. ABC123DEF4)
+      # Leave secrets empty to build unsigned (works for personal use / testing).
       - name: Import signing certificate
         if: env.HAS_CERT == 'true'
         env:
@@ -59,6 +73,70 @@ jobs:
           security set-key-partition-list \
             -S apple-tool:,apple: -s -k "ci" "$KEYCHAIN_PATH"
 
+      # ── Archive ──────────────────────────────────────────────────────────────
+      - name: Archive (signed)
+        if: env.HAS_CERT == 'true'
+        run: |
+          xcodebuild archive \
+            -project LightStar.xcodeproj \
+            -scheme LightStar \
+            -configuration Release \
+            -archivePath "$RUNNER_TEMP/LightStar.xcarchive" \
+            MARKETING_VERSION="${{ steps.version.outputs.marketing }}" \
+            CURRENT_PROJECT_VERSION="${{ steps.version.outputs.build }}" \
+            DEVELOPMENT_TEAM="${{ secrets.APPLE_TEAM_ID }}" \
+            CODE_SIGN_STYLE=Manual \
+            CODE_SIGN_IDENTITY="Developer ID Application"
+
+      - name: Archive (unsigned)
+        if: env.HAS_CERT != 'true'
+        run: |
+          xcodebuild archive \
+            -project LightStar.xcodeproj \
+            -scheme LightStar \
+            -configuration Release \
+            -archivePath "$RUNNER_TEMP/LightStar.xcarchive" \
+            MARKETING_VERSION="${{ steps.version.outputs.marketing }}" \
+            CURRENT_PROJECT_VERSION="${{ steps.version.outputs.build }}" \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO
+
+      # ── Export .app ──────────────────────────────────────────────────────────
+      - name: Write export options (signed)
+        if: env.HAS_CERT == 'true'
+        run: |
+          cat > "$RUNNER_TEMP/ExportOptions.plist" <<'PLIST'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+            "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key><string>developer-id</string>
+            <key>teamID</key><string>${{ secrets.APPLE_TEAM_ID }}</string>
+            <key>signingStyle</key><string>manual</string>
+          </dict>
+          </plist>
+          PLIST
+
+      - name: Export .app (signed)
+        if: env.HAS_CERT == 'true'
+        run: |
+          xcodebuild -exportArchive \
+            -archivePath "$RUNNER_TEMP/LightStar.xcarchive" \
+            -exportPath "$RUNNER_TEMP/export" \
+            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist"
+
+      - name: Copy .app (unsigned)
+        if: env.HAS_CERT != 'true'
+        run: |
+          mkdir -p "$RUNNER_TEMP/export"
+          cp -R "$RUNNER_TEMP/LightStar.xcarchive/Products/Applications/LightStar.app" \
+                "$RUNNER_TEMP/export/LightStar.app"
+
+      # ── Self-signed codesign (stable identity → TCC persists across updates) ─
+      # No Gatekeeper trust, but macOS TCC will track permissions by cert identity
+      # rather than binary hash, so permissions survive every app update.
       - name: Import self-signed certificate
         if: env.HAS_CERT != 'true' && env.HAS_SELF_CERT == 'true'
         env:
@@ -76,29 +154,92 @@ jobs:
           security set-key-partition-list \
             -S apple-tool:,apple:,codesign: -s -k "ci" "$KEYCHAIN_PATH"
 
-      - uses: tauri-apps/tauri-action@v0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          APPLE_SIGNING_IDENTITY: ${{ env.HAS_CERT == 'true' && 'Developer ID Application' || '' }}
+      - name: Sign with self-signed certificate
+        if: env.HAS_CERT != 'true' && env.HAS_SELF_CERT == 'true'
+        run: |
+          codesign --deep --force --verify --verbose \
+            --sign "LightStar Code Signing" \
+            "$RUNNER_TEMP/export/LightStar.app"
+
+      # ── Notarize ─────────────────────────────────────────────────────────────
+      # Secrets needed:
+      #   APPLE_ID           — your Apple ID email
+      #   APPLE_APP_PASSWORD — app-specific password (appleid.apple.com)
+      - name: Notarize
+        if: env.HAS_CERT == 'true' && env.HAS_NOTARY == 'true'
+        run: |
+          ditto -c -k --sequesterRsrc --keepParent \
+            "$RUNNER_TEMP/export/LightStar.app" \
+            "$RUNNER_TEMP/LightStar-notarize.zip"
+          xcrun notarytool submit "$RUNNER_TEMP/LightStar-notarize.zip" \
+            --apple-id "${{ secrets.APPLE_ID }}" \
+            --password "${{ secrets.APPLE_APP_PASSWORD }}" \
+            --team-id "${{ secrets.APPLE_TEAM_ID }}" \
+            --wait
+          xcrun stapler staple "$RUNNER_TEMP/export/LightStar.app"
+
+      # ── Package DMG (tag pushes only) ────────────────────────────────────────
+      # Staged layout:
+      #   LightStar.app          ← the app
+      #   Applications           ← symlink to /Applications (drag-to-install)
+      #   Install LightStar.command ← double-clickable script that strips
+      #                              quarantine + copies to /Applications + opens
+      - name: Create DMG
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          STAGE="$RUNNER_TEMP/dmg-stage"
+          mkdir -p "$STAGE"
+
+          # App bundle
+          cp -R "$RUNNER_TEMP/export/LightStar.app" "$STAGE/LightStar.app"
+
+          # Applications symlink for drag-to-install
+          ln -s /Applications "$STAGE/Applications"
+
+          # Double-clickable installer: strips quarantine, copies to /Applications, opens
+          cp ".github/install-lightstar.command" "$STAGE/Install LightStar.command"
+          chmod +x "$STAGE/Install LightStar.command"
+
+          DMG_NAME="LightStar-${{ steps.version.outputs.marketing }}-${{ steps.version.outputs.sha }}.dmg"
+          DMG_PATH="$RUNNER_TEMP/$DMG_NAME"
+          hdiutil create -volname "LightStar ${{ steps.version.outputs.marketing }}" \
+            -srcfolder "$STAGE" \
+            -ov -format UDZO \
+            "$DMG_PATH"
+          echo "DMG_PATH=$DMG_PATH" >> "$GITHUB_ENV"
+
+      # ── GitHub Release (tag pushes only) ────────────────────────────────────
+      - name: Create Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
         with:
-          tauriScript: npm run tauri
-          args: --bundles dmg,app
-          tagName: ${{ steps.version.outputs.tag }}
-          releaseName: LightStar ${{ steps.version.outputs.marketing }} (${{ steps.version.outputs.sha }})
-          releaseBody: |
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: "LightStar ${{ steps.version.outputs.marketing }} (${{ steps.version.outputs.sha }})"
+          body: |
             **Commit:** ${{ github.sha }}
 
             ## Install
 
             1. Download the `.dmg` below and open it
-            2. Drag **LightStar.app** to **Applications**, or double-click **Install LightStar.command** if present
-            3. If Gatekeeper blocks the app: `xattr -rd com.apple.quarantine /Applications/LightStar.app`
-            4. On first launch grant **Bluetooth**. Grant **Screen Recording** / **Microphone** when you enable those sync modes.
+            2. **Easy install (recommended):** double-click **"Install LightStar.command"** — strips Gatekeeper quarantine, copies to `/Applications`, and launches automatically
+               - macOS will ask "Are you sure you want to open this Terminal script?" → click **Open**
+            3. **Manual install:** drag **LightStar.app** → **Applications** folder, then run in Terminal:
+               ```
+               xattr -rd com.apple.quarantine /Applications/LightStar.app
+               ```
+            4. On first launch grant **Bluetooth** permission when prompted
+            5. Grant **Screen Recording** the first time you enable Video or Audio sync
 
-            TCC grants follow the bundle id `com.adityaraj.LightStar` and the signing identity.
-          releaseDraft: false
+            > **Updating from an older version?** Use the install script — it handles Gatekeeper quarantine removal automatically.
+
+            > **Permissions:** This build is self-signed (stable identity). Once granted, Bluetooth / Screen Recording / Microphone permissions **persist across updates** — no need to re-grant. On your very first install (or upgrading from an unsigned build), grant permissions once when prompted; they will survive all future updates.
+          draft: false
           prerelease: false
+          files: ${{ env.DMG_PATH }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      # ── Cleanup keychain ─────────────────────────────────────────────────────
       - name: Delete keychain
         if: always()
         run: |

@@ -3,7 +3,7 @@ import Foundation
 
 // MARK: - Preset
 
-public struct Preset: Codable, Identifiable {
+public struct Preset: Codable, Identifiable, Sendable {
     public var id: UUID = UUID()
     public var name: String
     public var red: Double

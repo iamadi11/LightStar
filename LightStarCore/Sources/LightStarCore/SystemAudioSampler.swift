@@ -87,7 +87,7 @@ public final class SystemAudioSampler: NSObject {
 
 // MARK: - SCStreamOutput
 
-public extension SystemAudioSampler: SCStreamOutput {
+extension SystemAudioSampler: SCStreamOutput {
     public nonisolated func stream(_ stream: SCStream,
                             didOutputSampleBuffer sb: CMSampleBuffer,
                             of type: SCStreamOutputType) {

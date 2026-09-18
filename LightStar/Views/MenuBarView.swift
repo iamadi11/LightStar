@@ -451,7 +451,7 @@ struct MenuBarView: View {
 
 }
 
-private struct SyncControlView: View {
+struct SyncControlView: View {
     @Environment(LightBLEManager.self) private var ble
 
     var body: some View {

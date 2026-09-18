@@ -109,7 +109,7 @@ public enum Cmd {
 
 // MARK: - Known effect list (confirmed from ha-findn-led-ble APK reverse-engineering 2026-08-26)
 
-public struct Effect: Identifiable {
+public struct Effect: Identifiable, Sendable {
     public let name: String
     public let id: UInt8
     public var identifierForUI: UInt8 { id }
@@ -120,7 +120,7 @@ public struct Effect: Identifiable {
 }
 
 // Groups for EffectsView sectioning
-public enum EffectGroup: String, CaseIterable {
+public enum EffectGroup: String, CaseIterable, Sendable {
     case loop       = "Loop"
     case flutter    = "Fluttering"
     case brush      = "Brushing"

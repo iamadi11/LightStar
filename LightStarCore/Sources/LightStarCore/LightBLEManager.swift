@@ -17,7 +17,7 @@ public final class LightBLEManager: NSObject {
         case audio    = "Audio"
         case combined = "Video+Audio"
 
-        var displayName: String {
+        public var displayName: String {
             switch self {
             case .off:      return "Off"
             case .video:    return "Screen"
@@ -74,7 +74,7 @@ public final class LightBLEManager: NSObject {
     // Strip onboard mic settings (BC11 style, BC12 sensitivity)
     public enum MicStyle: Int, CaseIterable {
         case classic = 1, soft = 2, dynamic = 3, disco = 4
-        var label: String {
+        public var label: String {
             switch self { case .classic: "Classic"; case .soft: "Soft"; case .dynamic: "Dynamic"; case .disco: "Disco" }
         }
     }
@@ -92,7 +92,7 @@ public final class LightBLEManager: NSObject {
     // LED strip hardware config
     public enum LEDChannelOrder: Int, CaseIterable {
         case rgb = 1, rbg = 2, grb = 3, gbr = 4, brg = 5, bgr = 6
-        var label: String {
+        public var label: String {
             switch self { case .rgb: "RGB"; case .rbg: "RBG"; case .grb: "GRB"; case .gbr: "GBR"; case .brg: "BRG"; case .bgr: "BGR" }
         }
     }
@@ -386,7 +386,7 @@ public final class LightBLEManager: NSObject {
 
 // MARK: - CBCentralManagerDelegate
 
-public extension LightBLEManager: CBCentralManagerDelegate {
+extension LightBLEManager: CBCentralManagerDelegate {
 
     public nonisolated func centralManagerDidUpdateState(_ central: CBCentralManager) {
         Task { @MainActor in
@@ -526,7 +526,7 @@ public extension LightBLEManager: CBCentralManagerDelegate {
 
 // MARK: - CBPeripheralDelegate
 
-public extension LightBLEManager: CBPeripheralDelegate {
+extension LightBLEManager: CBPeripheralDelegate {
 
     public nonisolated func peripheral(_ peripheral: CBPeripheral,
                                 didDiscoverServices error: (any Error)?) {

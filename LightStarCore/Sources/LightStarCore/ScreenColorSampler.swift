@@ -73,7 +73,7 @@ public final class ScreenColorSampler: NSObject {
     }
 }
 
-public extension ScreenColorSampler: SCStreamOutput {
+extension ScreenColorSampler: SCStreamOutput {
     public nonisolated func stream(_ stream: SCStream,
                             didOutputSampleBuffer sb: CMSampleBuffer,
                             of type: SCStreamOutputType) {
@@ -95,17 +95,17 @@ private func dominantHSV(_ pb: CVPixelBuffer) -> (Double, Double, Double) {
     defer { CVPixelBufferUnlockBaseAddress(pb, .readOnly) }
     guard let base = CVPixelBufferGetBaseAddress(pb) else { return (0, 0, 0) }
 
-    public let w   = CVPixelBufferGetWidth(pb)
-    public let h   = CVPixelBufferGetHeight(pb)
-    public let bpr = CVPixelBufferGetBytesPerRow(pb)
-    public let ptr = base.assumingMemoryBound(to: UInt8.self)
+    let w   = CVPixelBufferGetWidth(pb)
+    let h   = CVPixelBufferGetHeight(pb)
+    let bpr = CVPixelBufferGetBytesPerRow(pb)
+    let ptr = base.assumingMemoryBound(to: UInt8.self)
 
-    public let bins = 36   // 10° per bin
-    public var histogram = [Double](repeating: 0, count: bins)
-    public var binSat    = [Double](repeating: 0, count: bins)
-    public var binVal    = [Double](repeating: 0, count: bins)
-    public var binCount  = [Int](repeating: 0, count: bins)
-    public var totalV = 0.0, pixCount = 0
+    let bins = 36   // 10° per bin
+    var histogram = [Double](repeating: 0, count: bins)
+    var binSat    = [Double](repeating: 0, count: bins)
+    var binVal    = [Double](repeating: 0, count: bins)
+    var binCount  = [Int](repeating: 0, count: bins)
+    var totalV = 0.0, pixCount = 0
 
     for row in 0..<h {
         for col in 0..<w {
@@ -141,14 +141,14 @@ private func dominantHSV(_ pb: CVPixelBuffer) -> (Double, Double, Double) {
     }
 
     // Fallback: screen is dark/desaturated — return average brightness as near-white
-    public let avgV = pixCount > 0 ? totalV / Double(pixCount) : 0
+    let avgV = pixCount > 0 ? totalV / Double(pixCount) : 0
     return (0, 0, avgV)
 }
 
 private func rgbToHSV(_ r: Double, _ g: Double, _ b: Double) -> (Double, Double, Double) {
-    public let mx = max(r, g, b), mn = min(r, g, b), d = mx - mn
-    public let s = mx < 1e-6 ? 0.0 : d / mx
-    public var h = 0.0
+    let mx = max(r, g, b), mn = min(r, g, b), d = mx - mn
+    let s = mx < 1e-6 ? 0.0 : d / mx
+    var h = 0.0
     if d > 1e-6 {
         if mx == r      { h = (g - b) / d }
         else if mx == g { h = 2 + (b - r) / d }

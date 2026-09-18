@@ -1,51 +1,38 @@
 # LightStar
 
-Tauri v2 + Next.js controller for a reverse-engineered **BC/55** BLE RGB LED bar (the hardware behind the OEM “Miracles Star” app).
+Native Swift controller for a reverse-engineered **BC/55** BLE RGB LED bar (the hardware behind the OEM “Miracles Star” app).
 
-macOS 14+ is the supported desktop target. The same codebase can be sideloaded to iOS with Tauri’s mobile tooling. The previous native Swift app is archived in [`legacy/`](legacy/).
+- **macOS 14+** menu-bar app (no Dock icon) with ScreenCaptureKit ambilight and system-audio sync
+- **iOS 17+** sideload remote (same `LightStarCore` package)
+- App Intents / Shortcuts, widgets, Focus Filter
 
-## What it does
-
-- Connects over Bluetooth LE (service `FFF0`, write `FFF3`)
-- Power, hue (hand-calibrated LUT), brightness, 58 firmware effects, 253 animation scenes
-- Screen ambilight (`xcap`) and microphone / strip-mic audio sync
-- Scenes, weekly schedules, optional BC0D firmware timers (run while the Mac is asleep)
-- Menu-bar tray, ⌘⇧L power, ⌘⇧S sync
-
-System audio (what you hear from other apps) is **not** captured — use **Microphone** or **Strip mic**. Siri / Shortcuts / widgets are not part of this rewrite.
+This is the product. Do not reintroduce Tauri or Next.js.
 
 ## Develop
 
-Needs Node 20+, Rust (stable), and on macOS Xcode 16.
+Needs Xcode 16+ and [xcodegen](https://github.com/yonaskolb/XcodeGen).
 
 ```bash
-npm install
-cargo test -p lightstar-core
-npm run tauri:dev
+brew install xcodegen
+xcodegen generate
+xcodebuild -scheme LightStar -configuration Debug
+swift test --package-path LightStarCore
 ```
 
-Production `.app` + `.dmg`:
+Open `LightStar.xcodeproj` after generating it (`LightStar.xcodeproj` is gitignored).
 
-```bash
-npm run tauri:build
-```
-
-iOS (Mac only, personal sideload):
-
-```bash
-npm run tauri ios init
-npm run tauri ios dev
-```
-
-Grant **Bluetooth** on first connect, **Screen Recording** for video sync, **Microphone** for mic sync. TCC follows the bundle id `com.adityaraj.LightStar` and the signing identity — it is not avoided by using Tauri.
+Grant **Bluetooth** on first connect, **Screen Recording** for video sync, **Microphone** for mic sync. TCC follows bundle id `com.adityaraj.LightStar` and the signing identity.
 
 ## Layout
 
 | Path | Role |
 |------|------|
-| `crates/lightstar-core` | BC/55 frames, hue LUT, coalescer, schedules |
-| `src-tauri` | BLE (`btleplug`), tray, screen/mic sync, persistence |
-| `app`, `src` | Next.js static UI |
-| `legacy` | Swift 6 / Xcode app this rewrite replaces |
+| `LightStarCore/` | Shared Swift package: BC/55 frames, hue LUT, coalescer, BLE, presets, schedules |
+| `LightStar/` | macOS app (menu bar + control window) |
+| `LightStariOS/` | iOS remote |
+| `LightStarWidget/` | WidgetKit source for macOS and iOS extensions |
+| `project.yml` | XcodeGen source of truth |
 
-State is stored in `~/Library/Application Support/LightStar/state.json`.
+## Protocol
+
+Frame: `BC [cmd] [data_len] [data × data_len] 55`. GATT advertised `0x2022`, service `FFF0`, write `FFF3`. See `agents.md` and `LightStar/Docs/`.

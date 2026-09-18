@@ -1,56 +1,78 @@
-#!/usr/bin/env bash
-# LightStar — Developer ID sign, notarize, staple, DMG
-# Usage: APPLE_ID=you@email.com TEAM_ID=XXXXXXXXXX APP_PASSWORD=xxxx-xxxx-xxxx-xxxx ./scripts/notarize.sh
+#!/bin/bash
+# Archive, notarize, staple, and Gatekeeper-assess a Developer ID LightStar build.
+# Requires: xcodegen, Xcode, APPLE_ID, TEAM_ID, APP_PASSWORD.
 set -euo pipefail
 
-: "${APPLE_ID:?Set APPLE_ID env var}"
-: "${TEAM_ID:?Set TEAM_ID env var}"
-: "${APP_PASSWORD:?Set APP_PASSWORD env var (app-specific password from appleid.apple.com)}"
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$ROOT"
 
-SCHEME="LightStar"
-ARCHIVE="build/LightStar.xcarchive"
-EXPORT_DIR="build/export"
-APP="$EXPORT_DIR/LightStar.app"
-DMG="build/LightStar.dmg"
+: "${APPLE_ID:?Set APPLE_ID}"
+: "${TEAM_ID:?Set TEAM_ID}"
+: "${APP_PASSWORD:?Set APP_PASSWORD (app-specific password)}"
 
-echo "==> Cleaning build dir"
-rm -rf build && mkdir -p build
+if ! command -v xcodegen >/dev/null 2>&1; then
+  echo "error: xcodegen is required (brew install xcodegen)" >&2
+  exit 1
+fi
 
-echo "==> Archiving"
-xcodebuild -scheme "$SCHEME" -configuration Release \
+xcodegen generate
+
+WORKDIR="${TMPDIR:-/tmp}/lightstar-notarize-$$"
+mkdir -p "$WORKDIR"
+ARCHIVE="$WORKDIR/LightStar.xcarchive"
+EXPORT="$WORKDIR/export"
+mkdir -p "$EXPORT"
+
+cat > "$WORKDIR/ExportOptions.plist" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>method</key><string>developer-id</string>
+  <key>teamID</key><string>${TEAM_ID}</string>
+  <key>signingStyle</key><string>manual</string>
+</dict>
+</plist>
+PLIST
+
+xcodebuild archive \
+  -project LightStar.xcodeproj \
+  -scheme LightStar \
+  -configuration Release \
   -archivePath "$ARCHIVE" \
-  archive
+  DEVELOPMENT_TEAM="$TEAM_ID" \
+  CODE_SIGN_STYLE=Manual \
+  CODE_SIGN_IDENTITY="Developer ID Application"
 
-echo "==> Exporting with Developer ID"
 xcodebuild -exportArchive \
   -archivePath "$ARCHIVE" \
-  -exportPath "$EXPORT_DIR" \
-  -exportOptionsPlist scripts/ExportOptions.plist
+  -exportPath "$EXPORT" \
+  -exportOptionsPlist "$WORKDIR/ExportOptions.plist"
 
-echo "==> Verifying signature"
+APP="$EXPORT/LightStar.app"
+
+echo "Verifying signature (not Gatekeeper — the app is not notarized yet)…"
 codesign --verify --deep --strict --verbose=2 "$APP"
-spctl --assess --type exec --verbose "$APP"
 
-echo "==> Creating DMG"
-hdiutil create \
-  -volname "LightStar" \
-  -srcfolder "$APP" \
-  -ov -format UDZO \
-  "$DMG"
+# Do NOT run spctl here. Gatekeeper rejects a Developer ID app that has not
+# been notarized yet; that check belongs after stapler staple.
 
-echo "==> Notarizing"
+DMG="$WORKDIR/LightStar-notarize.dmg"
+hdiutil create -volname "LightStar" -srcfolder "$APP" -ov -format UDZO "$DMG"
+
+echo "Submitting to notarytool…"
 xcrun notarytool submit "$DMG" \
   --apple-id "$APPLE_ID" \
-  --team-id "$TEAM_ID" \
   --password "$APP_PASSWORD" \
+  --team-id "$TEAM_ID" \
   --wait
 
-echo "==> Stapling"
+xcrun stapler staple "$APP"
 xcrun stapler staple "$DMG"
 
-echo "==> Verifying Gatekeeper"
-spctl --assess --type open --context context:primary-signature --verbose "$DMG"
+echo "Gatekeeper assessment after staple:"
+spctl --assess --type exec -vv "$APP"
 
-echo ""
-echo "Done: $DMG"
-echo "Share this file — Gatekeeper will accept it on any Mac."
+echo "Notarized app: $APP"
+echo "Notarized DMG: $DMG"
