@@ -1,9 +1,11 @@
 #if os(macOS)
 import Foundation
 import CoreGraphics
+import CoreVideo
 import Metal
 import IOKit
 import IOSurface
+import ScreenCaptureKit
 
 /// Experimental module for investigating macOS display capture capabilities.
 /// This module probes various system APIs to document what's accessible.
@@ -78,7 +80,7 @@ public final class ExperimentalDisplayCapture: ObservableObject {
             let serialNumber = CGDisplaySerialNumber(displayID)
             
             let colorSpace = CGDisplayCopyColorSpace(displayID)
-            let colorSpaceName = colorSpace?.name as String? ?? "Unknown"
+            let colorSpaceName = colorSpace.name as String? ?? "Unknown"
             
             return DisplayInfo(
                 id: displayID,
