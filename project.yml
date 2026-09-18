@@ -3,6 +3,7 @@ options:
   bundleIdPrefix: com.adityaraj
   deploymentTarget:
     macOS: "14.0"
+    iOS: "17.0"
   xcodeVersion: "16.0"
   createIntermediateGroups: true
   groupSortPosition: top
@@ -12,12 +13,16 @@ settings:
   base:
     SWIFT_VERSION: "6.0"
     MACOSX_DEPLOYMENT_TARGET: "14.0"
+    IPHONEOS_DEPLOYMENT_TARGET: "17.0"
     CODE_SIGN_STYLE: Automatic
     DEVELOPMENT_TEAM: ""
     ENABLE_HARDENED_RUNTIME: YES
     SWIFT_STRICT_CONCURRENCY: complete
     ENABLE_USER_SCRIPT_SANDBOXING: YES
-    SWIFT_EMIT_LOC_STRINGS: YES
+
+packages:
+  LightStarCore:
+    path: LightStarCore
 
 targets:
   LightStar:
@@ -30,27 +35,94 @@ targets:
           - "Docs/**"
     resources:
       - path: LightStar/Assets.xcassets
-    info:
-      path: LightStar/Info.plist
-      properties:
-        CFBundleName: LightStar
-        CFBundleDisplayName: LightStar
-        CFBundleIdentifier: com.adityaraj.LightStar
-        CFBundleShortVersionString: "1.0"
-        CFBundleVersion: "1"
-        LSUIElement: true
-        NSBluetoothAlwaysUsageDescription: "LightStar needs Bluetooth to connect to your LED light."
-        NSBluetoothPeripheralUsageDescription: "LightStar needs Bluetooth to connect to your LED light."
-        NSCameraUsageDescription: "LightStar uses the camera to detect ambient color for debug mode."
-        NSMicrophoneUsageDescription: "LightStar listens to audio to sync the light to music beats."
-        LSMinimumSystemVersion: "14.0"
-    entitlements:
-      path: LightStar/LightStar.entitlements
-      properties:
-        com.apple.security.app-sandbox: false
-        com.apple.security.device.bluetooth: true
+    dependencies:
+      - package: LightStarCore
+      - target: LightStarWidget
+        embed: true
     settings:
       base:
+        INFOPLIST_FILE: LightStar/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        CODE_SIGN_ENTITLEMENTS: LightStar/LightStar.entitlements
         PRODUCT_BUNDLE_IDENTIFIER: com.adityaraj.LightStar
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        ENABLE_HARDENED_RUNTIME: YES
+
+  LightStarWidget:
+    type: app-extension
+    platform: macOS
+    deploymentTarget: "14.0"
+    sources:
+      - path: LightStarWidget
+    dependencies:
+      - package: LightStarCore
+    settings:
+      base:
+        INFOPLIST_FILE: LightStarWidget/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        CODE_SIGN_ENTITLEMENTS: LightStarWidget/LightStarWidget.entitlements
+        PRODUCT_BUNDLE_IDENTIFIER: com.adityaraj.LightStar.widget
+        PRODUCT_NAME: LightStarWidget
+        SKIP_INSTALL: YES
+        ENABLE_HARDENED_RUNTIME: YES
+        LD_RUNPATH_SEARCH_PATHS:
+          - "$(inherited)"
+          - "@executable_path/../Frameworks"
+          - "@executable_path/../../../../Frameworks"
+
+  LightStariOS:
+    type: application
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: LightStariOS
+    resources:
+      - path: LightStar/Assets.xcassets
+    dependencies:
+      - package: LightStarCore
+      - target: LightStariOSWidget
+        embed: true
+    settings:
+      base:
+        INFOPLIST_FILE: LightStariOS/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        CODE_SIGN_ENTITLEMENTS: LightStariOS/LightStariOS.entitlements
+        PRODUCT_BUNDLE_IDENTIFIER: com.adityaraj.LightStar.ios
+        TARGETED_DEVICE_FAMILY: "1,2"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ENABLE_HARDENED_RUNTIME: NO
+        SUPPORTS_MACCATALYST: NO
+
+  LightStariOSWidget:
+    type: app-extension
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: LightStarWidget
+    dependencies:
+      - package: LightStarCore
+    settings:
+      base:
+        INFOPLIST_FILE: LightStarWidget/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        CODE_SIGN_ENTITLEMENTS: LightStariOSWidget/LightStariOSWidget.entitlements
+        PRODUCT_BUNDLE_IDENTIFIER: com.adityaraj.LightStar.ios.widget
+        PRODUCT_NAME: LightStariOSWidget
+        SKIP_INSTALL: YES
+        ENABLE_HARDENED_RUNTIME: NO
+        TARGETED_DEVICE_FAMILY: "1,2"
+
+schemes:
+  LightStar:
+    build:
+      targets:
+        LightStar: all
+        LightStarWidget: all
+    test:
+      targets: []
+  LightStariOS:
+    build:
+      targets:
+        LightStariOS: all
+        LightStariOSWidget: all

@@ -1,12 +1,12 @@
 import Foundation
 
-extension LightBLEManager {
+public extension LightBLEManager {
 
     // MARK: - Device info save
 
-    func saveDeviceLog() {
+    public func saveDeviceLog() {
         guard !deviceLog.isEmpty else { return }
-        #if DEBUG
+        #if os(macOS) && DEBUG
         let ts = Int(Date().timeIntervalSince1970)
         let url = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Desktop/lightstar-device-info-\(ts).txt")
         let content = "=== LightStar Device Info ===\n" + deviceLog.joined(separator: "\n")
@@ -15,7 +15,8 @@ extension LightBLEManager {
         #endif
     }
 
-    func saveFullBackup() {
+    public func saveFullBackup() {
+        #if os(macOS)
         let ts = Int(Date().timeIntervalSince1970)
         let desktop = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Desktop")
         let base = desktop.appendingPathComponent("lightstar-backup-\(ts)").path
@@ -114,10 +115,11 @@ extension LightBLEManager {
         deviceLog.append("  \(base).txt")
         deviceLog.append("  \(base).json")
         #endif
+        #endif
     }
 
-    func saveDeviceInfoIfComplete() {
-        #if DEBUG
+    public func saveDeviceInfoIfComplete() {
+        #if os(macOS) && DEBUG
         guard deviceLog.contains(where: { $0.hasPrefix("  READ") }) else { return }
         let dir = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Desktop")
         let existing = (try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil))?
@@ -129,7 +131,7 @@ extension LightBLEManager {
 
     // MARK: - Time sync (BC0B — auto-sent on connect, matches OEM app behaviour)
 
-    func sendTimeSync() {
+    public func sendTimeSync() {
         var cal = Calendar(identifier: .gregorian)
         cal.timeZone = TimeZone.current
         let now = Date()
@@ -142,6 +144,6 @@ extension LightBLEManager {
         let sc  = UInt8(c.second ?? 0)
         // OEM bitmask: bit0=Mon…bit6=Sun. Calendar weekday: 1=Sun,2=Mon,…,7=Sat
         let wd  = UInt8(1 << (((c.weekday ?? 1) + 5) % 7))
-        write([0xBC, 0x0B, 0x07, yr, mo, day, hr, mn, sc, wd, 0x55])
+        write(Cmd.timeSync(year: yr, month: mo, day: day, hour: hr, minute: mn, second: sc, weekdayMask: wd))
     }
 }

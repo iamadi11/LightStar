@@ -11,11 +11,12 @@ DerivedData/
 *.ipa
 *.dSYM.zip
 *.dSYM
+LightStar.xcodeproj/
 
-# Swift Package Manager
+# Swift Package Manager (LightStarCore/ is the local package — keep it)
 .build/
-Packages/
 .swiftpm/
+Packages/
 
 # macOS
 .DS_Store

@@ -6,9 +6,9 @@ import Accelerate
 // Fires onBands at ~86 Hz (512 samples / 44100 Hz) with the same FFT analysis
 // as SystemAudioSampler. Requires Microphone permission (NSMicrophoneUsageDescription).
 @MainActor
-final class MicAudioSampler {
+public final class MicAudioSampler {
 
-    var onBands: ((FrequencyBands) -> Void)?
+    public var onBands: ((FrequencyBands) -> Void)?
     private(set) var isRunning = false
 
     private var engine: AVAudioEngine?
@@ -21,11 +21,11 @@ final class MicAudioSampler {
     nonisolated(unsafe) private var maxBass = 0.001, maxMid = 0.001, maxHigh = 0.001, maxFlux = 0.001
     nonisolated(unsafe) private var accumulator: [Float] = []
 
-    static let micDeniedError = NSError(
+    public static let micDeniedError = NSError(
         domain: "MicAudio", code: -5001,
         userInfo: [NSLocalizedDescriptionKey: "Microphone access required"])
 
-    func start() async throws {
+    public func start() async throws {
         guard !isRunning else { return }
 
         // Check / request mic permission before touching AVAudioEngine
@@ -39,6 +39,12 @@ final class MicAudioSampler {
             }
             if !granted { throw Self.micDeniedError }
         }
+
+        #if os(iOS)
+        let session = AVAudioSession.sharedInstance()
+        try session.setCategory(.playAndRecord, mode: .default, options: [.mixWithOthers, .defaultToSpeaker])
+        try session.setActive(true)
+        #endif
 
         let eng = AVAudioEngine()
         let input = eng.inputNode
@@ -91,7 +97,7 @@ final class MicAudioSampler {
         isRunning = true
     }
 
-    func stop() async {
+    public func stop() async {
         guard isRunning else { return }
         isRunning = false
         engine?.inputNode.removeTap(onBus: 0)
@@ -111,7 +117,7 @@ final class MicAudioSampler {
 
 // MARK: - FFT (same algorithm as SystemAudioSampler)
 
-extension MicAudioSampler {
+public extension MicAudioSampler {
     nonisolated private func analyze(_ samples: [Float], sampleRate: Double) -> FrequencyBands {
         let n = samples.count
         var rmsVal: Float = 0

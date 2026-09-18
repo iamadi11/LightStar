@@ -1,4 +1,5 @@
 import AppIntents
+import LightStarCore
 import AppKit
 import SwiftUI
 
@@ -23,9 +24,11 @@ private func appDelegate() -> AppDelegate? { NSApp.delegate as? AppDelegate }
 
 @MainActor
 private func requireConnected() throws -> LightBLEManager {
-    guard let d = appDelegate() else { throw LSIntentError.notConnected }
-    guard d.ble.connectionState == .connected else { throw LSIntentError.notConnected }
-    return d.ble
+    guard let ble = LightStarRuntime.ble ?? (NSApp.delegate as? AppDelegate)?.ble else {
+        throw LSIntentError.notConnected
+    }
+    guard ble.connectionState == .connected else { throw LSIntentError.notConnected }
+    return ble
 }
 
 // MARK: - Preset entity (enables Siri autocomplete for preset names)
@@ -40,9 +43,9 @@ struct PresetEntity: AppEntity {
 struct PresetQuery: EntityQuery {
     @MainActor
     func entities(for ids: [String]) async throws -> [PresetEntity] {
-        let delegate = appDelegate()
+        let presets = LightStarRuntime.presets ?? appDelegate()?.presets
         return ids.compactMap { id in
-            guard delegate?.presets.presets.contains(where: { $0.name == id }) == true
+            guard presets?.presets.contains(where: { $0.name == id }) == true
             else { return nil }
             return PresetEntity(id: id)
         }
@@ -50,7 +53,7 @@ struct PresetQuery: EntityQuery {
 
     @MainActor
     func suggestedEntities() async throws -> [PresetEntity] {
-        (appDelegate()?.presets.presets ?? []).map { PresetEntity(id: $0.name) }
+        (LightStarRuntime.presets ?? appDelegate()?.presets)?.presets.map { PresetEntity(id: $0.name) } ?? []
     }
 }
 
@@ -171,7 +174,7 @@ struct SetColorTemperatureIntent: AppIntent {
 
     @MainActor func perform() async throws -> some IntentResult {
         let ble = try requireConnected()
-        ble.setColorTemperature(temperature.kelvin)
+        ble.setColorTemperature((temperature.kelvin - 2700) / 3800)
         return .result()
     }
 }
@@ -187,7 +190,7 @@ struct SetSyncModeIntent: AppIntent {
     var mode: SyncModeOption
 
     @MainActor func perform() async throws -> some IntentResult {
-        guard let ble = appDelegate()?.ble else { throw LSIntentError.notConnected }
+        guard let ble = LightStarRuntime.ble ?? appDelegate()?.ble else { throw LSIntentError.notConnected }
         ble.setSyncMode(mode.syncMode)
         return .result()
     }
@@ -199,7 +202,7 @@ struct ToggleSyncIntent: AppIntent {
     nonisolated(unsafe) static var openAppWhenRun: Bool = false
 
     @MainActor func perform() async throws -> some IntentResult {
-        appDelegate()?.ble.toggleSync()
+        (LightStarRuntime.ble ?? appDelegate()?.ble)?.toggleSync()
         return .result()
     }
 }
@@ -215,13 +218,10 @@ struct ApplyPresetIntent: AppIntent {
     var preset: PresetEntity
 
     @MainActor func perform() async throws -> some IntentResult {
-        guard let d = appDelegate() else { throw LSIntentError.notConnected }
-        guard let p = d.presets.presets.first(where: { $0.name == preset.id })
+        guard let p = (LightStarRuntime.presets ?? appDelegate()?.presets)?.presets.first(where: { $0.name == preset.id })
         else { throw LSIntentError.presetNotFound(preset.id) }
         let ble = try requireConnected()
-        if !ble.isOn { ble.setPower(on: true) }
-        ble.setColor(p.color)
-        ble.setBrightness(p.brightness)
+        ble.apply(preset: p)
         return .result()
     }
 }

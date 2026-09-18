@@ -7,138 +7,91 @@
 
 ## Project Overview
 
-macOS menu-bar app (LSUIElement, no Dock icon) controlling a BC/55 BLE RGB LED bar.
-Replaces the "Miracles Star" OEM app with a clean native controller + Ambilight sync.
+macOS menu-bar app (LSUIElement, no Dock icon) plus a sideloaded iOS remote, controlling a BC/55 BLE RGB LED bar. Replaces the "Miracles Star" OEM app.
 
-- **Platform**: macOS 14.0+, Swift 6, strict concurrency
-- **BLE**: CoreBluetooth on main actor
-- **UI**: SwiftUI, @Observable, @MainActor
-- **Build**: `xcodebuild -scheme LightStar -configuration Debug`
-- **Project regen**: `xcodegen generate` (all `.swift` files auto-included via glob)
+- **Platforms**: macOS 14.0+, iOS 17+, Swift 6, strict concurrency
+- **Shared core**: `LightStarCore` Swift package (protocol, LUT, coalescer, BLE manager, presets, schedules)
+- **macOS extras**: ScreenCaptureKit ambilight, system-audio FFT, Carbon hotkeys, menu bar, control window
+- **iOS extras**: remote control, mic/strip-mic sync, AppIntents, widget, BC0D firmware timers
+- **Build**: `xcodegen generate` then `xcodebuild -scheme LightStar`
+- **Do not rewrite in Tauri.** TCC, AppIntents, WidgetKit and ScreenCaptureKit are Apple-framework problems.
 
 ---
 
-## BLE Protocol (BC/55, confirmed via PacketLogger 2026-08-23)
+## BLE Protocol (BC/55)
 
-Frame format: `BC [cmd] [data_len] [data × data_len] 55`
+Frame format: `BC [cmd] [data_len] [data × data_len] 55`. Invariant: `bytes[2] == bytes.count - 4`.
 
-| Cmd byte | Function | Key bytes |
-|----------|----------|-----------|
-| `0x01`   | Power on/off | `0x01` = on, `0x00` = off |
-| `0x04`   | Hue + saturation | 16-bit big-endian H (0–360°), 16-bit big-endian S (0–1000) |
-| `0x05`   | Brightness | 16-bit big-endian (100–1000; min 100 observed) |
-| `0x06`   | Effect select | 2-byte: `0x00 id` |
-| `0x08`   | Effect speed | 1-byte 0–100 |
-| `0x13`   | BC13 animation | firmware-side scenes 0x00–0xFF |
+| Cmd | Function |
+|-----|----------|
+| `0x01` | Power on/off |
+| `0x02` | Channel order 1=RGB…6=BGR |
+| `0x03` | Pixel count 16-bit BE, 8–300 |
+| `0x04` | Static colour (hue LUT + sat 0–1000) |
+| `0x05` | Brightness 16-bit BE **100–1000** |
+| `0x06` | Effect select (58 IDs) |
+| `0x07` | Effect direction |
+| `0x08` | Effect speed (1 byte; range unconfirmed vs hardware) |
+| `0x09` | Streaming colour |
+| `0x0B` | Time sync (auto on connect) |
+| `0x0D` | Weekly firmware timer |
+| `0x0F` | Strip onboard mic |
+| `0x11` | Mic style 1–4 |
+| `0x12` | Mic sensitivity 0–255 |
+| `0x13` | Animation scene |
 
-BLE service UUID: `FFF0`. Write characteristic: `FFF3`. Advertised UUID: `2022`.
+GATT: advertised `0x2022`, service `FFF0`, write `FFF3` (with response), notify `FFF4` (never fires).
 
-### Hue LUT
-Strip's RGB → hue mapping is non-linear. A piecewise linear LUT in `BLEProtocol.swift`
-corrects for this. Key calibration region: 305–360° (purple/magenta) was recalibrated
-from Phase 1 sweep residuals (5–13° undershoot).
+All BLE writes go through `BLEWriteCoalescer.enqueue()`. Dedup key is `bytes[1]`. Insertion-ordered, replace-in-place.
+
+Hue LUT lives in `ColorMath.hueLUT` — do not regenerate casually.
 
 ---
 
 ## Architecture
 
 ```
-LightStar/
-├── BLE/
-│   ├── BLEProtocol.swift       — Cmd builders + HueLUT + Color.hsvComponents
-│   ├── BLEWriteCoalescer.swift — 20ms drain timer, per-command-byte dedup (key = bytes[1])
-│   ├── LightBLEManager.swift   — @MainActor @Observable coordinator (~1250 lines)
-│   └── CameraChangeDetector.swift — AVCaptureSession camera color sampling
-├── Models/
-│   ├── FrequencyBands.swift    — Shared audio analysis struct (Sendable)
-│   ├── LightState.swift        — LightState + Preset structs (Codable)
-│   └── PresetStore.swift       — @Observable UserDefaults preset persistence
-├── ScreenSync/
-│   ├── ScreenColorSampler.swift  — SCStream @ 16×9px → dominantHSV → onColor callback
-│   └── SystemAudioSampler.swift  — SCStream audio → FFT → onBands callback
-└── Views/
-    ├── MenuBarView.swift         — 288-line shell (tab bar + sections)
-    ├── SyncModePickerView.swift  — Mode picker + display selector
-    ├── ColorControlsView.swift   — Inline hue/sat GradientSlider
-    ├── EffectGridView.swift      — EffectsView + AnimationsView
-    ├── PresetsView.swift         — Preset grid
-    ├── ConnectionStatusView.swift — Disconnected/connecting states
-    └── DebugView.swift           — BLE probe + camera debug
+LightStarCore/          Swift package, macOS + iOS
+  ColorMath.swift       hue LUT, kelvinToHS, circadian
+  BLEProtocol.swift     Cmd builders + effects table
+  BLEWriteCoalescer.swift
+  LightBLEManager*.swift
+  Preset / Schedule stores
+  WidgetState.swift     App Group JSON
+  CaptureStubs.swift    iOS stand-ins for SCStream types
+
+LightStar/              macOS app (menu bar + control window)
+LightStariOS/           iOS remote (sideload)
+LightStarWidget/        WidgetKit source shared by both widget extensions
 ```
 
-### Key Invariants
+Views get state via `@Environment(LightBLEManager.self)`. AppIntents use `LightStarRuntime`.
 
-- **`write()` key**: `writeQueue[bytes[1]]` — `bytes[1]` is the command sub-byte (0x04, 0x05…). `bytes[0]` is always `0xBC` (header) — never use as key.
-- **All BLE writes** go through `BLEWriteCoalescer.enqueue()` — never `peripheral.writeValue` directly.
-- **SyncMode state machine**: `setSyncMode` → cancel `transitionTask` → `teardownSync` → `buildSync`. Always cancel `fadeTask` in teardown first.
-- **fadeToSteadyState**: uses `do { try await Task.sleep(...) } catch { return }` — NOT `try?` (which swallows CancellationError and skips `restoreSteadyState`).
-- **Screen capture**: `ScreenColorSampler` uses `SCStream` at 16×9 with IOSurface fast path. `SCDisplay` has no `localizedName` — use `NSScreen` matching by `displayID`.
-- **Audio capture**: `SystemAudioSampler` uses `SCStream` for system audio (requires Screen Recording permission). Callbacks fire on `queue`, dispatch to main via `DispatchQueue.main.async`.
+### Key invariants
 
----
-
-## SyncMode State Machine
-
-```
-.off ←──────────────────────────────────────────┐
- │ setSyncMode(.video/.audio/.combined)          │
- ▼                                               │
-teardownSync()                              setSyncMode(.off)
- - fadeTask?.cancel()                            │
- - nil all callbacks                             │
- - await stop() on active samplers               │
- ▼                                               │
-buildSync(mode, previousMode:)                   │
- - start samplers                                │
- - set callbacks                                 │
- - on .off: fadeToSteadyState(from: prev) ───────┘
-```
+- New fields on `Preset` or `LightSchedule` must be `Optional`.
+- No `try?` around `Task.sleep` in fade/power-cycle loops.
+- Corrupt stores are quarantined in later hardening; current stores decode-fail closed.
+- `lastFiredAt` is stamped `.now` at schedule creation so catch-up cannot fire for a time that passed before the schedule existed.
+- Silence auto-off applies to `.audio` only — never `.combined`.
+- `connectionError` is cleared when `connectionState` becomes `.connected`.
+- `.connecting` has a 10s timeout so wake-from-sleep can self-heal.
+- User disconnect is `userInitiatedDisconnect`, not `reconnectAttempts == max`.
 
 ---
 
-## Common Bugs to Avoid
+## Signing / distribution
 
-| Bug | Root cause | Fix |
-|-----|-----------|-----|
-| `_dispatch_assert_queue_fail` | CGDisplayStream callback crossing queue boundary | Use `DispatchQueue.main` as delivery queue, or `SCStream` (current) |
-| `writeQueue` drops color or brightness | Keying by `bytes[0]` (always 0xBC) | Key by `bytes[1]` (command sub-byte) |
-| Strip stuck on wrong color after mode exit | `try? await Task.sleep` swallows cancel | Use `do/catch` so restoreSteadyState always runs |
-| `NSScreen.screens` crash off main thread | NSScreen is MainActor-only | Mark callers `@MainActor` |
-| `SCDisplay.localizedName` compile error | SCDisplay has no such property | Match CGDirectDisplayID via NSScreen.screens |
-| SIGABRT on first BLE scan (TCC) | `com.apple.security.device.bluetooth` entitlement missing from `.entitlements` file | Add it — required under hardened runtime even for non-sandboxed apps |
-| SIGABRT on camera access (TCC) | `NSCameraUsageDescription` / `NSMicrophoneUsageDescription` absent from Info.plist | xcodegen does NOT rewrite existing Info.plist on re-runs; edit the file directly |
-| Icon instruction abort (menu bar) | `NSImage.cgImage(forProposedRect:)` returns nil for SF Symbol vector images; force-unwrap crashes | Use `fill() + draw(operation: .destinationIn)` compositing instead |
-| Worktrees committed as git submodules | `git add -A` picks up nested `.git` dirs | `.claude/worktrees/` is in `.gitignore`; use `git add -u` or explicit paths |
-
----
-
-## Multi-Agent Parallelism Rules
-
-When spawning parallel agents:
-1. **One agent per file group** — never two agents writing the same file
-2. **New files**: safe to create in parallel if no other agent reads them to import
-3. **`project.yml` glob**: new `.swift` files are auto-included — run `xcodegen generate` after copying worktree files to main
-4. **Always build to verify** before committing: `xcodebuild build -scheme LightStar 2>&1 | grep -E "error:|BUILD"`
-5. **Worktrees fail mid-work** on API limits — copy files to main project, run xcodegen, fix errors manually
-6. **Merge strategy**: `git merge worktree-agent-XXXX --no-edit` for clean builds; copy+xcodegen for partial builds
-
----
-
-## Calibration History
-
-| Date | Change |
-|------|--------|
-| 2026-08-23 | Initial LUT from PacketLogger capture |
-| 2026-08-23 | Blue/purple underperformance photographed (IMG_8890.HEIC) |
-| 2026-08-24 | Phase 1 recalibration: 305–360° range corrected (5–13° undershoot) |
+- `project.yml` is the source of truth. `LightStar.xcodeproj` is generated and gitignored.
+- Release tags are `vX.Y.Z`. CI (`release.yml`) archives only on those tags, using the tag name (not `build-N-sha`).
+- Prefer **one** Developer ID identity for local and CI so TCC grants survive updates.
+- `scripts/notarize.sh` archives, codesign-verifies, notarizes, staples, *then* `spctl`. Never `spctl` a not-yet-notarized app.
+- `.github/install-lightstar.command` must not `tccutil reset` and must not delete `/Applications/LightStar.app` before the new copy verifies.
 
 ---
 
 ## Conventions
 
-- No `try?` inside `Task { @MainActor }` fade loops — use `do/catch`
-- No `DispatchQueue.main.async` from inside `@MainActor` context — already on main
-- `write()` is a 1-liner: `coalescer.enqueue(bytes)` — all coalescing in BLEWriteCoalescer
-- New view components: `@Environment(LightBLEManager.self) private var ble` — no prop drilling
-- `FrequencyBands` lives in `Models/` — import from there, not BLE layer
-- Comments only for non-obvious WHY (not what). No multi-line docstrings.
+- Comments explain non-obvious **why**. No multi-line docstrings.
+- A new `Cmd` builder must be added to `allFrames` in `LightStarCore/Tests`.
+- Recalibration procedure for the hue LUT: sweep 10° steps, fixed WB/exposure, keep `obs` strictly increasing.

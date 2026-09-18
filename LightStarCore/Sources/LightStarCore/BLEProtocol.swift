@@ -1,44 +1,21 @@
 import SwiftUI
+#if canImport(AppKit)
+import AppKit
+#elseif canImport(UIKit)
+import UIKit
+#endif
 
 // MARK: - Command encoder (BC/55 protocol, confirmed via APK reverse-engineering 2026-08-26)
 // Frame: BC [cmd] [data_len] [data × data_len] 55
 // Service: FFF0  Write char: FFF3  Notify char: FFF4 (device never sends notifications)
 
-enum Cmd {
+public enum Cmd {
     // BC01: power
-    static let powerOn:  [UInt8] = [0xBC, 0x01, 0x01, 0x01, 0x55]
-    static let powerOff: [UInt8] = [0xBC, 0x01, 0x01, 0x00, 0x55]
+    public static let powerOn:  [UInt8] = [0xBC, 0x01, 0x01, 0x01, 0x55]
+    public static let powerOff: [UInt8] = [0xBC, 0x01, 0x01, 0x00, 0x55]
 
-    // BC04: static color — hue (0–360°) + saturation (0–1000), big-endian 16-bit
-    // Hue correction LUT: strip's internal RGB mapping is non-linear.
-    // Derived from color test 2026-08-23 + Phase 1 sweep residuals 2026-08-24.
-    private static let hueLUT: [(obs: Double, send: Double)] = [
-        (0,   0), (8,   0), (20,  10), (32,  20), (41,  30), (60,  40),
-        (89,  50), (109, 60), (123, 70), (135, 80), (145, 90),
-        (149, 120),
-        (173, 130), (188, 140), (198, 150), (203, 160), (206, 170),
-        (209, 180), (212, 190), (215, 200), (217, 210), (220, 220),
-        (222, 230), (226, 240), (229, 250), (239, 260), (247, 270),
-        (252, 280), (255, 290), (259, 300), (264, 310), (269, 320),
-        (276, 330), (286, 340),
-        (305, 351), (310, 353), (320, 355), (330, 357), (340, 358), (360, 360)
-    ]
-
-    private static func correctedHueDeg(_ h: Double) -> Double {
-        let deg = (h * 360).truncatingRemainder(dividingBy: 360)
-        for i in 0..<hueLUT.count - 1 {
-            let lo = hueLUT[i], hi = hueLUT[i + 1]
-            if deg >= lo.obs && deg <= hi.obs {
-                let t = (hi.obs - lo.obs) < 0.001 ? 0.0
-                      : (deg - lo.obs) / (hi.obs - lo.obs)
-                return lo.send + t * (hi.send - lo.send)
-            }
-        }
-        return deg
-    }
-
-    static func hue(_ h: Double, saturation s: Double) -> [UInt8] {
-        let H = UInt16(max(0, min(360, Int(correctedHueDeg(h)))))
+    public static func hue(_ h: Double, saturation s: Double) -> [UInt8] {
+        let H = UInt16(max(0, min(360, Int(ColorMath.correctedHueDeg(h)))))
         let S = UInt16(max(0, min(1000, Int(s * 1000))))
         return [0xBC, 0x04, 0x06,
                 UInt8(H >> 8), UInt8(H & 0xFF),
@@ -48,8 +25,8 @@ enum Cmd {
 
     // BC09: streaming color — same encoding as BC04 but used for rapid audio-reactive updates.
     // OEM app (com.frok.mrstar VoiceUtils.java) sends this at 200ms intervals during mic mode.
-    static func audioHue(_ h: Double, saturation s: Double) -> [UInt8] {
-        let H = UInt16(max(0, min(360, Int(correctedHueDeg(h)))))
+    public static func audioHue(_ h: Double, saturation s: Double) -> [UInt8] {
+        let H = UInt16(max(0, min(360, Int(ColorMath.correctedHueDeg(h)))))
         let S = UInt16(max(0, min(1000, Int(s * 1000))))
         return [0xBC, 0x09, 0x06,
                 UInt8(H >> 8), UInt8(H & 0xFF),
@@ -58,7 +35,7 @@ enum Cmd {
     }
 
     // BC05: brightness 100–1000
-    static func brightness(_ value: Double) -> [UInt8] {
+    public static func brightness(_ value: Double) -> [UInt8] {
         let B = UInt16(max(100, min(1000, Int(100 + value * 900))))
         return [0xBC, 0x05, 0x06,
                 UInt8(B >> 8), UInt8(B & 0xFF),
@@ -66,17 +43,17 @@ enum Cmd {
     }
 
     // BC06: select effect (58 IDs confirmed from ha-findn-led-ble 2026-08-26)
-    static func effect(id: UInt8) -> [UInt8] {
+    public static func effect(id: UInt8) -> [UInt8] {
         [0xBC, 0x06, 0x02, 0x00, id, 0x55]
     }
 
     // BC07: effect direction (0=backward, 1=forward)
-    static func effectDirection(forward: Bool) -> [UInt8] {
+    public static func effectDirection(forward: Bool) -> [UInt8] {
         [0xBC, 0x07, 0x01, forward ? 0x01 : 0x00, 0x55]
     }
 
     // BC08: effect speed 0–255
-    static func speed(_ value: Double) -> [UInt8] {
+    public static func speed(_ value: Double) -> [UInt8] {
         let s = UInt8(max(0, min(255, Int(value * 255))))
         return [0xBC, 0x08, 0x01, s, 0x55]
     }
@@ -84,32 +61,66 @@ enum Cmd {
     // BC0F: strip's onboard hardware microphone.
     // true  = strip uses its own mic (ambient-reactive, no phone involvement)
     // false = disable strip mic (app drives color via BC09 from phone mic)
-    static func stripMic(enabled: Bool) -> [UInt8] {
+    public static func stripMic(enabled: Bool) -> [UInt8] {
         [0xBC, 0x0F, 0x01, enabled ? 0x01 : 0x00, 0x55]
     }
 
     // BC11: mic-reactive style. Values from MicroPhoneFragment.java:
     //   1 = Classic,  2 = Soft,  3 = Dynamic,  4 = Disco
-    static func micStyle(_ style: UInt8) -> [UInt8] {
+    public static func micStyle(_ style: UInt8) -> [UInt8] {
         [0xBC, 0x11, 0x01, style, 0x55]
     }
 
     // BC12: mic sensitivity 0–255
-    static func micSensitivity(_ value: Int) -> [UInt8] {
+    public static func micSensitivity(_ value: Int) -> [UInt8] {
         [0xBC, 0x12, 0x01, UInt8(max(0, min(255, value))), 0x55]
+    }
+
+    // BC02: LED channel order 1=RGB … 6=BGR
+    public static func channelOrder(_ order: UInt8) -> [UInt8] {
+        [0xBC, 0x02, 0x01, order, 0x55]
+    }
+
+    // BC03: pixel count 16-bit BE, 8–300
+    public static func pixelCount(_ count: Int) -> [UInt8] {
+        let n = UInt16(max(8, min(300, count)))
+        return [0xBC, 0x03, 0x02, UInt8(n >> 8), UInt8(n & 0xFF), 0x55]
+    }
+
+    // BC0B: time sync — yr-2000, mo, day, hr, min, sec, weekday bitmask (bit0=Mon)
+    public static func timeSync(year: UInt8, month: UInt8, day: UInt8,
+                         hour: UInt8, minute: UInt8, second: UInt8, weekdayMask: UInt8) -> [UInt8] {
+        [0xBC, 0x0B, 0x07, year, month, day, hour, minute, second, weekdayMask, 0x55]
+    }
+
+    // BC0D: weekly firmware timer. Slot is the leading 0x01 seen in the APK capture.
+    // dayMask uses the same OEM bitmask as BC0B (bit0=Mon … bit6=Sun).
+    public static func weeklyTimer(slot: UInt8, powerOn: Bool, enabled: Bool,
+                            dayMask: UInt8, hour: UInt8, minute: UInt8) -> [UInt8] {
+        [0xBC, 0x0D, 0x06, slot, powerOn ? 0x01 : 0x00, enabled ? 0x01 : 0x00,
+         dayMask, hour, minute, 0x55]
+    }
+
+    // BC13: firmware animation scene 0x00–0xFF minus 0x3D/0x5B/0x96
+    public static func animation(id: UInt8) -> [UInt8] {
+        [0xBC, 0x13, 0x01, id, 0x55]
     }
 }
 
 // MARK: - Known effect list (confirmed from ha-findn-led-ble APK reverse-engineering 2026-08-26)
 
-struct Effect: Identifiable {
-    let name: String
-    let id: UInt8
-    var identifierForUI: UInt8 { id }
+public struct Effect: Identifiable {
+    public let name: String
+    public let id: UInt8
+    public var identifierForUI: UInt8 { id }
+    public init(name: String, id: UInt8) {
+        self.name = name
+        self.id = id
+    }
 }
 
 // Groups for EffectsView sectioning
-enum EffectGroup: String, CaseIterable {
+public enum EffectGroup: String, CaseIterable {
     case loop       = "Loop"
     case flutter    = "Fluttering"
     case brush      = "Brushing"
@@ -120,7 +131,7 @@ enum EffectGroup: String, CaseIterable {
     case running    = "Running"
 }
 
-let knownEffects: [(group: EffectGroup, effects: [Effect])] = [
+public let knownEffects: [(group: EffectGroup, effects: [Effect])] = [
     (.loop, [
         Effect(name: "Auto Loop",           id: 0x01),
         Effect(name: "Symphony",            id: 0x02),
@@ -199,11 +210,15 @@ let knownEffects: [(group: EffectGroup, effects: [Effect])] = [
 
 // MARK: - Color helper
 
-extension Color {
+public extension Color {
     var hsvComponents: (Double, Double, Double) {
         var h: CGFloat = 0, s: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        #if canImport(AppKit)
         (NSColor(self).usingColorSpace(.sRGB) ?? NSColor(self))
             .getHue(&h, saturation: &s, brightness: &b, alpha: &a)
+        #else
+        UIColor(self).getHue(&h, saturation: &s, brightness: &b, alpha: &a)
+        #endif
         return (Double(h), Double(s), Double(b))
     }
 }

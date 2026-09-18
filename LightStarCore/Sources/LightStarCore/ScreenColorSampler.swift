@@ -1,16 +1,17 @@
+#if os(macOS)
 import CoreVideo
 import ScreenCaptureKit
 import CoreMedia
 import AppKit
 
 @MainActor
-final class ScreenColorSampler: NSObject {
+public final class ScreenColorSampler: NSObject {
 
-    var onColor: ((Double, Double, Double) -> Void)?
-    var responsiveness: Double = 1.0   // unused, kept for API compat
+    public var onColor: ((Double, Double, Double) -> Void)?
+    public var responsiveness: Double = 1.0   // unused, kept for API compat
 
     // Display selection — set before calling start()
-    var selectedDisplayID: CGDirectDisplayID? = nil
+    public var selectedDisplayID: CGDirectDisplayID? = nil
 
     private(set) var isRunning = false
     private var stream: SCStream?
@@ -18,7 +19,7 @@ final class ScreenColorSampler: NSObject {
     private var generation = 0  // guards against start() committing after a concurrent stop()
 
     @MainActor
-    static func availableDisplays() async -> [(id: CGDirectDisplayID, name: String)] {
+    public static func availableDisplays() async -> [(id: CGDirectDisplayID, name: String)] {
         guard let content = try? await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true) else { return [] }
         // SCDisplay has no localizedName — match via NSScreen by displayID
         let nameByID = Dictionary(uniqueKeysWithValues: NSScreen.screens.compactMap { screen -> (CGDirectDisplayID, String)? in
@@ -28,7 +29,7 @@ final class ScreenColorSampler: NSObject {
         return content.displays.map { ($0.displayID, nameByID[$0.displayID] ?? "Display \($0.displayID)") }
     }
 
-    func start() async throws {
+    public func start() async throws {
         guard !isRunning else { return }
         generation &+= 1
         let gen = generation
@@ -63,7 +64,7 @@ final class ScreenColorSampler: NSObject {
         isRunning = true
     }
 
-    func stop() async {
+    public func stop() async {
         guard isRunning else { return }
         generation &+= 1  // invalidate any concurrent start()
         try? await stream?.stopCapture()
@@ -72,8 +73,8 @@ final class ScreenColorSampler: NSObject {
     }
 }
 
-extension ScreenColorSampler: SCStreamOutput {
-    nonisolated func stream(_ stream: SCStream,
+public extension ScreenColorSampler: SCStreamOutput {
+    public nonisolated func stream(_ stream: SCStream,
                             didOutputSampleBuffer sb: CMSampleBuffer,
                             of type: SCStreamOutputType) {
         guard type == .screen else { return }
@@ -94,17 +95,17 @@ private func dominantHSV(_ pb: CVPixelBuffer) -> (Double, Double, Double) {
     defer { CVPixelBufferUnlockBaseAddress(pb, .readOnly) }
     guard let base = CVPixelBufferGetBaseAddress(pb) else { return (0, 0, 0) }
 
-    let w   = CVPixelBufferGetWidth(pb)
-    let h   = CVPixelBufferGetHeight(pb)
-    let bpr = CVPixelBufferGetBytesPerRow(pb)
-    let ptr = base.assumingMemoryBound(to: UInt8.self)
+    public let w   = CVPixelBufferGetWidth(pb)
+    public let h   = CVPixelBufferGetHeight(pb)
+    public let bpr = CVPixelBufferGetBytesPerRow(pb)
+    public let ptr = base.assumingMemoryBound(to: UInt8.self)
 
-    let bins = 36   // 10° per bin
-    var histogram = [Double](repeating: 0, count: bins)
-    var binSat    = [Double](repeating: 0, count: bins)
-    var binVal    = [Double](repeating: 0, count: bins)
-    var binCount  = [Int](repeating: 0, count: bins)
-    var totalV = 0.0, pixCount = 0
+    public let bins = 36   // 10° per bin
+    public var histogram = [Double](repeating: 0, count: bins)
+    public var binSat    = [Double](repeating: 0, count: bins)
+    public var binVal    = [Double](repeating: 0, count: bins)
+    public var binCount  = [Int](repeating: 0, count: bins)
+    public var totalV = 0.0, pixCount = 0
 
     for row in 0..<h {
         for col in 0..<w {
@@ -140,14 +141,14 @@ private func dominantHSV(_ pb: CVPixelBuffer) -> (Double, Double, Double) {
     }
 
     // Fallback: screen is dark/desaturated — return average brightness as near-white
-    let avgV = pixCount > 0 ? totalV / Double(pixCount) : 0
+    public let avgV = pixCount > 0 ? totalV / Double(pixCount) : 0
     return (0, 0, avgV)
 }
 
 private func rgbToHSV(_ r: Double, _ g: Double, _ b: Double) -> (Double, Double, Double) {
-    let mx = max(r, g, b), mn = min(r, g, b), d = mx - mn
-    let s = mx < 1e-6 ? 0.0 : d / mx
-    var h = 0.0
+    public let mx = max(r, g, b), mn = min(r, g, b), d = mx - mn
+    public let s = mx < 1e-6 ? 0.0 : d / mx
+    public var h = 0.0
     if d > 1e-6 {
         if mx == r      { h = (g - b) / d }
         else if mx == g { h = 2 + (b - r) / d }
@@ -157,3 +158,5 @@ private func rgbToHSV(_ r: Double, _ g: Double, _ b: Double) -> (Double, Double,
     }
     return (h, s, mx)
 }
+
+#endif

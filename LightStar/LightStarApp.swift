@@ -1,7 +1,9 @@
 import SwiftUI
+import LightStarCore
 import AppKit
 import Carbon.HIToolbox
 import ScreenCaptureKit
+import WidgetKit
 
 @main
 struct LightStarApp: App {
@@ -9,7 +11,10 @@ struct LightStarApp: App {
 
     var body: some Scene {
         Settings {
-            EmptyView()
+            SettingsView()
+                .environment(appDelegate.ble)
+                .environment(appDelegate.presets)
+                .environment(appDelegate.schedules)
         }
     }
 }
@@ -19,6 +24,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem?
     private var popover: NSPopover?
     private var hotKeyRef: EventHotKeyRef?
+    private var controlWindowController: NSWindowController?
     lazy var ble = LightBLEManager()
     lazy var presets = PresetStore()
     private var widgetStateTask: Task<Void, Never>?
@@ -30,6 +36,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
+        LightStarRuntime.register(ble: ble, presets: presets, schedules: schedules)
+        WindowActions.openControl = { [weak self] in self?.showControlWindow() }
         setupMenuBar()
         if UserDefaults.standard.object(forKey: "autoConnectOnLaunch") as? Bool ?? true {
             ble.connect()
@@ -38,13 +46,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         setupGlobalHotKey()
         setupSleepWakeObserver()
         ble.onConnect = { [weak self] in
-            guard let self,
+            guard let self else { return }
+            // Drain first: a schedule that fired while disconnected is what asked
+            // for this connection, so it should win over the default preset.
+            self.schedules.drainPendingActions()
+            guard self.ble.syncMode == .off,
                   let id = self.presets.defaultPresetID,
                   let preset = self.presets.presets.first(where: { $0.id == id })
             else { return }
             self.ble.setColor(preset.color)
             self.ble.setBrightness(preset.brightness)
         }
+        schedules.fireDue()
     }
 
     // MARK: - Menu bar icon
@@ -91,19 +104,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             try? await Task.sleep(nanoseconds: 200_000_000)
             guard !Task.isCancelled else { return }
             let (h, s, _) = self.ble.color.hsvComponents
-            let state: [String: Any] = [
-                "connected": self.ble.connectionState == .connected,
-                "isOn": self.ble.isOn,
-                "hue": h,
-                "saturation": s,
-            ]
-            guard let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else { return }
-            let dir = support.appendingPathComponent("LightStar")
-            try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-            let file = dir.appendingPathComponent("widget-state.json")
-            if let data = try? JSONSerialization.data(withJSONObject: state) {
-                try? data.write(to: file, options: .atomic)
-            }
+            WidgetState(
+                connected: self.ble.connectionState == .connected,
+                isOn: self.ble.isOn,
+                hue: h,
+                saturation: s
+            ).save()
+            WidgetCenter.shared.reloadTimelines(ofKind: "LightStarWidget")
         }
     }
 
@@ -204,6 +211,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             menu.addItem(.separator())
         }
 
+        menu.addItem(NSMenuItem(title: "Open Window", action: #selector(showControlWindow), keyEquivalent: ""))
+        menu.addItem(NSMenuItem(title: "Settings…", action: #selector(showSettings), keyEquivalent: ","))
+        menu.addItem(.separator())
+
         menu.addItem(NSMenuItem(title: "Quit LightStar", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
         return menu
     }
@@ -224,6 +235,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if !ble.isOn { ble.setPower(on: true) }
         ble.setColor(preset.color)
         ble.setBrightness(preset.brightness)
+    }
+
+    @objc private func showControlWindow() {
+        NSApp.activate(ignoringOtherApps: true)
+        if let existing = controlWindowController?.window {
+            existing.makeKeyAndOrderFront(nil)
+            return
+        }
+        let root = ControlWindowView()
+            .environment(ble)
+            .environment(presets)
+            .environment(schedules)
+        let vc = NSHostingController(rootView: root)
+        let window = NSWindow(contentViewController: vc)
+        window.title = "LightStar"
+        window.styleMask.insert([.titled, .closable, .miniaturizable, .resizable])
+        window.setContentSize(NSSize(width: 720, height: 640))
+        window.identifier = NSUserInterfaceItemIdentifier("control")
+        window.isReleasedWhenClosed = false
+        let controller = NSWindowController(window: window)
+        controlWindowController = controller
+        controller.showWindow(nil)
+    }
+
+    @objc private func showSettings() {
+        openLightStarSettings()
+    }
+
+    func application(_ application: NSApplication, open urls: [URL]) {
+        openLightStarControlWindow()
     }
 
     // MARK: - Global keyboard shortcuts
@@ -287,7 +328,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             guard let self else { return }
             let autoConnect = UserDefaults.standard.object(forKey: "autoConnectOnLaunch") as? Bool ?? true
             guard autoConnect, self.ble.connectionState == .disconnected else { return }
-            Task { @MainActor in self.ble.connect() }
+            Task { @MainActor in
+                self.ble.connect()
+                self.schedules.fireDue()
+            }
         }
         nc.addObserver(forName: NSWorkspace.screensDidSleepNotification, object: nil, queue: .main) { [weak self] _ in
             Task { @MainActor in self?.ble.pauseScreenSync() }

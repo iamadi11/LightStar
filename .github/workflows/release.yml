@@ -2,7 +2,6 @@ name: Release
 
 on:
   push:
-    branches: [main]
     tags: ['v[0-9]*.[0-9]*.[0-9]*']
 
 concurrency:
@@ -33,6 +32,11 @@ jobs:
       - name: Select Xcode
         run: sudo xcode-select -s /Applications/Xcode_26.3.app
 
+      - name: Generate Xcode project
+        run: |
+          brew install xcodegen
+          xcodegen generate
+
       # ── Version from git ─────────────────────────────────────────────────────
       # Tag format: v1.2.3  → marketing version 1.2.3, build = commit count
       - name: Compute version
@@ -40,13 +44,11 @@ jobs:
         run: |
           SHORT_SHA="${GITHUB_SHA::7}"
           COMMIT_COUNT=$(git rev-list --count HEAD)
-          LATEST_TAG=$(git tag --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1)
-          MARKETING="${LATEST_TAG#v}"
-          MARKETING="${MARKETING:-0.0.1}"
+          MARKETING="${GITHUB_REF_NAME#v}"
           echo "marketing=$MARKETING"  >> "$GITHUB_OUTPUT"
           echo "build=$COMMIT_COUNT"   >> "$GITHUB_OUTPUT"
           echo "sha=$SHORT_SHA"        >> "$GITHUB_OUTPUT"
-          echo "tag=build-$COMMIT_COUNT-$SHORT_SHA" >> "$GITHUB_OUTPUT"
+          echo "tag=$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
 
       # ── Code signing (Developer ID) ──────────────────────────────────────────
       # Set up these secrets in Settings → Secrets → Actions:
