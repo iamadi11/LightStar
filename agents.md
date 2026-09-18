@@ -59,6 +59,18 @@ LightStarCore/          Swift package, macOS + iOS
   Preset / Schedule stores
   WidgetState.swift     App Group JSON
   CaptureStubs.swift    iOS stand-ins for SCStream types
+  
+  # Screen capture provider architecture
+  ScreenFrameProvider.swift     Provider protocol + analysis types
+  ScreenCaptureKitProvider.swift  SCK implementation with protected content detection
+  ScreenColorSampler.swift      Wrapper with legacy HSV callback API
+  
+  # iPhone <-> Mac remote control
+  RemoteProtocol.swift          Versioned binary protocol (JSON payloads)
+  RemoteControlServer.swift     TCP server with Bonjour (macOS only)
+  RemoteControlClient.swift     Bonjour discovery + auto-reconnect
+  MacInputController.swift      CGEvent mouse/keyboard control (macOS only)
+  LightBLEManager+Remote.swift  State snapshot + command handling
 
 LightStar/              macOS app (menu bar + control window)
 LightStariOS/           iOS remote (sideload)
@@ -66,6 +78,57 @@ LightStarWidget/        WidgetKit source shared by both widget extensions
 ```
 
 Views get state via `@Environment(LightBLEManager.self)`. AppIntents use `LightStarRuntime`.
+
+---
+
+## iPhone <-> Mac Remote Control
+
+The iOS app can control the Mac via local network instead of direct BLE:
+
+```
+┌─────────────────────────────────────────────┐
+│                  iPhone                     │
+│  RemoteControlClient (Bonjour discovery)    │
+│  RemoteControlView / TrackpadView / etc.    │
+└──────────────────┬──────────────────────────┘
+                   │ TCP + JSON (port 19384)
+                   ▼
+┌─────────────────────────────────────────────┐
+│                   Mac                       │
+│  RemoteControlServer (Bonjour advertising)  │
+│  RemoteControlCoordinator                   │
+│  MacInputController (CGEvent)               │
+│  LightBLEManager → LED Strip                │
+└─────────────────────────────────────────────┘
+```
+
+### Protocol
+
+Service type: `_lightstar._tcp`, port `19384`.
+
+Messages are length-prefixed (4-byte big-endian) JSON:
+
+| Type | Direction | Purpose |
+|------|-----------|---------|
+| `hello` | iPhone → Mac | Protocol version, device name |
+| `helloAck` | Mac → iPhone | Accept/reject, pairing required |
+| `stateUpdate` | Mac → iPhone | Full light state snapshot |
+| `setPower`, `setBrightness`, etc. | iPhone → Mac | Light commands |
+| `mouseMove`, `keyDown`, etc. | iPhone → Mac | Input commands |
+
+### Permissions
+
+Mac requires:
+- **Accessibility** for CGEvent input control
+- **Screen Recording** for display capture (existing)
+- **Local Network** for Bonjour (automatic)
+
+### Usage
+
+1. Mac app starts `RemoteControlServer` on launch (default enabled)
+2. iPhone app discovers Mac via Bonjour in `RemoteControlView`
+3. Tap to connect; optional pairing code if `requirePairing` is set
+4. State syncs automatically; commands relay through Mac to LED strip
 
 ### Key invariants
 
@@ -87,6 +150,41 @@ Views get state via `@Environment(LightBLEManager.self)`. AppIntents use `LightS
 - Prefer **one** Developer ID identity for local and CI so TCC grants survive updates.
 - `scripts/notarize.sh` archives, codesign-verifies, notarizes, staples, *then* `spctl`. Never `spctl` a not-yet-notarized app.
 - `.github/install-lightstar.command` must not `tccutil reset` and must not delete `/Applications/LightStar.app` before the new copy verifies.
+
+---
+
+## Screen Capture Provider Architecture
+
+Screen capture is abstracted through `ScreenFrameProvider` protocol:
+
+```swift
+protocol ScreenFrameProvider {
+    var onFrame: ((FrameAnalysis) -> Void)? { get set }
+    var selectedDisplayID: CGDirectDisplayID? { get set }
+    var isRunning: Bool { get }
+    func start() async throws
+    func stop() async
+}
+```
+
+`FrameAnalysis` includes:
+- `dominantHue`, `dominantSaturation`, `dominantBrightness` — HSV in 0-1 range
+- `blackPixelPercentage` — for protected content detection
+- `suspectedProtectedContent` — true if persistent black region detected
+
+### DRM-Protected Content
+
+See `docs/display-capture-research.md` for full research. Summary:
+
+| Content | Browser | HW Accel | Capturable |
+|---------|---------|----------|------------|
+| Normal desktop | N/A | N/A | ✅ Yes |
+| YouTube | Any | Any | ✅ Yes |
+| Netflix | Chrome | ON | ❌ Black |
+| Netflix | Chrome | OFF | ✅ Yes (1080p max) |
+| Netflix | Safari | N/A | ❌ Always black |
+
+**Recommended approach**: Detect black regions, show user-friendly diagnostic suggesting Chrome hardware acceleration off.
 
 ---
 
