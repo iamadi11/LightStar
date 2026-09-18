@@ -32,7 +32,7 @@ public final class CaptureDiagnostics: ObservableObject {
         case browserCompatibilityMode = "Browser Compatibility Mode Available"
     }
     
-    public struct BrowserInfo: Equatable {
+    public struct BrowserInfo: Equatable, Sendable {
         public let name: String
         public let bundleID: String
         public let supportsHWAccelToggle: Bool
@@ -78,7 +78,7 @@ public final class CaptureDiagnostics: ObservableObject {
         ]
     }
     
-    public struct CompatibilityGuide {
+    public struct CompatibilityGuide: Sendable {
         public let browser: BrowserInfo
         public let title: String
         public let steps: [String]
@@ -287,7 +287,7 @@ public final class CaptureDiagnostics: ObservableObject {
     // MARK: - Test Matrix Results
     
     /// Known test results for different content/browser combinations
-    public struct TestResult {
+    public struct TestResult: Sendable {
         public let content: String
         public let browser: String
         public let hardwareAcceleration: Bool
