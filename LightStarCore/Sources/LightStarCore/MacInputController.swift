@@ -259,17 +259,11 @@ public final class MacInputController: ObservableObject {
         inputLog.info("media key \(String(describing: key), privacy: .public)")
         switch key {
         case .playPause:
-            _ = mediaRemoteCommand(2)
-            postHIDSystemKey(NXKey.play)
-            appleScriptTransport("playpause")
+            sendTransport(remote: MediaRemoteCommand.togglePlayPause, hid: NXKey.play, script: "playpause")
         case .nextTrack:
-            _ = mediaRemoteCommand(4)
-            postHIDSystemKey(NXKey.next)
-            appleScriptTransport("next track")
+            sendTransport(remote: MediaRemoteCommand.nextTrack, hid: NXKey.next, script: "next track")
         case .previousTrack:
-            _ = mediaRemoteCommand(5)
-            postHIDSystemKey(NXKey.previous)
-            appleScriptTransport("previous track")
+            sendTransport(remote: MediaRemoteCommand.previousTrack, hid: NXKey.previous, script: "previous track")
         case .volumeUp:
             if !postHIDSystemKey(NXKey.soundUp) {
                 adjustVolume(by: 1.0 / 16.0)
@@ -293,8 +287,15 @@ public final class MacInputController: ObservableObject {
         }
     }
 
-    /// Hardware-key equivalent (NX aux). Shows the system volume/brightness HUD
-    /// and routes play/pause through the same daemon as the keyboard.
+    /// One command only. MediaRemote and HID both reach Safari/Chrome Media Session,
+    /// so firing both pauses Netflix and immediately plays it again.
+    private func sendTransport(remote: UInt32, hid: Int, script: String) {
+        if mediaRemoteCommand(remote) { return }
+        if postHIDSystemKey(hid) { return }
+        appleScriptTransport(script)
+    }
+
+    /// Hardware-key equivalent (NX aux). Shows the system volume/brightness HUD.
     @discardableResult
     private func postHIDSystemKey(_ key: Int) -> Bool {
         _ = ensureAccessibility()
@@ -302,7 +303,7 @@ public final class MacInputController: ObservableObject {
             let flag = down ? 0x0A00 : 0x0B00
             guard let nsEvent = NSEvent.otherEvent(
                 with: .systemDefined,
-                location: NSEvent.mouseLocation,
+                location: .zero,
                 modifierFlags: NSEvent.ModifierFlags(rawValue: NSEvent.ModifierFlags.RawValue(flag)),
                 timestamp: ProcessInfo.processInfo.systemUptime,
                 windowNumber: 0,
@@ -314,10 +315,7 @@ public final class MacInputController: ObservableObject {
                 inputLog.error("media HID event create failed key=\(key)")
                 return false
             }
-            event.flags = CGEventFlags(rawValue: UInt64(flag))
             event.post(tap: .cghidEventTap)
-            event.post(tap: .cgSessionEventTap)
-            event.post(tap: .cgAnnotatedSessionEventTap)
             return true
         }
         return post(down: true) && post(down: false)
@@ -527,6 +525,12 @@ public final class MacInputController: ObservableObject {
         }
         return unsafeBitCast(pointer, to: T.self)
     }
+}
+
+private enum MediaRemoteCommand {
+    static let togglePlayPause: UInt32 = 2
+    static let nextTrack: UInt32 = 4
+    static let previousTrack: UInt32 = 5
 }
 
 private enum NXKey {
