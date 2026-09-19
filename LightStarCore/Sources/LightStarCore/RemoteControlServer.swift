@@ -273,7 +273,7 @@ private final class ClientConnection: @unchecked Sendable {
     
     func send(_ message: RemoteMessage) {
         guard let data = try? encodeMessage(message) else { return }
-        connection.send(content: data, completion: .idempotent)
+        connection.send(content: data, completion: .contentProcessed { _ in })
     }
     
     func close() {

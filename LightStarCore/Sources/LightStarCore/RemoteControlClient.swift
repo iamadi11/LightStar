@@ -591,7 +591,7 @@ private final class PointerChannel: @unchecked Sendable {
         let connection = self.connection
         lock.unlock()
         guard let connection, let data = try? encodeMessage(message) else { return }
-        connection.send(content: data, completion: .idempotent)
+        connection.send(content: data, completion: .contentProcessed { _ in })
     }
 }
 

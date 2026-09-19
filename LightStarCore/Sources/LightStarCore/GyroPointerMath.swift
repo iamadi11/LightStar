@@ -237,6 +237,16 @@ public enum RemotePointerAcceleration {
     }
 }
 
+/// Accumulates fractional pixels so slow trackpad travel is not rounded away.
+public enum RemotePixelQueue {
+    public static func takeInteger(from accumulated: inout Double, adding delta: Double) -> Int64 {
+        accumulated += delta
+        let step = accumulated.rounded(.towardZero)
+        accumulated -= step
+        return Int64(step)
+    }
+}
+
 /// Quartz display geometry used to put the Air pointer back in the middle of the current screen.
 public enum RemoteDisplayGeometry {
     public static func bounds(

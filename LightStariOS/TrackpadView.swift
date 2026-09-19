@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import QuartzCore
 import LightStarCore
 
 /// Full-bleed Mac trackpad. Keyboard uses the iPhone system keyboard, not a fake key grid.
@@ -477,14 +478,17 @@ final class MacTrackpadUIView: UIView {
     private var lastTapAt: TimeInterval = 0
     private var lastScrollVX: CGFloat = 0
     private var lastScrollVY: CGFloat = 0
+    private var velocityEMA = 0.0
     private let haptic = UIImpactFeedbackGenerator(style: .light)
-    private let tapSlop: CGFloat = 12
+    private let tapSlop: CGFloat = 10
     private var lastAspectLandscape: Bool?
+    private var fingerDots: [ObjectIdentifier: CALayer] = [:]
 
     override init(frame: CGRect) {
         super.init(frame: frame)
         isMultipleTouchEnabled = true
         isExclusiveTouch = true
+        isOpaque = false
         backgroundColor = UIColor.secondarySystemGroupedBackground
         layer.cornerRadius = 20
         layer.cornerCurve = .continuous
@@ -523,6 +527,7 @@ final class MacTrackpadUIView: UIView {
             lastMoveAt = now
             lastScrollVX = 0
             lastScrollVY = 0
+            velocityEMA = 0
         }
         for touch in touches {
             let id = ObjectIdentifier(touch)
@@ -530,6 +535,7 @@ final class MacTrackpadUIView: UIView {
             lastLocation[id] = loc
             startLocation[id] = loc
             activeIDs.insert(id)
+            showFingerDot(id, at: loc)
         }
         peakFingerCount = max(peakFingerCount, activeIDs.count)
         if activeIDs.count == 1 {
@@ -557,11 +563,15 @@ final class MacTrackpadUIView: UIView {
             let id = ObjectIdentifier(touch)
             guard let prev = lastLocation[id] else { continue }
             let coalesced = event?.coalescedTouches(for: touch) ?? [touch]
-            let actual = (coalesced.last ?? touch).location(in: self)
-            let predicted = event?.predictedTouches(for: touch)?.last?.location(in: self) ?? actual
-            sumX += predicted.x - prev.x
-            sumY += predicted.y - prev.y
-            lastLocation[id] = actual
+            var loc = prev
+            for sample in coalesced {
+                let next = sample.location(in: self)
+                sumX += next.x - loc.x
+                sumY += next.y - loc.y
+                loc = next
+            }
+            lastLocation[id] = loc
+            moveFingerDot(id, to: loc)
             fingers += 1
         }
         guard fingers > 0 else { return }
@@ -625,6 +635,7 @@ final class MacTrackpadUIView: UIView {
             activeIDs.remove(id)
             lastLocation.removeValue(forKey: id)
             startLocation.removeValue(forKey: id)
+            removeFingerDot(id)
         }
         if activeIDs.isEmpty {
             let duration = ProcessInfo.processInfo.systemUptime - touchBeganAt
@@ -709,6 +720,7 @@ final class MacTrackpadUIView: UIView {
         lastLocation.removeAll()
         startLocation.removeAll()
         activeIDs.removeAll()
+        clearFingerDots()
     }
 
     private func scheduleLongPress() {
@@ -758,9 +770,10 @@ final class MacTrackpadUIView: UIView {
 
     private func sendPointer(dx: CGFloat, dy: CGFloat, dt: TimeInterval) {
         let scaling = settings?.pointerSpeed ?? 1
-        let velocity = dt > 0 ? Double(hypot(dx, dy)) / dt : 0
+        let instant = dt > 0 ? Double(hypot(dx, dy)) / dt : 0
+        velocityEMA = velocityEMA * 0.72 + instant * 0.28
         let accel = RemotePointerAcceleration.factor(
-            pixelsPerSecond: velocity,
+            pixelsPerSecond: velocityEMA,
             enabled: settings?.accelerationEnabled != false,
             scaling: scaling
         )
@@ -768,7 +781,36 @@ final class MacTrackpadUIView: UIView {
     }
 
     private func sendScroll(dx: CGFloat, dy: CGFloat) {
-        client?.sendScroll(deltaX: Double(dx) * 2.0, deltaY: Double(dy) * 2.0)
+        client?.sendScroll(deltaX: Double(dx) * 1.85, deltaY: Double(dy) * 1.85)
+    }
+
+    private func showFingerDot(_ id: ObjectIdentifier, at point: CGPoint) {
+        let dot = CALayer()
+        dot.bounds = CGRect(x: 0, y: 0, width: 44, height: 44)
+        dot.cornerRadius = 22
+        dot.backgroundColor = UIColor.white.withAlphaComponent(0.22).cgColor
+        dot.borderColor = UIColor.white.withAlphaComponent(0.35).cgColor
+        dot.borderWidth = 1
+        dot.position = point
+        layer.addSublayer(dot)
+        fingerDots[id] = dot
+    }
+
+    private func moveFingerDot(_ id: ObjectIdentifier, to point: CGPoint) {
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        fingerDots[id]?.position = point
+        CATransaction.commit()
+    }
+
+    private func removeFingerDot(_ id: ObjectIdentifier) {
+        fingerDots[id]?.removeFromSuperlayer()
+        fingerDots.removeValue(forKey: id)
+    }
+
+    private func clearFingerDots() {
+        fingerDots.values.forEach { $0.removeFromSuperlayer() }
+        fingerDots.removeAll()
     }
 
     private func clickHaptic() {

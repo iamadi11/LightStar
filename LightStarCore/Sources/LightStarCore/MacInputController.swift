@@ -23,9 +23,11 @@ public final class MacInputController: ObservableObject {
 
     public let pointerInjector = MacPointerInjector()
     private var didPromptAccessibility = false
+    private var lastPromptAt: CFTimeInterval = -100
     private let eventSource = CGEventSource(stateID: .hidSystemState)
 
     public init() {
+        eventSource?.localEventsSuppressionInterval = 0
         checkAccessibility()
         pointerInjector.mouseSensitivity = mouseSensitivity
         pointerInjector.scrollSensitivity = scrollSensitivity
@@ -35,13 +37,15 @@ public final class MacInputController: ObservableObject {
         accessibilityEnabled = AXIsProcessTrusted()
     }
 
-    /// Returns true when events can be injected. Prompts once if missing.
+    /// Returns true when events can be injected. Prompts if missing, at most every 20s.
     @discardableResult
     public func ensureAccessibility() -> Bool {
         checkAccessibility()
         if accessibilityEnabled { return true }
-        if !didPromptAccessibility {
+        let now = ProcessInfo.processInfo.systemUptime
+        if !didPromptAccessibility || now - lastPromptAt > 20 {
             didPromptAccessibility = true
+            lastPromptAt = now
             requestAccessibility()
             checkAccessibility()
         }
@@ -252,19 +256,20 @@ public final class MacInputController: ObservableObject {
     }
 
     public func sendMediaKey(_ key: MediaKeyMessage.MediaKey) {
+        inputLog.info("media key \(String(describing: key), privacy: .public)")
         switch key {
         case .playPause:
-            if !postHIDSystemKey(NXKey.play) {
-                _ = mediaRemoteCommand(2)
-            }
+            _ = mediaRemoteCommand(2)
+            postHIDSystemKey(NXKey.play)
+            appleScriptTransport("playpause")
         case .nextTrack:
-            if !postHIDSystemKey(NXKey.next) {
-                _ = mediaRemoteCommand(4)
-            }
+            _ = mediaRemoteCommand(4)
+            postHIDSystemKey(NXKey.next)
+            appleScriptTransport("next track")
         case .previousTrack:
-            if !postHIDSystemKey(NXKey.previous) {
-                _ = mediaRemoteCommand(5)
-            }
+            _ = mediaRemoteCommand(5)
+            postHIDSystemKey(NXKey.previous)
+            appleScriptTransport("previous track")
         case .volumeUp:
             if !postHIDSystemKey(NXKey.soundUp) {
                 adjustVolume(by: 1.0 / 16.0)
@@ -297,7 +302,7 @@ public final class MacInputController: ObservableObject {
             let flag = down ? 0x0A00 : 0x0B00
             guard let nsEvent = NSEvent.otherEvent(
                 with: .systemDefined,
-                location: .zero,
+                location: NSEvent.mouseLocation,
                 modifierFlags: NSEvent.ModifierFlags(rawValue: NSEvent.ModifierFlags.RawValue(flag)),
                 timestamp: ProcessInfo.processInfo.systemUptime,
                 windowNumber: 0,
@@ -306,10 +311,13 @@ public final class MacInputController: ObservableObject {
                 data1: (key << 16) | flag,
                 data2: -1
             ), let event = nsEvent.cgEvent else {
+                inputLog.error("media HID event create failed key=\(key)")
                 return false
             }
+            event.flags = CGEventFlags(rawValue: UInt64(flag))
             event.post(tap: .cghidEventTap)
             event.post(tap: .cgSessionEventTap)
+            event.post(tap: .cgAnnotatedSessionEventTap)
             return true
         }
         return post(down: true) && post(down: false)
@@ -337,13 +345,28 @@ public final class MacInputController: ObservableObject {
         pressHotkey(keyCode: 0x0C, modifiers: [.maskCommand, .maskControl])
     }
 
+    private func appleScriptTransport(_ action: String) {
+        let apps = NSWorkspace.shared.runningApplications
+        if apps.contains(where: { $0.bundleIdentifier == "com.spotify.client" }) {
+            _ = runAppleScript("tell application \"Spotify\" to \(action)")
+        }
+        if apps.contains(where: { $0.bundleIdentifier == "com.apple.Music" }) {
+            _ = runAppleScript("tell application \"Music\" to \(action)")
+        }
+    }
+
     private func mediaRemoteCommand(_ command: UInt32) -> Bool {
         typealias Send = @convention(c) (UInt32, CFDictionary?) -> DarwinBoolean
         guard let send: Send = loadPrivateSymbol(
             "MRMediaRemoteSendCommand",
             from: "/System/Library/PrivateFrameworks/MediaRemote.framework/MediaRemote"
-        ) else { return false }
-        return send(command, nil).boolValue
+        ) else {
+            inputLog.error("MediaRemote MRMediaRemoteSendCommand unavailable")
+            return false
+        }
+        let ok = send(command, nil).boolValue
+        inputLog.info("MediaRemote command \(command) ok=\(ok)")
+        return ok
     }
 
     private func defaultOutputDevice() -> AudioDeviceID? {

@@ -495,6 +495,15 @@ final class RemoteProtocolTests: XCTestCase {
             0.3,
             accuracy: 0.0001
         )
+
+        var acc = 0.0
+        XCTAssertEqual(RemotePixelQueue.takeInteger(from: &acc, adding: 0.4), 0)
+        XCTAssertEqual(RemotePixelQueue.takeInteger(from: &acc, adding: 0.4), 0)
+        XCTAssertEqual(RemotePixelQueue.takeInteger(from: &acc, adding: 0.4), 1)
+        XCTAssertEqual(acc, 0.2, accuracy: 0.0001)
+        var neg = 0.0
+        XCTAssertEqual(RemotePixelQueue.takeInteger(from: &neg, adding: -1.6), -1)
+        XCTAssertEqual(neg, -0.6, accuracy: 0.0001)
     }
 
     func testRemoteDisplayGeometryCentersCurrentScreen() {
