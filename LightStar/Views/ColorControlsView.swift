@@ -8,7 +8,6 @@ struct ColorControlView: View {
     @State private var sat: Double = 1.0
     @State private var colorTemp: Double = 0.5   // 0=warm 2700K, 1=cool 6500K
     @State private var mode: ColorMode = .color
-    @State private var ignoreNextBLEUpdate = false
 
     enum ColorMode { case color, white }
 
@@ -22,6 +21,9 @@ struct ColorControlView: View {
     ])
 
     var body: some View {
+        let _ = ble.colorHue
+        let _ = ble.colorSat
+        let _ = ble.colorTemperature
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 8) {
                 Label("Color", systemImage: "paintbrush")
@@ -40,8 +42,11 @@ struct ColorControlView: View {
             if mode == .color {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Hue").font(.caption2).foregroundStyle(.secondary)
-                    GradientSlider(gradient: Self.hueGradient, value: $hue)
-                        .onChange(of: hue) { _, _ in sendColor() }
+            GradientSlider(gradient: Self.hueGradient, value: $hue)
+                        .onChange(of: hue) { _, new in
+                            guard abs(new - ble.colorHue) > 0.002 else { return }
+                            sendColor()
+                        }
                 }
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Saturation").font(.caption2).foregroundStyle(.secondary)
@@ -52,7 +57,10 @@ struct ColorControlView: View {
                         ]),
                         value: $sat
                     )
-                    .onChange(of: sat) { _, _ in sendColor() }
+                    .onChange(of: sat) { _, new in
+                            guard abs(new - ble.colorSat) > 0.002 else { return }
+                            sendColor()
+                        }
                 }
 
                 // Color history strip
@@ -85,7 +93,10 @@ struct ColorControlView: View {
                         }
                     }
                     GradientSlider(gradient: Self.cctGradient, value: $colorTemp)
-                        .onChange(of: colorTemp) { _, _ in sendCCT() }
+                        .onChange(of: colorTemp) { _, new in
+                            guard abs(new - ble.colorTemperature) > 0.002 else { return }
+                            sendCCT()
+                        }
                         .disabled(ble.circadianEnabled)
                         .opacity(ble.circadianEnabled ? 0.4 : 1)
                 }
@@ -104,26 +115,26 @@ struct ColorControlView: View {
             }
         }
         .onAppear { syncFromBLE() }
-        .onChange(of: ble.color) { _, _ in
-            guard !ignoreNextBLEUpdate else { ignoreNextBLEUpdate = false; return }
-            syncFromBLE()
+        .onChange(of: ble.colorHue) { _, _ in syncFromBLE() }
+        .onChange(of: ble.colorSat) { _, _ in syncFromBLE() }
+        .onChange(of: ble.colorTemperature) { _, new in
+            colorTemp = new
         }
     }
 
     private func syncFromBLE() {
-        let (h, s, _) = ble.color.hsvComponents
-        if s > 0.05 { hue = h; sat = s }
+        hue = ble.colorHue
+        sat = ble.colorSat
+        colorTemp = ble.colorTemperature
     }
 
     private func sendColor() {
-        ignoreNextBLEUpdate = true
         ble.setSyncMode(.off)
         ble.circadianEnabled = false
         ble.setHue(hue, saturation: sat)
     }
 
     private func sendCCT() {
-        ignoreNextBLEUpdate = true
         ble.setSyncMode(.off)
         ble.setColorTemperature(colorTemp)
     }

@@ -48,9 +48,9 @@ public extension LightBLEManager {
 
     public func setHue(_ h: Double, saturation s: Double) {
         if syncMode != .off { stopSyncInline() }
+        colorHue = h
+        colorSat = s
         color = Color(hue: h, saturation: s, brightness: 1)
-        UserDefaults.standard.set(h, forKey: "colorHue")
-        UserDefaults.standard.set(s, forKey: "colorSat")
         recordColorHistory(h, s)
         audioPulseH = h
         effectModeActive = false

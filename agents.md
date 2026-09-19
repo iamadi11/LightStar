@@ -68,8 +68,10 @@ LightStarCore/          Swift package, macOS + iOS
   # iPhone <-> Mac remote control
   RemoteProtocol.swift          Versioned binary protocol (JSON payloads)
   RemoteControlServer.swift     TCP server with Bonjour (macOS only)
-  RemoteControlClient.swift     Bonjour discovery + auto-reconnect
-  MacInputController.swift      CGEvent mouse/keyboard control (macOS only)
+  RemoteControlClient.swift     Bonjour discovery + pointer channel (no MainActor hop)
+  MacPointerInjector.swift      CGEvent pointer path, Network-queue safe
+  GyroPointerMath.swift         Air-pointer pose → mouse deltas (shared)
+  MacInputController.swift      Keyboard/media CGEvent + pointerInjector (macOS only)
   LightBLEManager+Remote.swift  State snapshot + command handling
 
 LightStar/              macOS app (menu bar + control window)
@@ -83,28 +85,31 @@ Views get state via `@Environment(LightBLEManager.self)`. AppIntents use `LightS
 
 ## iPhone <-> Mac Remote Control
 
-The iOS app can control the Mac via local network instead of direct BLE:
+The iOS app never talks to the strip over Bluetooth. It finds the Mac on the local network; the Mac owns the BLE link.
 
 ```
 ┌─────────────────────────────────────────────┐
 │                  iPhone                     │
 │  RemoteControlClient (Bonjour discovery)    │
+│  LightBLEManager (remote transport)         │
 │  RemoteControlView / TrackpadView / etc.    │
 └──────────────────┬──────────────────────────┘
                    │ TCP + JSON (port 19384)
                    ▼
 ┌─────────────────────────────────────────────┐
 │                   Mac                       │
-│  RemoteControlServer (Bonjour advertising)  │
+│  RemoteControlServer (NWListener Bonjour)   │
 │  RemoteControlCoordinator                   │
 │  MacInputController (CGEvent)               │
-│  LightBLEManager → LED Strip                │
+│  LightBLEManager → LED Strip (laptop BLE)   │
 └─────────────────────────────────────────────┘
 ```
 
 ### Protocol
 
 Service type: `_lightstar._tcp`, port `19384`.
+
+Both Info.plists must declare `NSLocalNetworkUsageDescription` and `NSBonjourServices = _lightstar._tcp`. Missing those produces `NWError -65555 NoAuth` on iOS 14+.
 
 Messages are length-prefixed (4-byte big-endian) JSON:
 
@@ -114,21 +119,30 @@ Messages are length-prefixed (4-byte big-endian) JSON:
 | `helloAck` | Mac → iPhone | Accept/reject, pairing required |
 | `stateUpdate` | Mac → iPhone | Full light state snapshot |
 | `setPower`, `setBrightness`, etc. | iPhone → Mac | Light commands |
-| `mouseMove`, `keyDown`, etc. | iPhone → Mac | Input commands |
+| `connectStrip`, `disconnectStrip`, `writeFrame` | iPhone → Mac | Use the Mac's BLE radio |
+| `mouseMove`, `keyDown`, `macAction` | iPhone → Mac | Trackpad, typing, and Mac system actions |
+
+Two-finger scroll sends raw UIKit finger deltas. `MacInputController` maps them with `RemoteScrollMapping`: Natural scrolling ON (Mac default) posts the same polarity as the physical trackpad; Natural OFF inverts once. Do not invert again on iOS.
+
+Air pointer (iPhone gyro) reuses `mouseMove` deltas. Math lives in `GyroPointerMath.swift`. Add `NSMotionUsageDescription` on iOS.
 
 ### Permissions
 
 Mac requires:
 - **Accessibility** for CGEvent input control
 - **Screen Recording** for display capture (existing)
-- **Local Network** for Bonjour (automatic)
+- **Local Network** for Bonjour (`NSLocalNetworkUsageDescription` + `NSBonjourServices`)
+
+iPhone requires:
+- **Local Network** for Bonjour (prompted on first discovery)
+- **Motion** usage string (`NSMotionUsageDescription`) for Air pointer; CoreMotion IMU does not prompt
 
 ### Usage
 
 1. Mac app starts `RemoteControlServer` on launch (default enabled)
-2. iPhone app discovers Mac via Bonjour in `RemoteControlView`
-3. Tap to connect; optional pairing code if `requirePairing` is set
-4. State syncs automatically; commands relay through Mac to LED strip
+2. iPhone `connect()` discovers the Mac and asks it to connect the strip
+3. Optional pairing code if `requirePairing` is set
+4. State syncs automatically; BLE writes relay through Mac to the LED strip
 
 ### Key invariants
 
@@ -140,6 +154,8 @@ Mac requires:
 - `connectionError` is cleared when `connectionState` becomes `.connected`.
 - `.connecting` has a 10s timeout so wake-from-sleep can self-heal.
 - User disconnect is `userInitiatedDisconnect`, not `reconnectAttempts == max`.
+- Pointer path stays off MainActor: iOS `PointerChannel` on the NW queue, Mac `MacPointerInjector` on the listener queue. TCP uses `noDelay` + `serviceClass = .signaling`. Pointer move/scroll uses 13-byte binary frames (`0xB1`) with `.idempotent` send; JSON stays for clicks and everything else.
+- Trackpad double-tap: first tap `clickCount` 1, second tap one down+up with `clickCount` 2 (`kCGMouseEventClickState`). Never emit extra singles for the second tap — YouTube/Safari ignore clickCount 1 storms.
 
 ---
 

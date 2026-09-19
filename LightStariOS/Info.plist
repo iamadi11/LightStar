@@ -19,7 +19,33 @@
 	<key>CFBundleShortVersionString</key>
 	<string>1.0</string>
 	<key>CFBundleVersion</key>
-	<string>1</string>
+	<string>4</string>
+	<key>CFBundleIconName</key>
+	<string>AppIcon</string>
+	<key>CFBundleIcons</key>
+	<dict>
+		<key>CFBundlePrimaryIcon</key>
+		<dict>
+			<key>CFBundleIconName</key>
+			<string>AppIcon</string>
+			<key>CFBundleIconFiles</key>
+			<array>
+				<string>AppIcon60x60</string>
+			</array>
+		</dict>
+	</dict>
+	<key>CFBundleIcons~ipad</key>
+	<dict>
+		<key>CFBundlePrimaryIcon</key>
+		<dict>
+			<key>CFBundleIconName</key>
+			<string>AppIcon</string>
+			<key>CFBundleIconFiles</key>
+			<array>
+				<string>AppIcon76x76</string>
+			</array>
+		</dict>
+	</dict>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>UILaunchScreen</key>
@@ -34,6 +60,14 @@
 	<string>LightStar uses Bluetooth to discover and control your BLE LED light bar.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>LightStar listens to the microphone to sync the light to music when you choose Microphone sync.</string>
+	<key>NSMotionUsageDescription</key>
+	<string>LightStar uses the iPhone’s motion sensors so you can aim the Mac pointer by tilting the phone.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>LightStar finds your Mac on the local network so the laptop’s Bluetooth can control the LED strip.</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_lightstar._tcp</string>
+	</array>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>bluetooth-central</string>

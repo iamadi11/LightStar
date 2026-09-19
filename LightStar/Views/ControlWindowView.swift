@@ -16,6 +16,9 @@ struct ControlWindowView: View {
                         set: { ble.setPower(on: $0) }
                     ))
                     .disabled(ble.connectionState != .connected)
+                    Text("Effects, animations, and schedules live here. The menu-bar popover stays on power, color, presets, and sync.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
                 }
             }
             .navigationSplitViewColumnWidth(min: 160, ideal: 180)
@@ -49,7 +52,12 @@ struct ControlWindowView: View {
                 .padding(24)
                 .frame(maxWidth: 560, alignment: .leading)
             }
+            .background {
+                LightStarVisualEffect(material: .menu)
+                    .ignoresSafeArea()
+            }
         }
+        .tint(ble.stripAccent)
         .frame(minWidth: 640, minHeight: 520)
     }
 

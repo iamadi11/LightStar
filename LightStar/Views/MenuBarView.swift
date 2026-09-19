@@ -15,43 +15,12 @@ struct MenuBarView: View {
     @AppStorage("launchAtLogin") private var launchAtLogin = false
     @AppStorage("autoConnectOnLaunch") private var autoConnectOnLaunch = true
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     var body: some View {
         VStack(spacing: 0) {
-            // Header with persistent status
-            HStack(alignment: .center) {
-                Image(systemName: headerIcon)
-                    .foregroundStyle(headerIconColor)
-                    .animation(.easeInOut(duration: 0.3), value: ble.connectionState)
-                VStack(alignment: .leading, spacing: 1) {
-                    Text("LightStar")
-                        .font(.headline)
-                    Text(statusLine)
-                        .font(.caption2)
-                        .foregroundStyle(statusLineColor)
-                        .animation(.easeInOut(duration: 0.3), value: ble.connectionState)
-                }
-                Spacer()
-                Button {
-                    openLightStarControlWindow()
-                } label: {
-                    Image(systemName: "macwindow")
-                }
-                .buttonStyle(.plain)
-                .help("Open LightStar window")
-                Button {
-                    openLightStarSettings()
-                } label: {
-                    Image(systemName: "gearshape")
-                }
-                .buttonStyle(.plain)
-                .help("Settings (⌘,)")
-                connectionButton
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 10)
-
+            headerBar
             #if DEBUG
-            // Tab picker (debug builds only)
             HStack(spacing: 0) {
                 tabButton("Control", index: 0)
                 tabButton("Debug", index: 1)
@@ -59,8 +28,6 @@ struct MenuBarView: View {
             .padding(.horizontal, 16)
             .padding(.bottom, 8)
             #endif
-
-            Divider()
 
             ScrollView {
                 #if DEBUG
@@ -73,19 +40,73 @@ struct MenuBarView: View {
                 contentView
                 #endif
             }
-            .animation(.easeInOut(duration: 0.2), value: ble.connectionState)
+            .animation(LightStarMotion.spring(reduceMotion), value: ble.connectionState)
+            .animation(LightStarMotion.snappy(reduceMotion), value: ble.isOn)
         }
-        .frame(width: 320)
+        .frame(width: 336)
+        .tint(ble.stripAccent)
+        .background {
+            LightStarVisualEffect(material: .menu)
+                .ignoresSafeArea()
+        }
+    }
+
+    private var headerBar: some View {
+        VStack(spacing: 10) {
+            Capsule()
+                .fill(ble.stripAccent)
+                .frame(height: 3)
+                .padding(.horizontal, 72)
+                .animation(LightStarMotion.snappy(reduceMotion), value: ble.stripAccent)
+
+            HStack(alignment: .center, spacing: 10) {
+                Image(systemName: headerIcon)
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundStyle(ble.stripAccent)
+                    .frame(width: 28, height: 28)
+                    .contentTransition(.symbolEffect(.replace))
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("LightStar")
+                        .font(.headline)
+                    Text(statusLine)
+                        .font(.caption2)
+                        .foregroundStyle(statusLineColor)
+                }
+                Spacer()
+                Button {
+                    openLightStarControlWindow()
+                } label: {
+                    Image(systemName: "macwindow")
+                        .frame(width: 28, height: 28)
+                }
+                .buttonStyle(.plain)
+                .help("Open LightStar window")
+                .accessibilityLabel("Open LightStar window")
+                Button {
+                    openLightStarSettings()
+                } label: {
+                    Image(systemName: "gearshape")
+                        .frame(width: 28, height: 28)
+                }
+                .buttonStyle(.plain)
+                .help("Settings (⌘,)")
+                .accessibilityLabel("Settings")
+                connectionButton
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 10)
+        .padding(.bottom, 8)
     }
 
     @ViewBuilder
     private var contentView: some View {
         if ble.connectionState == .connected {
             controlsSection
-                .transition(.opacity)
+                .transition(.opacity.combined(with: .offset(y: 6)))
         } else {
             statusSection
-                .transition(.opacity)
+                .transition(.opacity.combined(with: .offset(y: 6)))
         }
     }
 
@@ -95,14 +116,6 @@ struct MenuBarView: View {
         case .scanning:    return "antenna.radiowaves.left.and.right"
         case .connecting:  return "antenna.radiowaves.left.and.right"
         case .disconnected: return "lightbulb.slash"
-        }
-    }
-
-    private var headerIconColor: Color {
-        switch ble.connectionState {
-        case .connected:    return ble.isOn ? .yellow : .secondary
-        case .scanning, .connecting: return .accentColor
-        case .disconnected: return .secondary
         }
     }
 
@@ -182,12 +195,12 @@ struct MenuBarView: View {
             }
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 44)
+        .padding(.vertical, 28)
+        .padding(.horizontal, 16)
     }
 
     private var controlsSection: some View {
         VStack(spacing: 16) {
-            // Power row
             HStack(spacing: 12) {
                 Toggle("", isOn: Binding(
                     get: { ble.isOn },
@@ -197,6 +210,7 @@ struct MenuBarView: View {
                 .labelsHidden()
                 Text(ble.isOn ? "On" : "Off")
                     .frame(width: 24, alignment: .leading)
+                    .contentTransition(.opacity)
                 Spacer()
                 Text("⌘⇧L")
                     .font(.caption2)
@@ -204,47 +218,46 @@ struct MenuBarView: View {
                     .help("Global shortcut: ⌘⇧L toggles power")
             }
 
-            ColorControlView()
-
-            // Brightness
-            VStack(alignment: .leading, spacing: 4) {
-                Label("Brightness", systemImage: "sun.max")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Slider(value: Binding(
-                    get: { ble.brightness },
-                    set: { ble.setBrightness($0) }
-                ), in: 0...1)
-                .accessibilityLabel("Brightness")
-                .accessibilityValue("\(Int(ble.brightness * 100))%")
-            }
-
-            // Color Temperature
-            VStack(alignment: .leading, spacing: 4) {
-                HStack {
-                    Label("Color Temp", systemImage: "thermometer.medium")
-                        .font(.caption)
+            VStack(alignment: .leading, spacing: 12) {
+                ColorControlView()
+                VStack(alignment: .leading, spacing: 4) {
+                    Label("Brightness", systemImage: "sun.max")
+                        .font(.subheadline)
                         .foregroundStyle(.secondary)
-                    Spacer()
-                    Text(colorTempLabel)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
+                    Slider(value: Binding(
+                        get: { ble.brightness },
+                        set: { ble.setBrightness($0) }
+                    ), in: 0...1)
+                    .accessibilityLabel("Brightness")
+                    .accessibilityValue("\(Int(ble.brightness * 100))%")
                 }
-                Slider(value: Binding(
-                    get: { ble.colorTemperature },
-                    set: { ble.setColorTemperature($0) }
-                ), in: 0...1)
-                .accessibilityLabel("Color Temperature")
-                .accessibilityValue(colorTempLabel)
             }
 
-            Divider()
+            Divider().opacity(0.35)
+            presetsBlock
+            Divider().opacity(0.35)
+            SyncControlView()
+            Divider().opacity(0.35)
+            HStack {
+                Button("Open full controls") { openLightStarControlWindow() }
+                    .buttonStyle(.plain)
+                Spacer()
+                Button("Settings") { openLightStarSettings() }
+                    .buttonStyle(.plain)
+            }
+            .font(.subheadline)
+            .foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .padding(.bottom, 12)
+    }
 
-            // Presets
-            VStack(alignment: .leading, spacing: 8) {
+    private var presetsBlock: some View {
+        VStack(alignment: .leading, spacing: 8) {
                 HStack {
                     Text("Presets")
-                        .font(.caption)
+                        .font(.subheadline)
                         .foregroundStyle(.secondary)
                     Spacer()
                     if presets.presets.isEmpty {
@@ -252,17 +265,9 @@ struct MenuBarView: View {
                             presets.presets = Preset.defaults
                             presets.save()
                         }
-                        .font(.system(size: 10))
+                        .font(.subheadline)
                         .buttonStyle(.link)
                     }
-                    Button { presets.importFromFile() } label: {
-                        Image(systemName: "square.and.arrow.down")
-                    }
-                    .buttonStyle(.plain).font(.caption).help("Import presets from JSON")
-                    Button { presets.exportToFile() } label: {
-                        Image(systemName: "square.and.arrow.up")
-                    }
-                    .buttonStyle(.plain).font(.caption).help("Export presets to JSON")
                     Button {
                         newPresetName = "Custom"
                         showSaveSheet = true
@@ -270,7 +275,6 @@ struct MenuBarView: View {
                         Image(systemName: "plus")
                     }
                     .buttonStyle(.plain)
-                    .font(.caption)
                     .help("Save current color as preset")
                 }
                 LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
@@ -326,111 +330,86 @@ struct MenuBarView: View {
                     }
                 }
             }
+    }
 
-            Divider()
+    private var stripAndAppPrefs: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label("Strip Configuration", systemImage: "light.strip.2")
+                .font(.caption)
+                .foregroundStyle(.secondary)
 
-            // Sync mode (video / audio / combined)
-            SyncControlView()
-
-            Divider()
-
-            // Effects
-            EffectsView()
-
-            Divider()
-
-            AnimationsView()
-
-            Divider()
-
-            ScheduleView()
-
-            Divider()
-
-            // Strip Configuration (BC02/BC03)
-            VStack(alignment: .leading, spacing: 6) {
-                Label("Strip Configuration", systemImage: "light.strip.2")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-
-                HStack {
-                    Text("Channel order")
-                        .font(.system(size: 11))
-                    Spacer()
-                    Picker("", selection: Binding(
-                        get: { ble.ledChannelOrder },
-                        set: { ble.ledChannelOrder = $0 }
-                    )) {
-                        ForEach(LightBLEManager.LEDChannelOrder.allCases, id: \.self) {
-                            Text($0.label).tag($0)
-                        }
-                    }
-                    .labelsHidden()
-                    .frame(width: 80)
-                    .controlSize(.small)
-                }
-
-                HStack {
-                    Text("LED count")
-                        .font(.system(size: 11))
-                    Spacer()
-                    Stepper("\(ble.ledPixelCount)", value: Binding(
-                        get: { ble.ledPixelCount },
-                        set: { ble.ledPixelCount = $0 }
-                    ), in: 8...300)
+            HStack {
+                Text("Channel order")
                     .font(.system(size: 11))
-                    .frame(width: 110)
+                Spacer()
+                Picker("", selection: Binding(
+                    get: { ble.ledChannelOrder },
+                    set: { ble.ledChannelOrder = $0 }
+                )) {
+                    ForEach(LightBLEManager.LEDChannelOrder.allCases, id: \.self) {
+                        Text($0.label).tag($0)
+                    }
                 }
+                .labelsHidden()
+                .frame(width: 80)
+                .controlSize(.small)
             }
 
-            Divider()
+            HStack {
+                Text("LED count")
+                    .font(.system(size: 11))
+                Spacer()
+                Stepper("\(ble.ledPixelCount)", value: Binding(
+                    get: { ble.ledPixelCount },
+                    set: { ble.ledPixelCount = $0 }
+                ), in: 8...300)
+                .font(.system(size: 11))
+                .frame(width: 110)
+            }
 
-            VStack(alignment: .leading, spacing: 6) {
-                Toggle("Launch at Login", isOn: $launchAtLogin)
-                    .font(.caption)
-                    .toggleStyle(.checkbox)
-                    .onAppear {
-                        launchAtLogin = SMAppService.mainApp.status == .enabled
+            Toggle("Launch at Login", isOn: $launchAtLogin)
+                .font(.caption)
+                .toggleStyle(.checkbox)
+                .onAppear {
+                    launchAtLogin = SMAppService.mainApp.status == .enabled
+                }
+                .onChange(of: launchAtLogin) { _, enabled in
+                    if enabled {
+                        try? SMAppService.mainApp.register()
+                    } else {
+                        try? SMAppService.mainApp.unregister()
                     }
-                    .onChange(of: launchAtLogin) { _, enabled in
-                        if enabled {
-                            try? SMAppService.mainApp.register()
-                        } else {
-                            try? SMAppService.mainApp.unregister()
-                        }
-                    }
-                Toggle("Auto-connect on Launch", isOn: $autoConnectOnLaunch)
-                    .font(.caption)
-                    .toggleStyle(.checkbox)
-                Toggle("Multi-light (connect all nearby bars)", isOn: Binding(
-                    get: { ble.multiLightEnabled },
-                    set: { ble.multiLightEnabled = $0 }
+                }
+            Toggle("Auto-connect on Launch", isOn: $autoConnectOnLaunch)
+                .font(.caption)
+                .toggleStyle(.checkbox)
+            Toggle("Multi-light (connect all nearby bars)", isOn: Binding(
+                get: { ble.multiLightEnabled },
+                set: { ble.multiLightEnabled = $0 }
+            ))
+            .font(.caption)
+            .toggleStyle(.checkbox)
+            if ble.multiLightEnabled && ble.connectedLightNames.count > 1 {
+                Text(ble.connectedLightNames.joined(separator: ", "))
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            if presets.iCloudAvailable {
+                Toggle("Sync Presets via iCloud", isOn: Binding(
+                    get: { presets.iCloudEnabled },
+                    set: { presets.iCloudEnabled = $0 }
                 ))
                 .font(.caption)
                 .toggleStyle(.checkbox)
-                if ble.multiLightEnabled && ble.connectedLightNames.count > 1 {
-                    Text(ble.connectedLightNames.joined(separator: ", "))
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                }
-                if presets.iCloudAvailable {
-                    Toggle("Sync Presets via iCloud", isOn: Binding(
-                        get: { presets.iCloudEnabled },
-                        set: { presets.iCloudEnabled = $0 }
-                    ))
+            }
+            HStack {
+                Spacer()
+                Button("Quit") { NSApp.terminate(nil) }
                     .font(.caption)
-                    .toggleStyle(.checkbox)
-                }
-                HStack {
-                    Spacer()
-                    Button("Quit") { NSApp.terminate(nil) }
-                        .font(.caption)
-                        .buttonStyle(.link)
-                        .foregroundStyle(.secondary)
-                }
+                    .buttonStyle(.link)
+                    .foregroundStyle(.secondary)
             }
         }
-        .padding(16)
     }
 
     private var connectionButton: some View {
@@ -444,9 +423,9 @@ struct MenuBarView: View {
             Text(connectionButtonLabel)
                 .font(.caption)
         }
-        .buttonStyle(.bordered)
+        .buttonStyle(.plain)
         .controlSize(.small)
-        .tint(ble.connectionState == .connected ? .red : .accentColor)
+        .foregroundStyle(ble.connectionState == .connected ? .secondary : .primary)
     }
 
 }
@@ -473,7 +452,7 @@ struct SyncControlView: View {
                     .help("Global shortcut: ⌘⇧S toggles sync")
                 if ble.syncTransitioning { ProgressView().controlSize(.mini) }
             }
-            .animation(.easeInOut(duration: 0.3), value: ble.syncColor != nil)
+            .animation(.snappy(duration: 0.22), value: ble.syncColor != nil)
 
             Picker("", selection: Binding(
                 get: { ble.syncMode },

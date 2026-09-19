@@ -23,6 +23,7 @@ struct LightStarApp: App {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem?
     private var popover: NSPopover?
+    private var popoverClickMonitor: Any?
     private var hotKeyRef: EventHotKeyRef?
     private var controlWindowController: NSWindowController?
     lazy var ble = LightBLEManager()
@@ -47,6 +48,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.setActivationPolicy(.accessory)
         LightStarRuntime.register(ble: ble, presets: presets, schedules: schedules)
         WindowActions.openControl = { [weak self] in self?.showControlWindow() }
+        WindowActions.closePopover = { [weak self] in self?.popover?.performClose(nil) }
         setupMenuBar()
         if UserDefaults.standard.object(forKey: "autoConnectOnLaunch") as? Bool ?? true {
             ble.connect()
@@ -85,16 +87,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         button.target = self
 
         let popover = NSPopover()
-        popover.contentSize = NSSize(width: 320, height: 480)
-        popover.behavior = .applicationDefined
+        popover.contentSize = NSSize(width: 336, height: 420)
+        popover.behavior = .transient
+        popover.animates = true
+        popover.delegate = self
         schedules.reschedule()
-        popover.contentViewController = NSHostingController(
+        let hosting = NSHostingController(
             rootView: MenuBarView()
                 .environment(ble)
                 .environment(presets)
                 .environment(schedules)
         )
+        hosting.view.wantsLayer = true
+        hosting.view.layer?.backgroundColor = NSColor.clear.cgColor
+        popover.contentViewController = hosting
         self.popover = popover
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(closePopoverOnBlur),
+            name: NSApplication.didResignActiveNotification,
+            object: nil
+        )
     }
 
     // Recursively re-registers with @Observable so every state change redraws the icon.
@@ -204,7 +217,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             popover.performClose(nil)
         } else {
             popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+            if let window = popover.contentViewController?.view.window {
+                window.isOpaque = false
+                window.backgroundColor = .clear
+                window.makeKey()
+            }
             NSApp.activate(ignoringOtherApps: true)
+            installPopoverClickMonitor()
+        }
+    }
+
+    @objc private func closePopoverOnBlur() {
+        popover?.performClose(nil)
+    }
+
+    private func installPopoverClickMonitor() {
+        removePopoverClickMonitor()
+        popoverClickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
+            Task { @MainActor in
+                self?.popover?.performClose(nil)
+            }
+        }
+    }
+
+    private func removePopoverClickMonitor() {
+        if let popoverClickMonitor {
+            NSEvent.removeMonitor(popoverClickMonitor)
+            self.popoverClickMonitor = nil
         }
     }
 
@@ -279,6 +318,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func showControlWindow() {
+        popover?.performClose(nil)
         NSApp.activate(ignoringOtherApps: true)
         if let existing = controlWindowController?.window {
             existing.makeKeyAndOrderFront(nil)
@@ -301,6 +341,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func showSettings() {
+        popover?.performClose(nil)
         openLightStarSettings()
     }
 
@@ -380,5 +421,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         nc.addObserver(forName: NSWorkspace.screensDidWakeNotification, object: nil, queue: .main) { [weak self] _ in
             Task { @MainActor in self?.ble.resumeScreenSync() }
         }
+    }
+}
+
+extension AppDelegate: NSPopoverDelegate {
+    func popoverDidClose(_ notification: Notification) {
+        removePopoverClickMonitor()
     }
 }

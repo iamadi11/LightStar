@@ -2,327 +2,528 @@
 import Foundation
 import CoreGraphics
 import AppKit
+import ApplicationServices
+import CoreAudio
+import Darwin
+import os
 
-/// Controller for handling remote input from iPhone (trackpad, keyboard, etc).
-/// Requires Accessibility permission for CGEvent posting.
+private let inputLog = Logger(subsystem: "com.adityaraj.LightStar", category: "remote")
+
+/// Posts iPhone trackpad/keyboard events as HID input. Requires Accessibility TCC.
 @MainActor
 public final class MacInputController: ObservableObject {
-    
+
     @Published public private(set) var accessibilityEnabled = false
-    @Published public var mouseSensitivity: Double = 1.0
-    @Published public var scrollSensitivity: Double = 1.0
-    @Published public var naturalScrolling: Bool = true
-    
-    private var currentMouseLocation: CGPoint = .zero
-    
+    @Published public var mouseSensitivity: Double = 1.0 {
+        didSet { pointerInjector.mouseSensitivity = mouseSensitivity }
+    }
+    @Published public var scrollSensitivity: Double = 1.0 {
+        didSet { pointerInjector.scrollSensitivity = scrollSensitivity }
+    }
+
+    public let pointerInjector = MacPointerInjector()
+    private var didPromptAccessibility = false
+    private let eventSource = CGEventSource(stateID: .hidSystemState)
+
     public init() {
         checkAccessibility()
-        updateMouseLocation()
+        pointerInjector.mouseSensitivity = mouseSensitivity
+        pointerInjector.scrollSensitivity = scrollSensitivity
     }
-    
-    /// Check if Accessibility permission is granted.
+
     public func checkAccessibility() {
         accessibilityEnabled = AXIsProcessTrusted()
     }
-    
-    /// Request Accessibility permission (opens System Settings).
+
+    /// Returns true when events can be injected. Prompts once if missing.
+    @discardableResult
+    public func ensureAccessibility() -> Bool {
+        checkAccessibility()
+        if accessibilityEnabled { return true }
+        if !didPromptAccessibility {
+            didPromptAccessibility = true
+            requestAccessibility()
+            checkAccessibility()
+        }
+        return accessibilityEnabled
+    }
+
     public func requestAccessibility() {
-        // Safe because the Accessibility prompt key is effectively a constant
+        let previous = NSApp.activationPolicy()
+        if previous != .regular {
+            NSApp.setActivationPolicy(.regular)
+        }
+        NSApp.activate(ignoringOtherApps: true)
         requestAccessibilityPermissionPrompt()
+        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
+            NSWorkspace.shared.open(url)
+        }
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 1_500_000_000)
+            if NSApp.activationPolicy() == .regular {
+                NSApp.setActivationPolicy(.accessory)
+            }
+        }
     }
-    
+
     // MARK: - Mouse Control
-    
-    /// Move the mouse by a relative delta.
+
     public func moveMouse(deltaX: Double, deltaY: Double) {
-        guard accessibilityEnabled else { return }
-        
-        let scaledDeltaX = deltaX * mouseSensitivity
-        let scaledDeltaY = deltaY * mouseSensitivity
-        
-        updateMouseLocation()
-        let newX = currentMouseLocation.x + CGFloat(scaledDeltaX)
-        let newY = currentMouseLocation.y + CGFloat(scaledDeltaY)
-        
-        // Clamp to screen bounds
-        let screens = NSScreen.screens
-        var maxX: CGFloat = 0, maxY: CGFloat = 0
-        for screen in screens {
-            maxX = max(maxX, screen.frame.maxX)
-            maxY = max(maxY, screen.frame.maxY)
-        }
-        
-        let clampedX = max(0, min(maxX, newX))
-        let clampedY = max(0, min(maxY, newY))
-        currentMouseLocation = CGPoint(x: clampedX, y: clampedY)
-        
-        if let event = CGEvent(mouseEventSource: nil, mouseType: .mouseMoved,
-                                mouseCursorPosition: currentMouseLocation, mouseButton: .left) {
-            event.post(tap: .cghidEventTap)
-        }
+        guard ensureAccessibility() else { return }
+        pointerInjector.move(deltaX: deltaX, deltaY: deltaY)
     }
-    
-    /// Move the mouse to an absolute position.
+
     public func setMousePosition(x: Double, y: Double) {
-        guard accessibilityEnabled else { return }
-        currentMouseLocation = CGPoint(x: x, y: y)
-        
-        if let event = CGEvent(mouseEventSource: nil, mouseType: .mouseMoved,
-                                mouseCursorPosition: currentMouseLocation, mouseButton: .left) {
-            event.post(tap: .cghidEventTap)
-        }
+        guard ensureAccessibility() else { return }
+        pointerInjector.setPosition(x: x, y: y)
     }
-    
-    /// Perform a left mouse click.
+
     public func leftClick() {
-        guard accessibilityEnabled else { return }
-        updateMouseLocation()
-        
-        if let down = CGEvent(mouseEventSource: nil, mouseType: .leftMouseDown,
-                              mouseCursorPosition: currentMouseLocation, mouseButton: .left) {
-            down.post(tap: .cghidEventTap)
-        }
-        
-        if let up = CGEvent(mouseEventSource: nil, mouseType: .leftMouseUp,
-                            mouseCursorPosition: currentMouseLocation, mouseButton: .left) {
-            up.post(tap: .cghidEventTap)
-        }
+        mouseDown(button: 0)
+        mouseUp(button: 0)
     }
-    
-    /// Perform a right mouse click.
+
     public func rightClick() {
-        guard accessibilityEnabled else { return }
-        updateMouseLocation()
-        
-        if let down = CGEvent(mouseEventSource: nil, mouseType: .rightMouseDown,
-                              mouseCursorPosition: currentMouseLocation, mouseButton: .right) {
-            down.post(tap: .cghidEventTap)
-        }
-        
-        if let up = CGEvent(mouseEventSource: nil, mouseType: .rightMouseUp,
-                            mouseCursorPosition: currentMouseLocation, mouseButton: .right) {
-            up.post(tap: .cghidEventTap)
-        }
+        mouseDown(button: 1)
+        mouseUp(button: 1)
     }
-    
-    /// Perform a double click.
+
     public func doubleClick() {
-        guard accessibilityEnabled else { return }
-        updateMouseLocation()
-        
-        if let down = CGEvent(mouseEventSource: nil, mouseType: .leftMouseDown,
-                              mouseCursorPosition: currentMouseLocation, mouseButton: .left) {
-            down.setIntegerValueField(.mouseEventClickState, value: 2)
-            down.post(tap: .cghidEventTap)
-        }
-        
-        if let up = CGEvent(mouseEventSource: nil, mouseType: .leftMouseUp,
-                            mouseCursorPosition: currentMouseLocation, mouseButton: .left) {
-            up.setIntegerValueField(.mouseEventClickState, value: 2)
-            up.post(tap: .cghidEventTap)
-        }
+        guard ensureAccessibility() else { return }
+        pointerInjector.doubleClick()
     }
-    
-    /// Mouse button down.
-    public func mouseDown(button: Int = 0) {
-        guard accessibilityEnabled else { return }
-        updateMouseLocation()
-        
-        let mouseType: CGEventType = button == 0 ? .leftMouseDown : .rightMouseDown
-        let mouseButton: CGMouseButton = button == 0 ? .left : .right
-        
-        if let event = CGEvent(mouseEventSource: nil, mouseType: mouseType,
-                               mouseCursorPosition: currentMouseLocation, mouseButton: mouseButton) {
-            event.post(tap: .cghidEventTap)
-        }
+
+    public func mouseDown(button: Int = 0, clickCount: Int = 1) {
+        guard ensureAccessibility() else { return }
+        pointerInjector.mouseDown(button: button, clickCount: clickCount)
     }
-    
-    /// Mouse button up.
-    public func mouseUp(button: Int = 0) {
-        guard accessibilityEnabled else { return }
-        updateMouseLocation()
-        
-        let mouseType: CGEventType = button == 0 ? .leftMouseUp : .rightMouseUp
-        let mouseButton: CGMouseButton = button == 0 ? .left : .right
-        
-        if let event = CGEvent(mouseEventSource: nil, mouseType: mouseType,
-                               mouseCursorPosition: currentMouseLocation, mouseButton: mouseButton) {
-            event.post(tap: .cghidEventTap)
-        }
+
+    public func mouseUp(button: Int = 0, clickCount: Int = 1) {
+        guard ensureAccessibility() else { return }
+        pointerInjector.mouseUp(button: button, clickCount: clickCount)
     }
-    
-    /// Start a mouse drag.
+
     public func startDrag() {
         mouseDown(button: 0)
     }
-    
-    /// End a mouse drag.
+
     public func endDrag() {
         mouseUp(button: 0)
     }
-    
-    /// Drag the mouse (move while button is down).
+
     public func drag(deltaX: Double, deltaY: Double) {
-        guard accessibilityEnabled else { return }
-        
-        let scaledDeltaX = deltaX * mouseSensitivity
-        let scaledDeltaY = deltaY * mouseSensitivity
-        
-        currentMouseLocation.x += CGFloat(scaledDeltaX)
-        currentMouseLocation.y += CGFloat(scaledDeltaY)
-        
-        if let event = CGEvent(mouseEventSource: nil, mouseType: .leftMouseDragged,
-                               mouseCursorPosition: currentMouseLocation, mouseButton: .left) {
-            event.post(tap: .cghidEventTap)
-        }
+        guard ensureAccessibility() else { return }
+        pointerInjector.drag(deltaX: deltaX, deltaY: deltaY)
     }
-    
+
     // MARK: - Scroll
-    
-    /// Perform a scroll.
+
     public func scroll(deltaX: Double, deltaY: Double) {
-        guard accessibilityEnabled else { return }
-        
-        var scaledDeltaX = Int32(deltaX * scrollSensitivity)
-        var scaledDeltaY = Int32(deltaY * scrollSensitivity)
-        
-        if naturalScrolling {
-            scaledDeltaX = -scaledDeltaX
-            scaledDeltaY = -scaledDeltaY
-        }
-        
-        if let event = CGEvent(scrollWheelEvent2Source: nil, units: .pixel,
-                               wheelCount: 2, wheel1: scaledDeltaY, wheel2: scaledDeltaX, wheel3: 0) {
-            event.post(tap: .cghidEventTap)
+        guard ensureAccessibility() else { return }
+        pointerInjector.scroll(deltaX: deltaX, deltaY: deltaY)
+    }
+
+    // MARK: - Keyboard
+
+    public func pressKey(keyCode: UInt16, modifiers: CGEventFlags = []) {
+        pressHotkey(keyCode: keyCode, modifiers: modifiers)
+    }
+
+    public func perform(_ action: MacSystemAction) {
+        switch action {
+        case .spotlight:
+            pressHotkey(keyCode: 0x31, modifiers: .maskCommand)
+        case .missionControl:
+            if !openApp("/System/Applications/Mission Control.app") {
+                pressHotkey(keyCode: 0x7E, modifiers: .maskControl)
+            }
+        case .applicationWindows:
+            pressHotkey(keyCode: 0x7D, modifiers: .maskControl)
+        case .desktop:
+            if functionKeysAreStandard {
+                pressHotkey(keyCode: 0x67)
+            } else {
+                pressHotkey(keyCode: 0x67, modifiers: .maskSecondaryFn)
+            }
+        case .launchpad:
+            if !openApp("/System/Applications/Launchpad.app") && !openApp("/Applications/Launchpad.app") {
+                pressHotkey(keyCode: 0x76, modifiers: functionKeysAreStandard ? [] : .maskSecondaryFn)
+            }
+        case .lockScreen:
+            lockScreen()
+        case .undo:
+            pressHotkey(keyCode: 0x06, modifiers: .maskCommand)
+        case .cut:
+            pressHotkey(keyCode: 0x07, modifiers: .maskCommand)
+        case .copy:
+            pressHotkey(keyCode: 0x08, modifiers: .maskCommand)
+        case .paste:
+            pressHotkey(keyCode: 0x09, modifiers: .maskCommand)
+        case .selectAll:
+            pressHotkey(keyCode: 0x00, modifiers: .maskCommand)
+        case .emoji:
+            pressHotkey(keyCode: 0x31, modifiers: [.maskCommand, .maskControl])
+        case .screenshot:
+            pressHotkey(keyCode: 0x14, modifiers: [.maskCommand, .maskShift])
+        case .screenshotSelection:
+            pressHotkey(keyCode: 0x15, modifiers: [.maskCommand, .maskShift])
+        case .spaceLeft:
+            pressHotkey(keyCode: 0x7B, modifiers: .maskControl)
+        case .spaceRight:
+            pressHotkey(keyCode: 0x7C, modifiers: .maskControl)
+        case .centerPointer:
+            pointerInjector.centerOnCurrentDisplay()
         }
     }
-    
-    // MARK: - Keyboard
-    
-    /// Press and release a key.
-    public func pressKey(keyCode: UInt16, modifiers: CGEventFlags = []) {
-        guard accessibilityEnabled else { return }
-        
-        if let down = CGEvent(keyboardEventSource: nil, virtualKey: keyCode, keyDown: true) {
+
+    public func pressHotkey(keyCode: UInt16, modifiers: CGEventFlags = []) {
+        guard ensureAccessibility() else { return }
+
+        let modifierKeys: [(CGEventFlags, UInt16)] = [
+            (.maskCommand, 0x37),
+            (.maskShift, 0x38),
+            (.maskAlternate, 0x3A),
+            (.maskControl, 0x3B),
+            (.maskSecondaryFn, 0x3F),
+        ]
+        let active = modifierKeys.filter { modifiers.contains($0.0) }
+
+        for (_, code) in active {
+            if let event = CGEvent(keyboardEventSource: eventSource, virtualKey: code, keyDown: true) {
+                event.flags = modifiers
+                event.post(tap: .cghidEventTap)
+                event.post(tap: .cgSessionEventTap)
+            }
+        }
+
+        if let down = CGEvent(keyboardEventSource: eventSource, virtualKey: keyCode, keyDown: true) {
             down.flags = modifiers
             down.post(tap: .cghidEventTap)
+            down.post(tap: .cgSessionEventTap)
         }
-        
-        if let up = CGEvent(keyboardEventSource: nil, virtualKey: keyCode, keyDown: false) {
+        if let up = CGEvent(keyboardEventSource: eventSource, virtualKey: keyCode, keyDown: false) {
             up.flags = modifiers
             up.post(tap: .cghidEventTap)
+            up.post(tap: .cgSessionEventTap)
         }
-    }
-    
-    /// Key down event.
-    public func keyDown(keyCode: UInt16, modifiers: CGEventFlags = []) {
-        guard accessibilityEnabled else { return }
-        
-        if let event = CGEvent(keyboardEventSource: nil, virtualKey: keyCode, keyDown: true) {
-            event.flags = modifiers
-            event.post(tap: .cghidEventTap)
-        }
-    }
-    
-    /// Key up event.
-    public func keyUp(keyCode: UInt16, modifiers: CGEventFlags = []) {
-        guard accessibilityEnabled else { return }
-        
-        if let event = CGEvent(keyboardEventSource: nil, virtualKey: keyCode, keyDown: false) {
-            event.flags = modifiers
-            event.post(tap: .cghidEventTap)
-        }
-    }
-    
-    /// Type a string of text.
-    public func typeText(_ text: String) {
-        guard accessibilityEnabled else { return }
-        
-        for char in text {
-            if let event = CGEvent(keyboardEventSource: nil, virtualKey: 0, keyDown: true) {
-                var unichar = [UniChar](String(char).utf16)
-                event.keyboardSetUnicodeString(stringLength: unichar.count, unicodeString: &unichar)
+
+        for (_, code) in active.reversed() {
+            if let event = CGEvent(keyboardEventSource: eventSource, virtualKey: code, keyDown: false) {
+                event.flags = modifiers
                 event.post(tap: .cghidEventTap)
+                event.post(tap: .cgSessionEventTap)
             }
-            
-            if let up = CGEvent(keyboardEventSource: nil, virtualKey: 0, keyDown: false) {
+        }
+    }
+
+    public func keyDown(keyCode: UInt16, modifiers: CGEventFlags = []) {
+        guard ensureAccessibility() else { return }
+        if let event = CGEvent(keyboardEventSource: eventSource, virtualKey: keyCode, keyDown: true) {
+            event.flags = modifiers
+            event.post(tap: .cghidEventTap)
+            event.post(tap: .cgSessionEventTap)
+        }
+    }
+
+    public func keyUp(keyCode: UInt16, modifiers: CGEventFlags = []) {
+        guard ensureAccessibility() else { return }
+        if let event = CGEvent(keyboardEventSource: eventSource, virtualKey: keyCode, keyDown: false) {
+            event.flags = modifiers
+            event.post(tap: .cghidEventTap)
+            event.post(tap: .cgSessionEventTap)
+        }
+    }
+
+    public func typeText(_ text: String) {
+        guard ensureAccessibility() else { return }
+        for char in text.unicodeScalars {
+            var utf16 = Array(String(char).utf16)
+            if let down = CGEvent(keyboardEventSource: eventSource, virtualKey: 0, keyDown: true) {
+                down.keyboardSetUnicodeString(stringLength: utf16.count, unicodeString: &utf16)
+                down.post(tap: .cghidEventTap)
+                down.post(tap: .cgSessionEventTap)
+            }
+            if let up = CGEvent(keyboardEventSource: eventSource, virtualKey: 0, keyDown: false) {
+                up.keyboardSetUnicodeString(stringLength: utf16.count, unicodeString: &utf16)
                 up.post(tap: .cghidEventTap)
+                up.post(tap: .cgSessionEventTap)
             }
         }
     }
-    
-    /// Send a media key press.
+
     public func sendMediaKey(_ key: MediaKeyMessage.MediaKey) {
-        guard accessibilityEnabled else { return }
-        
-        let keyCode: Int32
         switch key {
-        case .playPause: keyCode = NX_KEYTYPE_PLAY
-        case .nextTrack: keyCode = NX_KEYTYPE_NEXT
-        case .previousTrack: keyCode = NX_KEYTYPE_PREVIOUS
-        case .volumeUp: keyCode = NX_KEYTYPE_SOUND_UP
-        case .volumeDown: keyCode = NX_KEYTYPE_SOUND_DOWN
-        case .mute: keyCode = NX_KEYTYPE_MUTE
-        case .brightnessUp: keyCode = NX_KEYTYPE_BRIGHTNESS_UP
-        case .brightnessDown: keyCode = NX_KEYTYPE_BRIGHTNESS_DOWN
+        case .playPause:
+            if !postHIDSystemKey(NXKey.play) {
+                _ = mediaRemoteCommand(2)
+            }
+        case .nextTrack:
+            if !postHIDSystemKey(NXKey.next) {
+                _ = mediaRemoteCommand(4)
+            }
+        case .previousTrack:
+            if !postHIDSystemKey(NXKey.previous) {
+                _ = mediaRemoteCommand(5)
+            }
+        case .volumeUp:
+            if !postHIDSystemKey(NXKey.soundUp) {
+                adjustVolume(by: 1.0 / 16.0)
+            }
+        case .volumeDown:
+            if !postHIDSystemKey(NXKey.soundDown) {
+                adjustVolume(by: -1.0 / 16.0)
+            }
+        case .mute:
+            if !postHIDSystemKey(NXKey.mute) {
+                toggleMute()
+            }
+        case .brightnessUp:
+            if !postHIDSystemKey(NXKey.brightnessUp) {
+                adjustBrightness(by: 1.0 / 16.0)
+            }
+        case .brightnessDown:
+            if !postHIDSystemKey(NXKey.brightnessDown) {
+                adjustBrightness(by: -1.0 / 16.0)
+            }
         }
-        
-        postMediaKeyEvent(keyCode: keyCode, keyDown: true)
-        postMediaKeyEvent(keyCode: keyCode, keyDown: false)
     }
-    
-    private func postMediaKeyEvent(keyCode: Int32, keyDown: Bool) {
-        let flags: Int32 = keyDown ? 0xa00 : 0xb00
-        let data1 = Int((keyCode << 16) | (flags << 8))
-        
-        let event = NSEvent.otherEvent(
-            with: .systemDefined,
-            location: .zero,
-            modifierFlags: NSEvent.ModifierFlags(rawValue: UInt(flags)),
-            timestamp: ProcessInfo.processInfo.systemUptime,
-            windowNumber: 0,
-            context: nil,
-            subtype: 8,
-            data1: data1,
-            data2: -1
-        )
-        
-        event?.cgEvent?.post(tap: .cghidEventTap)
+
+    /// Hardware-key equivalent (NX aux). Shows the system volume/brightness HUD
+    /// and routes play/pause through the same daemon as the keyboard.
+    @discardableResult
+    private func postHIDSystemKey(_ key: Int) -> Bool {
+        _ = ensureAccessibility()
+        func post(down: Bool) -> Bool {
+            let flag = down ? 0x0A00 : 0x0B00
+            guard let nsEvent = NSEvent.otherEvent(
+                with: .systemDefined,
+                location: .zero,
+                modifierFlags: NSEvent.ModifierFlags(rawValue: NSEvent.ModifierFlags.RawValue(flag)),
+                timestamp: ProcessInfo.processInfo.systemUptime,
+                windowNumber: 0,
+                context: nil,
+                subtype: 8,
+                data1: (key << 16) | flag,
+                data2: -1
+            ), let event = nsEvent.cgEvent else {
+                return false
+            }
+            event.post(tap: .cghidEventTap)
+            event.post(tap: .cgSessionEventTap)
+            return true
+        }
+        return post(down: true) && post(down: false)
     }
-    
+
     // MARK: - Helpers
-    
-    private func updateMouseLocation() {
-        currentMouseLocation = NSEvent.mouseLocation
-        // Convert from bottom-left to top-left coordinate system
-        if let screen = NSScreen.main {
-            currentMouseLocation.y = screen.frame.height - currentMouseLocation.y
+
+    private var functionKeysAreStandard: Bool {
+        UserDefaults.standard.bool(forKey: "com.apple.keyboard.fnState")
+    }
+
+    private func openApp(_ path: String) -> Bool {
+        let url = URL(fileURLWithPath: path)
+        guard FileManager.default.fileExists(atPath: path) else { return false }
+        return NSWorkspace.shared.open(url)
+    }
+
+    private func lockScreen() {
+        typealias LockFn = @convention(c) () -> Void
+        if let handle = dlopen("/System/Library/PrivateFrameworks/login.framework/Versions/Current/login", RTLD_LAZY),
+           let symbol = dlsym(handle, "SACLockScreenImmediate") {
+            unsafeBitCast(symbol, to: LockFn.self)()
+            return
         }
+        pressHotkey(keyCode: 0x0C, modifiers: [.maskCommand, .maskControl])
+    }
+
+    private func mediaRemoteCommand(_ command: UInt32) -> Bool {
+        typealias Send = @convention(c) (UInt32, CFDictionary?) -> DarwinBoolean
+        guard let send: Send = loadPrivateSymbol(
+            "MRMediaRemoteSendCommand",
+            from: "/System/Library/PrivateFrameworks/MediaRemote.framework/MediaRemote"
+        ) else { return false }
+        return send(command, nil).boolValue
+    }
+
+    private func defaultOutputDevice() -> AudioDeviceID? {
+        var device = AudioDeviceID(0)
+        var size = UInt32(MemoryLayout<AudioDeviceID>.size)
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDefaultOutputDevice,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        let status = AudioObjectGetPropertyData(
+            AudioObjectID(kAudioObjectSystemObject),
+            &address,
+            0,
+            nil,
+            &size,
+            &device
+        )
+        return status == noErr ? device : nil
+    }
+
+    private func adjustVolume(by delta: Float32) {
+        // CoreAudio virtual-master often returns noErr without changing the
+        // user-facing output (HDMI, aggregate, spatial). Standard Additions
+        // writes the same slider the menu-bar volume HUD uses.
+        let step = Int((delta * 100).rounded())
+        let script =
+            """
+            set current to output volume of (get volume settings)
+            set nextVolume to current + \(step)
+            if nextVolume > 100 then set nextVolume to 100
+            if nextVolume < 0 then set nextVolume to 0
+            set volume output volume nextVolume
+            """
+        if runAppleScript(script) { return }
+        if let device = defaultOutputDevice() {
+            var volume: Float32 = 0
+            if getVolume(device, &volume) {
+                _ = setVolume(device, min(1, max(0, volume + delta)))
+            }
+        }
+    }
+
+    private func toggleMute() {
+        let script =
+            """
+            if output muted of (get volume settings) then
+                set volume without output muted
+            else
+                set volume with output muted
+            end if
+            """
+        if runAppleScript(script) { return }
+        if let device = defaultOutputDevice() {
+            var mute: UInt32 = 0
+            var size = UInt32(MemoryLayout<UInt32>.size)
+            var address = AudioObjectPropertyAddress(
+                mSelector: kAudioDevicePropertyMute,
+                mScope: kAudioDevicePropertyScopeOutput,
+                mElement: kAudioObjectPropertyElementMain
+            )
+            var didRead = AudioObjectGetPropertyData(device, &address, 0, nil, &size, &mute) == noErr
+            if !didRead {
+                address.mElement = 1
+                didRead = AudioObjectGetPropertyData(device, &address, 0, nil, &size, &mute) == noErr
+            }
+            if didRead {
+                mute = mute == 0 ? 1 : 0
+                if AudioObjectSetPropertyData(device, &address, 0, nil, size, &mute) == noErr {
+                    return
+                }
+                address.mElement = 1
+                _ = AudioObjectSetPropertyData(device, &address, 0, nil, size, &mute)
+                address.mElement = 2
+                _ = AudioObjectSetPropertyData(device, &address, 0, nil, size, &mute)
+            }
+        }
+    }
+
+    @discardableResult
+    private func runAppleScript(_ source: String) -> Bool {
+        var error: NSDictionary?
+        guard NSAppleScript(source: source)?.executeAndReturnError(&error) != nil, error == nil else {
+            inputLog.error("AppleScript failed: \(String(describing: error), privacy: .public)")
+            return false
+        }
+        return true
+    }
+
+    private func getVolume(_ device: AudioDeviceID, _ volume: inout Float32) -> Bool {
+        var size = UInt32(MemoryLayout<Float32>.size)
+        var address = AudioObjectPropertyAddress(
+            mSelector: kVirtualMainVolume,
+            mScope: kAudioDevicePropertyScopeOutput,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        if AudioObjectGetPropertyData(device, &address, 0, nil, &size, &volume) == noErr {
+            return true
+        }
+        address.mSelector = kAudioDevicePropertyVolumeScalar
+        if AudioObjectGetPropertyData(device, &address, 0, nil, &size, &volume) == noErr {
+            return true
+        }
+        address.mElement = 1
+        return AudioObjectGetPropertyData(device, &address, 0, nil, &size, &volume) == noErr
+    }
+
+    private func setVolume(_ device: AudioDeviceID, _ volume: Float32) -> Bool {
+        var value = volume
+        var address = AudioObjectPropertyAddress(
+            mSelector: kVirtualMainVolume,
+            mScope: kAudioDevicePropertyScopeOutput,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        let size = UInt32(MemoryLayout<Float32>.size)
+        if AudioObjectSetPropertyData(device, &address, 0, nil, size, &value) == noErr {
+            return true
+        }
+        address.mSelector = kAudioDevicePropertyVolumeScalar
+        if AudioObjectSetPropertyData(device, &address, 0, nil, size, &value) == noErr {
+            return true
+        }
+        var ok = false
+        for element: UInt32 in [1, 2] {
+            address.mElement = element
+            if AudioObjectSetPropertyData(device, &address, 0, nil, size, &value) == noErr {
+                ok = true
+            }
+        }
+        return ok
+    }
+
+    private func adjustBrightness(by delta: Float) {
+        let display = CGMainDisplayID()
+        var current: Float = 0
+        typealias GetFn = @convention(c) (CGDirectDisplayID, UnsafeMutablePointer<Float>) -> Int32
+        typealias SetFn = @convention(c) (CGDirectDisplayID, Float) -> Int32
+        let path = "/System/Library/PrivateFrameworks/DisplayServices.framework/DisplayServices"
+        guard let get: GetFn = loadPrivateSymbol("DisplayServicesGetBrightness", from: path),
+              let set: SetFn = loadPrivateSymbol("DisplayServicesSetBrightness", from: path) else {
+            inputLog.error("brightness: DisplayServices unavailable")
+            return
+        }
+        guard get(display, &current) == 0 else {
+            inputLog.error("brightness: get failed")
+            return
+        }
+        _ = set(display, min(1, max(0, current + delta)))
+    }
+
+    private func loadPrivateSymbol<T>(_ name: String, from path: String) -> T? {
+        if let handle = dlopen(path, RTLD_LAZY), let symbol = dlsym(handle, name) {
+            return unsafeBitCast(symbol, to: T.self)
+        }
+        guard let bundle = CFBundleCreate(kCFAllocatorDefault, URL(fileURLWithPath: path) as CFURL),
+              let pointer = CFBundleGetFunctionPointerForName(bundle, name as CFString) else {
+            return nil
+        }
+        return unsafeBitCast(pointer, to: T.self)
     }
 }
 
-// MARK: - Accessibility Helper
+private enum NXKey {
+    static let soundUp = 0
+    static let soundDown = 1
+    static let brightnessUp = 2
+    static let brightnessDown = 3
+    static let mute = 7
+    static let play = 16
+    static let next = 17
+    static let previous = 18
+}
 
-// Use the string key directly to avoid Swift strict concurrency issues with the global variable.
-// The key "AXTrustedCheckOptionPrompt" is the documented value of kAXTrustedCheckOptionPrompt.
 private nonisolated func requestAccessibilityPermissionPrompt() {
     let promptKey = "AXTrustedCheckOptionPrompt" as CFString
     let options = [promptKey: true] as CFDictionary
     AXIsProcessTrustedWithOptions(options)
 }
 
-// MARK: - Media Key Constants
-
-private let NX_KEYTYPE_PLAY: Int32 = 16
-private let NX_KEYTYPE_NEXT: Int32 = 17
-private let NX_KEYTYPE_PREVIOUS: Int32 = 18
-private let NX_KEYTYPE_SOUND_UP: Int32 = 0
-private let NX_KEYTYPE_SOUND_DOWN: Int32 = 1
-private let NX_KEYTYPE_MUTE: Int32 = 7
-private let NX_KEYTYPE_BRIGHTNESS_UP: Int32 = 21
-private let NX_KEYTYPE_BRIGHTNESS_DOWN: Int32 = 22
-
-// MARK: - Common Key Codes
+private let kVirtualMainVolume = AudioObjectPropertySelector(0x766D7663) // 'vmvc'
 
 public enum KeyCode: UInt16 {
     case returnKey = 0x24

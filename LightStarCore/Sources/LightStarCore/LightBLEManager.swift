@@ -35,6 +35,12 @@ public final class LightBLEManager: NSObject {
     public var isOn: Bool = UserDefaults.standard.object(forKey: "lastPowerState") as? Bool ?? false {
         didSet { UserDefaults.standard.set(isOn, forKey: "lastPowerState") }
     }
+    public var colorHue: Double = UserDefaults.standard.object(forKey: "colorHue") as? Double ?? 0 {
+        didSet { UserDefaults.standard.set(colorHue, forKey: "colorHue") }
+    }
+    public var colorSat: Double = UserDefaults.standard.object(forKey: "colorSat") as? Double ?? 1 {
+        didSet { UserDefaults.standard.set(colorSat, forKey: "colorSat") }
+    }
     public var color: Color = {
         guard let h = UserDefaults.standard.object(forKey: "colorHue") as? Double,
               let s = UserDefaults.standard.object(forKey: "colorSat") as? Double else { return .white }
@@ -216,10 +222,23 @@ public final class LightBLEManager: NSObject {
     public var lastScreenS: Double = 1
     public var audioPulseH: Double = 0   // cached hue for pulse mode — avoids 30Hz hsvComponents
     public let screenSampler = ScreenColorSampler()
+#if os(iOS)
+    public let remoteClient = RemoteControlClient()
+    var wantsMacStripConnection = false
+#endif
 
     public override init() {
         super.init()
         if circadianEnabled { startCircadianTimer() }
+#if os(iOS)
+        coalescer = BLEWriteCoalescer(
+            send: { [weak self] data in
+                self?.remoteClient.sendWriteFrame(Array(data))
+            },
+            isConnected: { [weak self] in self?.connectionState == .connected }
+        )
+        configureRemoteTransport()
+#else
         central = CBCentralManager(delegate: self, queue: .main)
         coalescer = BLEWriteCoalescer(
             send: { [weak self] data in
@@ -234,11 +253,15 @@ public final class LightBLEManager: NSObject {
             },
             isConnected: { [weak self] in self?.connectionState == .connected }
         )
+#endif
     }
 
     // MARK: - Public API
 
     public func connect() {
+#if os(iOS)
+        connectViaMac()
+#else
         guard connectionState == .disconnected else { return }
         reconnectTask?.cancel()
         reconnectTask = nil
@@ -260,21 +283,29 @@ public final class LightBLEManager: NSObject {
             connectWhenReady = true
             connectionState = .scanning
         }
+#endif
     }
 
     // Call when the user returns from System Settings after (potentially) granting
     // Bluetooth permission. Recreates CBCentralManager so it re-evaluates current
     // auth state and triggers the permission dialog if still notDetermined.
     public func retryBluetoothPermission() {
+#if os(iOS)
+        return
+#else
         guard bleNeedsPermission else { return }
         bleNeedsPermission = false
         connectionError = nil
         connectionState = .disconnected
         connectWhenReady = true
         central = CBCentralManager(delegate: self, queue: .main)
+#endif
     }
 
     public func disconnect() {
+#if os(iOS)
+        disconnectViaMac()
+#else
         reconnectTask?.cancel()
         reconnectTask = nil
         silenceTask?.cancel()
@@ -302,6 +333,7 @@ public final class LightBLEManager: NSObject {
         if let p = peripheral { central.cancelPeripheralConnection(p) }
         disconnectExtraLights()
         connectionState = .disconnected
+#endif
     }
 
     public func sendRaw(_ bytes: [UInt8]) {

@@ -1,378 +1,116 @@
 import SwiftUI
 import LightStarCore
 
-/// Keyboard view for remote text input and key commands to Mac.
-struct RemoteKeyboardView: View {
-    @ObservedObject var client: RemoteControlClient
-    @State private var textInput = ""
-    @State private var showingKeyboard = false
-    @FocusState private var isTextFieldFocused: Bool
-    
-    // Modifier key states
-    @State private var commandPressed = false
-    @State private var optionPressed = false
-    @State private var controlPressed = false
-    @State private var shiftPressed = false
-    
+/// Compact Mac modifier row that sits above the system keyboard — not inside `.toolbar(.keyboard)`,
+/// which overflows into a single tinted capsule on iPhone.
+struct MacKeyboardAccessory: View {
+    @Binding var commandHeld: Bool
+    @Binding var optionHeld: Bool
+    @Binding var controlHeld: Bool
+    @Binding var shiftHeld: Bool
+    var hapticsEnabled = true
+    var onDismiss: () -> Void
+
     var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(spacing: 20) {
-                    textInputSection
-                    modifierKeysSection
-                    commonKeysSection
-                    mediaKeysSection
-                    functionKeysSection
-                }
-                .padding()
+        HStack(spacing: 8) {
+            modifierChip("⌘", name: "Command", isOn: $commandHeld)
+            modifierChip("⌥", name: "Option", isOn: $optionHeld)
+            modifierChip("⌃", name: "Control", isOn: $controlHeld)
+            modifierChip("⇧", name: "Shift", isOn: $shiftHeld)
+            Button(action: onDismiss) {
+                Image(systemName: "keyboard.chevron.compact.down")
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(.primary)
+                    .frame(width: 44, height: 44)
+                    .background(
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .fill(Color.secondary.opacity(0.12))
+                    )
             }
-            .navigationTitle("Keyboard")
-            .background(Color(uiColor: .systemGroupedBackground))
+            .buttonStyle(RemotePressButtonStyle())
+            .accessibilityLabel("Hide keyboard")
         }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .background(Color(uiColor: .systemGroupedBackground))
     }
-    
-    // MARK: - Text Input
-    
-    private var textInputSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Text Input")
-                .font(.headline)
-            
-            HStack {
-                TextField("Type here...", text: $textInput)
-                    .textFieldStyle(.roundedBorder)
-                    .focused($isTextFieldFocused)
-                    .onSubmit {
-                        sendText()
-                    }
-                
-                Button("Send") {
-                    sendText()
-                }
-                .buttonStyle(.borderedProminent)
-                .disabled(textInput.isEmpty)
-            }
-            
-            Text("Text is sent to Mac when you tap Send or press Return")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
-        .padding()
-        .background(Color(uiColor: .secondarySystemGroupedBackground))
-        .cornerRadius(12)
-    }
-    
-    private func sendText() {
-        guard !textInput.isEmpty else { return }
-        client.sendTextInput(textInput)
-        textInput = ""
-    }
-    
-    // MARK: - Modifier Keys
-    
-    private var modifierKeysSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Modifier Keys")
-                .font(.headline)
-            
-            HStack(spacing: 12) {
-                ModifierKeyButton(
-                    title: "⌘",
-                    subtitle: "Cmd",
-                    isPressed: $commandPressed,
-                    action: { sendModifierKey(.command) }
+
+    private func modifierChip(_ symbol: String, name: String, isOn: Binding<Bool>) -> some View {
+        Button {
+            isOn.wrappedValue.toggle()
+            RemoteHaptics.select(enabled: hapticsEnabled)
+        } label: {
+            Text(symbol)
+                .font(.body.weight(.semibold))
+                .frame(maxWidth: .infinity)
+                .frame(height: 44)
+                .background(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(isOn.wrappedValue ? Color.accentColor.opacity(0.28) : Color.secondary.opacity(0.12))
                 )
-                
-                ModifierKeyButton(
-                    title: "⌥",
-                    subtitle: "Opt",
-                    isPressed: $optionPressed,
-                    action: { sendModifierKey(.option) }
-                )
-                
-                ModifierKeyButton(
-                    title: "⌃",
-                    subtitle: "Ctrl",
-                    isPressed: $controlPressed,
-                    action: { sendModifierKey(.control) }
-                )
-                
-                ModifierKeyButton(
-                    title: "⇧",
-                    subtitle: "Shift",
-                    isPressed: $shiftPressed,
-                    action: { sendModifierKey(.shift) }
-                )
-            }
-            
-            Text("Tap to toggle, then tap another key to send combination")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                .overlay {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .strokeBorder(isOn.wrappedValue ? Color.accentColor : Color.clear, lineWidth: 1)
+                }
         }
-        .padding()
-        .background(Color(uiColor: .secondarySystemGroupedBackground))
-        .cornerRadius(12)
-    }
-    
-    private func sendModifierKey(_ modifier: ModifierType) {
-        switch modifier {
-        case .command: commandPressed.toggle()
-        case .option: optionPressed.toggle()
-        case .control: controlPressed.toggle()
-        case .shift: shiftPressed.toggle()
-        }
-    }
-    
-    private enum ModifierType {
-        case command, option, control, shift
-    }
-    
-    // MARK: - Common Keys
-    
-    private var commonKeysSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Common Keys")
-                .font(.headline)
-            
-            LazyVGrid(columns: [
-                GridItem(.flexible()),
-                GridItem(.flexible()),
-                GridItem(.flexible()),
-                GridItem(.flexible())
-            ], spacing: 12) {
-                KeyButton(title: "Esc", icon: nil) {
-                    sendKey(keyCode: 0x35)
-                }
-                
-                KeyButton(title: "Tab", icon: nil) {
-                    sendKey(keyCode: 0x30)
-                }
-                
-                KeyButton(title: "Delete", icon: "delete.left") {
-                    sendKey(keyCode: 0x33)
-                }
-                
-                KeyButton(title: "Return", icon: "return") {
-                    sendKey(keyCode: 0x24)
-                }
-                
-                KeyButton(title: "Space", icon: nil) {
-                    sendKey(keyCode: 0x31)
-                }
-                
-                KeyButton(title: "←", icon: nil) {
-                    sendKey(keyCode: 0x7B)
-                }
-                
-                KeyButton(title: "→", icon: nil) {
-                    sendKey(keyCode: 0x7C)
-                }
-                
-                KeyButton(title: "↑", icon: nil) {
-                    sendKey(keyCode: 0x7E)
-                }
-                
-                KeyButton(title: "↓", icon: nil) {
-                    sendKey(keyCode: 0x7D)
-                }
-                
-                KeyButton(title: "Home", icon: nil) {
-                    sendKey(keyCode: 0x73)
-                }
-                
-                KeyButton(title: "End", icon: nil) {
-                    sendKey(keyCode: 0x77)
-                }
-                
-                KeyButton(title: "PgUp", icon: nil) {
-                    sendKey(keyCode: 0x74)
-                }
-                
-                KeyButton(title: "PgDn", icon: nil) {
-                    sendKey(keyCode: 0x79)
-                }
-            }
-        }
-        .padding()
-        .background(Color(uiColor: .secondarySystemGroupedBackground))
-        .cornerRadius(12)
-    }
-    
-    // MARK: - Media Keys
-    
-    private var mediaKeysSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Media Controls")
-                .font(.headline)
-            
-            HStack(spacing: 12) {
-                KeyButton(title: nil, icon: "backward.fill") {
-                    client.sendMediaKey(.previousTrack)
-                }
-                
-                KeyButton(title: nil, icon: "playpause.fill") {
-                    client.sendMediaKey(.playPause)
-                }
-                
-                KeyButton(title: nil, icon: "forward.fill") {
-                    client.sendMediaKey(.nextTrack)
-                }
-                
-                Spacer()
-                
-                KeyButton(title: nil, icon: "speaker.slash.fill") {
-                    client.sendMediaKey(.mute)
-                }
-                
-                KeyButton(title: nil, icon: "speaker.minus.fill") {
-                    client.sendMediaKey(.volumeDown)
-                }
-                
-                KeyButton(title: nil, icon: "speaker.plus.fill") {
-                    client.sendMediaKey(.volumeUp)
-                }
-            }
-            
-            HStack(spacing: 12) {
-                KeyButton(title: nil, icon: "sun.min") {
-                    client.sendMediaKey(.brightnessDown)
-                }
-                
-                KeyButton(title: nil, icon: "sun.max") {
-                    client.sendMediaKey(.brightnessUp)
-                }
-                
-                Spacer()
-            }
-        }
-        .padding()
-        .background(Color(uiColor: .secondarySystemGroupedBackground))
-        .cornerRadius(12)
-    }
-    
-    // MARK: - Function Keys
-    
-    private var functionKeysSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Function Keys")
-                .font(.headline)
-            
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 6), spacing: 8) {
-                ForEach(1...12, id: \.self) { num in
-                    KeyButton(title: "F\(num)", icon: nil) {
-                        sendFunctionKey(num)
-                    }
-                }
-            }
-        }
-        .padding()
-        .background(Color(uiColor: .secondarySystemGroupedBackground))
-        .cornerRadius(12)
-    }
-    
-    // MARK: - Key Sending
-    
-    private func sendKey(keyCode: UInt16) {
-        var modifiers: UInt32 = 0
-        if commandPressed { modifiers |= 0x100000 }  // CGEventFlags.maskCommand
-        if optionPressed { modifiers |= 0x80000 }    // CGEventFlags.maskAlternate
-        if controlPressed { modifiers |= 0x40000 }   // CGEventFlags.maskControl
-        if shiftPressed { modifiers |= 0x20000 }     // CGEventFlags.maskShift
-        
-        client.sendKeyDown(keyCode: keyCode, modifiers: modifiers)
-        client.sendKeyUp(keyCode: keyCode, modifiers: modifiers)
-        
-        // Reset modifier states after sending
-        commandPressed = false
-        optionPressed = false
-        controlPressed = false
-        shiftPressed = false
-    }
-    
-    private func sendFunctionKey(_ num: Int) {
-        let keyCodes: [Int: UInt16] = [
-            1: 0x7A, 2: 0x78, 3: 0x63, 4: 0x76,
-            5: 0x60, 6: 0x61, 7: 0x62, 8: 0x64,
-            9: 0x65, 10: 0x6D, 11: 0x67, 12: 0x6F
-        ]
-        if let keyCode = keyCodes[num] {
-            sendKey(keyCode: keyCode)
-        }
+        .buttonStyle(RemotePressButtonStyle())
+        .accessibilityLabel(name)
+        .accessibilityAddTraits(isOn.wrappedValue ? .isSelected : [])
     }
 }
 
-// MARK: - Key Button Component
-
-struct KeyButton: View {
-    let title: String?
-    let icon: String?
-    let action: () -> Void
-    
-    var body: some View {
-        Button(action: action) {
-            Group {
-                if let icon = icon {
-                    Image(systemName: icon)
-                } else if let title = title {
-                    Text(title)
-                        .font(.system(size: 14, weight: .medium))
-                }
+struct RemotePressButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .overlay {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(configuration.isPressed ? Color.primary.opacity(0.16) : Color.clear)
             }
-            .frame(maxWidth: .infinity)
-            .frame(height: 44)
-        }
-        .buttonStyle(.bordered)
+            .scaleEffect(configuration.isPressed ? 0.96 : 1)
+            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
     }
 }
 
-// MARK: - Modifier Key Button
-
-struct ModifierKeyButton: View {
-    let title: String
-    let subtitle: String
-    @Binding var isPressed: Bool
-    let action: () -> Void
-    
-    var body: some View {
-        Button(action: action) {
-            VStack(spacing: 2) {
-                Text(title)
-                    .font(.system(size: 20, weight: .medium))
-                Text(subtitle)
-                    .font(.system(size: 10))
-            }
-            .frame(maxWidth: .infinity)
-            .frame(height: 56)
+enum MacHIDKeyCode {
+    static func from(_ character: Character) -> UInt16? {
+        switch character.lowercased() {
+        case "a": return 0x00
+        case "s": return 0x01
+        case "d": return 0x02
+        case "f": return 0x03
+        case "h": return 0x04
+        case "g": return 0x05
+        case "z": return 0x06
+        case "x": return 0x07
+        case "c": return 0x08
+        case "v": return 0x09
+        case "b": return 0x0B
+        case "q": return 0x0C
+        case "w": return 0x0D
+        case "e": return 0x0E
+        case "r": return 0x0F
+        case "y": return 0x10
+        case "t": return 0x11
+        case "1": return 0x12
+        case "2": return 0x13
+        case "3": return 0x14
+        case "4": return 0x15
+        case "6": return 0x16
+        case "5": return 0x17
+        case "9": return 0x19
+        case "7": return 0x1A
+        case "8": return 0x1C
+        case "0": return 0x1D
+        case "o": return 0x1F
+        case "u": return 0x20
+        case "i": return 0x22
+        case "p": return 0x23
+        case "l": return 0x25
+        case "j": return 0x26
+        case "k": return 0x28
+        case "n": return 0x2D
+        case "m": return 0x2E
+        default: return nil
         }
-        .buttonStyle(.bordered)
-        .tint(isPressed ? .accentColor : .secondary)
-        .background(isPressed ? Color.accentColor.opacity(0.2) : Color.clear, in: RoundedRectangle(cornerRadius: 8))
     }
-}
-
-// MARK: - Shortcut Buttons
-
-struct ShortcutButton: View {
-    let title: String
-    let keys: String
-    let action: () -> Void
-    
-    var body: some View {
-        Button(action: action) {
-            VStack(spacing: 4) {
-                Text(title)
-                    .font(.caption)
-                Text(keys)
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(.secondary)
-            }
-            .frame(maxWidth: .infinity)
-            .frame(height: 50)
-        }
-        .buttonStyle(.bordered)
-    }
-}
-
-#Preview {
-    RemoteKeyboardView(client: RemoteControlClient())
 }

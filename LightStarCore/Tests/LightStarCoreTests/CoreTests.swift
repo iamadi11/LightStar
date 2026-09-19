@@ -217,6 +217,35 @@ final class RemoteProtocolTests: XCTestCase {
         XCTAssertEqual(decoded.type, .ping)
         XCTAssertEqual(consumed, encoded.count)
     }
+
+    func testBinaryPointerFrameRoundTrip() throws {
+        let frame = encodePointerFrame(deltaX: 12.3, deltaY: -4.1, isScroll: false)
+        XCTAssertEqual(frame.count, kPointerFrameLength)
+        let pointer = try decodePointerFrame(from: frame)
+        XCTAssertEqual(pointer?.deltaX ?? 0, 12.3, accuracy: 0.1)
+        XCTAssertEqual(pointer?.deltaY ?? 0, -4.1, accuracy: 0.1)
+        XCTAssertEqual(pointer?.isScroll, false)
+
+        let (message, consumed) = try decodeMessage(from: frame)
+        XCTAssertEqual(message.type, .mouseMove)
+        XCTAssertEqual(consumed, kPointerFrameLength)
+        let move = try message.decode(MouseMoveMessage.self)
+        XCTAssertEqual(move.deltaX, 12.3, accuracy: 0.1)
+    }
+
+    func testBinaryScrollBesideJSON() throws {
+        var stream = Data()
+        stream.append(try encodeMessage(RemoteMessage(type: .ping)))
+        stream.append(encodePointerFrame(deltaX: 1.5, deltaY: -8, isScroll: true))
+        let (ping, first) = try decodeMessage(from: stream)
+        stream.removeFirst(first)
+        if stream.startIndex != 0 { stream = Data(stream) }
+        let (scroll, _) = try decodeMessage(from: stream)
+        XCTAssertEqual(ping.type, .ping)
+        XCTAssertEqual(scroll.type, .scroll)
+        let payload = try scroll.decode(MouseMoveMessage.self)
+        XCTAssertEqual(payload.deltaY, -8, accuracy: 0.1)
+    }
     
     func testSetPowerMessageRoundTrip() throws {
         let payload = SetPowerMessage(on: true)
@@ -250,6 +279,16 @@ final class RemoteProtocolTests: XCTestCase {
         let decodedPayload = try decoded.decode(MouseMoveMessage.self)
         XCTAssertEqual(decodedPayload.deltaX, 10.5, accuracy: 0.0001)
         XCTAssertEqual(decodedPayload.deltaY, -20.3, accuracy: 0.0001)
+    }
+
+    func testMouseButtonClickCountIsOptional() throws {
+        let legacy = try RemoteMessage(type: .mouseDown, content: MouseButtonMessage(button: 0))
+        let decodedLegacy = try decodeMessage(from: try encodeMessage(legacy)).0.decode(MouseButtonMessage.self)
+        XCTAssertNil(decodedLegacy.clickCount)
+
+        let double = try RemoteMessage(type: .mouseDown, content: MouseButtonMessage(button: 0, clickCount: 2))
+        let decodedDouble = try decodeMessage(from: try encodeMessage(double)).0.decode(MouseButtonMessage.self)
+        XCTAssertEqual(decodedDouble.clickCount, 2)
     }
     
     func testMultipleMessagesInStream() throws {
@@ -315,6 +354,166 @@ final class RemoteProtocolTests: XCTestCase {
         XCTAssertEqual(state1, state2)
         XCTAssertNotEqual(state1, state3)
     }
+
+    func testMacTrackpadPrefsRoundTrip() throws {
+        let prefs = MacTrackpadPrefs(
+            tapToClick: true,
+            twoFingerSecondaryClick: true,
+            threeFingerDrag: false,
+            naturalScrolling: true,
+            pointerSpeed: 1.2,
+            doubleClickThreshold: 0.5
+        )
+        let state = LightStarState(
+            isConnected: true, isOn: true, brightness: 1,
+            colorHue: 0.1, colorSaturation: 0.9, colorTemperature: 0.5,
+            syncMode: "Off",
+            trackpad: prefs
+        )
+        let message = try RemoteMessage(type: .stateUpdate, content: state)
+        let decoded = try message.decode(LightStarState.self)
+        XCTAssertEqual(decoded.trackpad, prefs)
+    }
+
+    func testMacActionMessageRoundTrip() throws {
+        let message = try RemoteMessage(type: .macAction, content: MacActionMessage(action: .missionControl))
+        XCTAssertEqual(message.type, .macAction)
+        XCTAssertEqual(message.type.rawValue, 0x39)
+        let decoded = try message.decode(MacActionMessage.self)
+        XCTAssertEqual(decoded.action, .missionControl)
+    }
+
+    func testRemoteScrollMappingMatchesMacTrackpad() {
+        let natural = RemoteScrollMapping.eventDeltas(fingerDeltaX: 3, fingerDeltaY: -10, naturalScrolling: true)
+        XCTAssertEqual(natural.x, 3)
+        XCTAssertEqual(natural.y, -10)
+
+        let traditional = RemoteScrollMapping.eventDeltas(fingerDeltaX: 3, fingerDeltaY: -10, naturalScrolling: false)
+        XCTAssertEqual(traditional.x, -3)
+        XCTAssertEqual(traditional.y, 10)
+    }
+
+    func testGyroPointerDeadzoneAndSigns() {
+        let wrap = GyroPointerMath.shortestAngle(0.9 * Double.pi, -0.9 * Double.pi)
+        XCTAssertEqual(wrap, -0.2 * Double.pi, accuracy: 0.0001)
+
+        let rest = GyroPointerMath.targetOffset(
+            yaw: 0.01, pitch: 0.01, originYaw: 0, originPitch: 0, sensitivity: 1
+        )
+        XCTAssertEqual(rest.x, 0)
+        XCTAssertEqual(rest.y, 0)
+
+        let yawRight = GyroPointerMath.targetOffset(
+            yaw: -0.2, pitch: 0, originYaw: 0, originPitch: 0, sensitivity: 1
+        )
+        XCTAssertGreaterThan(yawRight.x, 0)
+
+        let pitchAimHigher = GyroPointerMath.targetOffset(
+            yaw: 0, pitch: -0.2, originYaw: 0, originPitch: 0, sensitivity: 1
+        )
+        XCTAssertGreaterThan(pitchAimHigher.y, 0)
+
+        let delta = GyroPointerMath.sampleDelta(targetX: 400, targetY: 0, lastX: 0, lastY: 0)
+        XCTAssertEqual(delta.dx, GyroPointerMath.maxPixelsPerSample)
+        XCTAssertEqual(delta.dy, 0)
+
+        XCTAssertTrue(GyroPointerMath.isParked(pitch: 0.1, rotationRate: 0.01))
+        XCTAssertFalse(GyroPointerMath.isParked(pitch: 0.9, rotationRate: 0.01))
+
+        let turned = GyroPointerMath.incrementalDelta(
+            yaw: -0.2, pitch: 0, lastYaw: 0, lastPitch: 0, sensitivity: 1,
+            accelerationEnabled: false
+        )
+        XCTAssertGreaterThan(turned.dx, 0)
+
+        let still = GyroPointerMath.rateDelta(
+            rateX: 0.01, rateY: 0, rateZ: 0.01, dt: 0.008, sensitivity: 1
+        )
+        XCTAssertEqual(still.dx, 0)
+        XCTAssertEqual(still.dy, 0)
+        let flick = GyroPointerMath.rateDelta(
+            rateX: -1.2, rateY: 0, rateZ: -1.2, dt: 0.008, sensitivity: 1,
+            accelerationEnabled: false
+        )
+        XCTAssertGreaterThan(flick.dx, 0)
+        XCTAssertGreaterThan(flick.dy, 0)
+
+        let slow = GyroPointerMath.incrementalDelta(
+            yaw: -0.002, pitch: 0, lastYaw: 0, lastPitch: 0, sensitivity: 1,
+            dt: 1.0 / 120.0, accelerationEnabled: true
+        )
+        let fast = GyroPointerMath.incrementalDelta(
+            yaw: -0.04, pitch: 0, lastYaw: 0, lastPitch: 0, sensitivity: 1,
+            dt: 1.0 / 120.0, accelerationEnabled: true
+        )
+        XCTAssertGreaterThan(abs(fast.dx) / 0.04, abs(slow.dx) / 0.002)
+
+        let slowTrack = RemotePointerAcceleration.factor(pixelsPerSecond: 40, enabled: true, scaling: 2)
+        let fastTrack = RemotePointerAcceleration.factor(pixelsPerSecond: 800, enabled: true, scaling: 2)
+        XCTAssertEqual(slowTrack, 1.04, accuracy: 0.02)
+        XCTAssertGreaterThan(fastTrack, slowTrack * 2)
+        XCTAssertEqual(
+            RemotePointerAcceleration.factor(pixelsPerSecond: 40, enabled: false, scaling: 2),
+            1.04,
+            accuracy: 0.02
+        )
+        XCTAssertGreaterThan(
+            RemotePointerAcceleration.gyroFactor(radiansPerSecond: 3.0, enabled: true),
+            RemotePointerAcceleration.gyroFactor(radiansPerSecond: 0.1, enabled: true)
+        )
+
+        XCTAssertEqual(RemoteTrackpadSwipe.from(dx: -90, dy: 10), .left)
+        XCTAssertEqual(RemoteTrackpadSwipe.from(dx: -90, dy: 10)?.macAction, .spaceRight)
+        XCTAssertEqual(RemoteTrackpadSwipe.from(dx: 12, dy: -80), .up)
+        XCTAssertEqual(RemoteTrackpadSwipe.from(dx: 12, dy: -80)?.macAction, .missionControl)
+        XCTAssertNil(RemoteTrackpadSwipe.from(dx: 20, dy: -20))
+
+        let portrait = RemotePointerOrientation.portrait.mapPointer(dx: 10, dy: 4)
+        XCTAssertEqual(portrait.0, 10)
+        XCTAssertEqual(portrait.1, 4)
+        let left = RemotePointerOrientation.landscapeLeft.mapPointer(dx: 10, dy: 4)
+        XCTAssertEqual(left.0, 4)
+        XCTAssertEqual(left.1, -10)
+        let right = RemotePointerOrientation.landscapeRight.mapPointer(dx: 10, dy: 4)
+        XCTAssertEqual(right.0, -4)
+        XCTAssertEqual(right.1, 10)
+
+        let yaw = 0.2
+        let portraitAim = RemotePointerOrientation.portrait.aimingDelta(dYaw: yaw, dPitch: 0, dRoll: 0)
+        let landRightAim = RemotePointerOrientation.landscapeRight.aimingDelta(dYaw: yaw, dPitch: 0, dRoll: 0)
+        let landLeftAim = RemotePointerOrientation.landscapeLeft.aimingDelta(dYaw: yaw, dPitch: 0, dRoll: 0)
+        XCTAssertEqual(portraitAim.0, landRightAim.0, accuracy: 0.0001)
+        XCTAssertEqual(portraitAim.0, landLeftAim.0, accuracy: 0.0001)
+        XCTAssertEqual(landRightAim.1, 0, accuracy: 0.0001)
+        XCTAssertEqual(
+            RemotePointerOrientation.landscapeRight.aimingDelta(dYaw: 0, dPitch: 0.4, dRoll: -0.3).1,
+            0.3,
+            accuracy: 0.0001
+        )
+        XCTAssertEqual(
+            RemotePointerOrientation.landscapeLeft.aimingDelta(dYaw: 0, dPitch: 0.4, dRoll: 0.3).1,
+            0.3,
+            accuracy: 0.0001
+        )
+    }
+
+    func testRemoteDisplayGeometryCentersCurrentScreen() {
+        let main = CGRect(x: 0, y: 0, width: 1920, height: 1080)
+        let side = CGRect(x: 1920, y: 0, width: 2560, height: 1440)
+        let onSide = RemoteDisplayGeometry.bounds(
+            containing: CGPoint(x: 2100, y: 200),
+            among: [main, side]
+        )
+        XCTAssertEqual(onSide, side)
+        XCTAssertEqual(RemoteDisplayGeometry.center(of: side), CGPoint(x: 3200, y: 720))
+
+        let onMain = RemoteDisplayGeometry.bounds(
+            containing: CGPoint(x: 100, y: 100),
+            among: [main, side]
+        )
+        XCTAssertEqual(onMain, main)
+        XCTAssertEqual(RemoteDisplayGeometry.center(of: main), CGPoint(x: 960, y: 540))
+    }
     
     func testAllMessageTypesHaveDistinctRawValues() {
         let types: [RemoteMessageType] = [
@@ -322,8 +521,9 @@ final class RemoteProtocolTests: XCTestCase {
             .getState, .stateUpdate,
             .setPower, .setBrightness, .setColor, .setColorTemperature,
             .setEffect, .setEffectSpeed, .setEffectDirection, .setSyncMode, .selectDisplay,
+            .connectStrip, .disconnectStrip, .writeFrame,
             .mouseMove, .mouseDown, .mouseUp, .rightClick, .scroll,
-            .keyDown, .keyUp, .textInput, .mediaKey,
+            .keyDown, .keyUp, .textInput, .mediaKey, .macAction,
             .getDiagnostics, .diagnosticsUpdate,
             .error
         ]

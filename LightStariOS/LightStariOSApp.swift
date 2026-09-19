@@ -15,21 +15,7 @@ struct LightStariOSApp: App {
                 .environment(schedules)
                 .onAppear {
                     LightStarRuntime.register(ble: ble, presets: presets, schedules: schedules)
-                    ble.onConnect = {
-                        schedules.drainPendingActions()
-                        schedules.pushFirmwareTimers()
-                        guard ble.syncMode == .off,
-                              let id = presets.defaultPresetID,
-                              let preset = presets.presets.first(where: { $0.id == id })
-                        else { return }
-                        ble.setColor(preset.color)
-                        ble.setBrightness(preset.brightness)
-                    }
-                    if UserDefaults.standard.object(forKey: "autoConnectOnLaunch") as? Bool ?? true {
-                        ble.connect()
-                    }
-                    schedules.reschedule()
-                    schedules.fireDue()
+                    ble.connect()
                 }
                 .onOpenURL { _ in }
         }

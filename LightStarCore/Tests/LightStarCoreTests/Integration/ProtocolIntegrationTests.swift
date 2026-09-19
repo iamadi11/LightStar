@@ -169,6 +169,19 @@ final class ProtocolIntegrationTests: XCTestCase {
             XCTAssertEqual(decoded.key, key)
         }
     }
+
+    func testMacSystemActionTypes() throws {
+        let actions: [MacSystemAction] = [
+            .spotlight, .missionControl, .applicationWindows, .desktop, .launchpad, .lockScreen,
+            .undo, .cut, .copy, .paste, .selectAll, .emoji,
+            .screenshot, .screenshotSelection, .spaceLeft, .spaceRight, .centerPointer
+        ]
+        for action in actions {
+            let message = try RemoteMessage(type: .macAction, content: MacActionMessage(action: action))
+            let decoded = try message.decode(MacActionMessage.self)
+            XCTAssertEqual(decoded.action, action)
+        }
+    }
     
     // MARK: - State Message Tests
     
@@ -283,6 +296,33 @@ final class ProtocolIntegrationTests: XCTestCase {
         XCTAssertEqual(decoded.type, .ping)
         XCTAssertEqual(consumed, msg1.count)
     }
+
+    func testDecodeMessageFromUnalignedBuffer() throws {
+        let encoded = try encodeMessage(RemoteMessage(type: .ping))
+        var padded = Data([0xAB])
+        padded.append(encoded)
+        let unaligned = Data(padded.dropFirst())
+        let (decoded, consumed) = try decodeMessage(from: unaligned)
+        XCTAssertEqual(decoded.type, .ping)
+        XCTAssertEqual(consumed, encoded.count)
+    }
+
+    func testDecodeMessageAfterRemoveFirst() throws {
+        let encoded = try encodeMessage(RemoteMessage(type: .hello))
+        var buffer = Data([0xDE, 0xAD])
+        buffer.append(encoded)
+        buffer.removeFirst(2)
+        let (decoded, consumed) = try decodeMessage(from: buffer)
+        XCTAssertEqual(decoded.type, .hello)
+        XCTAssertEqual(consumed, encoded.count)
+    }
+
+    func testDecodeMessageRejectsInvalidLength() {
+        let bogus = Data([0xFF, 0xFF, 0xFF, 0xFF, 0x00])
+        XCTAssertThrowsError(try decodeMessage(from: bogus)) { error in
+            XCTAssertEqual(error as? RemoteProtocolError, .invalidLength)
+        }
+    }
     
     // MARK: - Connection Message Tests
     
@@ -330,5 +370,14 @@ final class ProtocolIntegrationTests: XCTestCase {
         XCTAssertFalse(decoded.success)
         XCTAssertNil(decoded.sessionToken)
         XCTAssertEqual(decoded.errorMessage, "Invalid code")
+    }
+
+    func testWriteFrameRoundTrip() throws {
+        let frame: [UInt8] = [0xBC, 0x01, 0x01, 0x01, 0x55]
+        let payload = WriteFrameMessage(bytes: frame)
+        let message = try RemoteMessage(type: .writeFrame, content: payload)
+        let decoded = try message.decode(WriteFrameMessage.self)
+        XCTAssertEqual(Array(decoded.bytes), frame)
+        XCTAssertEqual(message.type, .writeFrame)
     }
 }

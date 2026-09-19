@@ -36,6 +36,9 @@ public enum RemoteMessageType: UInt8, Codable, Sendable {
     case setEffectDirection = 0x26
     case setSyncMode = 0x27
     case selectDisplay = 0x28
+    case connectStrip = 0x29
+    case disconnectStrip = 0x2A
+    case writeFrame = 0x2B
     
     // Mac control (input)
     case mouseMove = 0x30
@@ -47,6 +50,7 @@ public enum RemoteMessageType: UInt8, Codable, Sendable {
     case keyUp = 0x36
     case textInput = 0x37
     case mediaKey = 0x38
+    case macAction = 0x39
     
     // Diagnostics
     case getDiagnostics = 0x40
@@ -146,6 +150,7 @@ public struct LightStarState: Codable, Sendable, Equatable {
     public let availableDisplays: [DisplayInfo]
     public let syncColor: ColorInfo?
     public let protectedContentDetected: Bool
+    public let trackpad: MacTrackpadPrefs?
     
     public init(
         isConnected: Bool,
@@ -161,7 +166,8 @@ public struct LightStarState: Codable, Sendable, Equatable {
         selectedDisplayID: UInt32? = nil,
         availableDisplays: [DisplayInfo] = [],
         syncColor: ColorInfo? = nil,
-        protectedContentDetected: Bool = false
+        protectedContentDetected: Bool = false,
+        trackpad: MacTrackpadPrefs? = nil
     ) {
         self.isConnected = isConnected
         self.isOn = isOn
@@ -177,6 +183,40 @@ public struct LightStarState: Codable, Sendable, Equatable {
         self.availableDisplays = availableDisplays
         self.syncColor = syncColor
         self.protectedContentDetected = protectedContentDetected
+        self.trackpad = trackpad
+    }
+}
+
+/// macOS Trackpad pane values, mirrored onto the iPhone remote.
+public struct MacTrackpadPrefs: Codable, Sendable, Equatable {
+    public var tapToClick: Bool
+    public var twoFingerSecondaryClick: Bool
+    public var threeFingerDrag: Bool
+    public var naturalScrolling: Bool
+    /// Apple `com.apple.trackpad.scaling` (0...3). Acceleration uses this, not a second multiplier.
+    public var pointerSpeed: Double
+    public var doubleClickThreshold: Double
+    public var threeFingerHorizSwipe: Bool?
+    public var threeFingerVertSwipe: Bool?
+
+    public init(
+        tapToClick: Bool,
+        twoFingerSecondaryClick: Bool,
+        threeFingerDrag: Bool,
+        naturalScrolling: Bool,
+        pointerSpeed: Double,
+        doubleClickThreshold: Double,
+        threeFingerHorizSwipe: Bool? = nil,
+        threeFingerVertSwipe: Bool? = nil
+    ) {
+        self.tapToClick = tapToClick
+        self.twoFingerSecondaryClick = twoFingerSecondaryClick
+        self.threeFingerDrag = threeFingerDrag
+        self.naturalScrolling = naturalScrolling
+        self.pointerSpeed = pointerSpeed
+        self.doubleClickThreshold = doubleClickThreshold
+        self.threeFingerHorizSwipe = threeFingerHorizSwipe
+        self.threeFingerVertSwipe = threeFingerVertSwipe
     }
 }
 
@@ -253,6 +293,12 @@ public struct SelectDisplayMessage: Codable, Sendable {
     public init(displayID: UInt32?) { self.displayID = displayID }
 }
 
+public struct WriteFrameMessage: Codable, Sendable {
+    public let bytes: Data
+    public init(bytes: [UInt8]) { self.bytes = Data(bytes) }
+    public init(bytes: Data) { self.bytes = bytes }
+}
+
 // MARK: - Input Messages (Mac Control)
 
 public struct MouseMoveMessage: Codable, Sendable {
@@ -266,7 +312,11 @@ public struct MouseMoveMessage: Codable, Sendable {
 
 public struct MouseButtonMessage: Codable, Sendable {
     public let button: Int  // 0=left, 1=right, 2=middle
-    public init(button: Int = 0) { self.button = button }
+    public let clickCount: Int?
+    public init(button: Int = 0, clickCount: Int? = nil) {
+        self.button = button
+        self.clickCount = clickCount
+    }
 }
 
 public struct ScrollMessage: Codable, Sendable {
@@ -292,6 +342,14 @@ public struct TextInputMessage: Codable, Sendable {
     public init(text: String) { self.text = text }
 }
 
+/// CGEventFlags bits used by the iPhone remote.
+public enum RemoteModifier {
+    public static let command: UInt32 = 0x100000
+    public static let shift: UInt32 = 0x20000
+    public static let option: UInt32 = 0x80000
+    public static let control: UInt32 = 0x40000
+}
+
 public struct MediaKeyMessage: Codable, Sendable {
     public enum MediaKey: String, Codable, Sendable {
         case playPause, nextTrack, previousTrack
@@ -300,6 +358,19 @@ public struct MediaKeyMessage: Codable, Sendable {
     }
     public let key: MediaKey
     public init(key: MediaKey) { self.key = key }
+}
+
+public enum MacSystemAction: String, Codable, Sendable {
+    case spotlight, missionControl, applicationWindows, desktop, launchpad, lockScreen
+    case undo, cut, copy, paste, selectAll, emoji
+    case screenshot, screenshotSelection
+    case spaceLeft, spaceRight
+    case centerPointer
+}
+
+public struct MacActionMessage: Codable, Sendable {
+    public let action: MacSystemAction
+    public init(action: MacSystemAction) { self.action = action }
 }
 
 // MARK: - Error Messages
@@ -315,6 +386,12 @@ public struct ErrorMessage: Codable, Sendable {
 
 // MARK: - Message Framing
 
+enum RemoteProtocolError: Error, Equatable {
+    case insufficientData
+    case incompleteMessage
+    case invalidLength
+}
+
 /// Encodes a message for network transmission with length prefix.
 public func encodeMessage(_ message: RemoteMessage) throws -> Data {
     let encoded = try JSONEncoder().encode(message)
@@ -324,17 +401,56 @@ public func encodeMessage(_ message: RemoteMessage) throws -> Data {
     return data
 }
 
+/// 13-byte pointer frame: 4-byte length + `0xB1` + kind + int16 dx/dy × 10.
+/// `{` never collides with `0xB1`, so this sits beside JSON frames on the same TCP stream.
+public let kPointerFrameMagic: UInt8 = 0xB1
+public let kPointerFramePayloadLength = 9
+public let kPointerFrameLength = 13
+
+public func encodePointerFrame(deltaX: Double, deltaY: Double, isScroll: Bool) -> Data {
+    var length = UInt32(kPointerFramePayloadLength).bigEndian
+    var data = Data(bytes: &length, count: 4)
+    var payload = Data(count: kPointerFramePayloadLength)
+    payload[0] = kPointerFrameMagic
+    payload[1] = isScroll ? 1 : 0
+    var x = Int16(clamping: Int((deltaX * 10).rounded())).littleEndian
+    var y = Int16(clamping: Int((deltaY * 10).rounded())).littleEndian
+    payload.replaceSubrange(2..<4, with: Data(bytes: &x, count: 2))
+    payload.replaceSubrange(4..<6, with: Data(bytes: &y, count: 2))
+    data.append(payload)
+    return data
+}
+
+public func decodePointerFrame(from data: Data) throws -> (deltaX: Double, deltaY: Double, isScroll: Bool, consumed: Int)? {
+    guard data.count >= 4 else { throw RemoteProtocolError.insufficientData }
+    return try data.withUnsafeBytes { buf in
+        let length = UInt32(bigEndian: buf.loadUnaligned(fromByteOffset: 0, as: UInt32.self))
+        guard length == kPointerFramePayloadLength else { return nil }
+        guard buf.count >= kPointerFrameLength else { throw RemoteProtocolError.incompleteMessage }
+        guard buf[4] == kPointerFrameMagic else { return nil }
+        let x = Int16(littleEndian: buf.loadUnaligned(fromByteOffset: 6, as: Int16.self))
+        let y = Int16(littleEndian: buf.loadUnaligned(fromByteOffset: 8, as: Int16.self))
+        return (Double(x) / 10.0, Double(y) / 10.0, buf[5] != 0, kPointerFrameLength)
+    }
+}
+
 /// Decodes a message from network data (expects length-prefixed frame).
 public func decodeMessage(from data: Data) throws -> (RemoteMessage, Int) {
-    guard data.count >= 4 else {
-        throw NSError(domain: "RemoteProtocol", code: 1, userInfo: [NSLocalizedDescriptionKey: "Insufficient data for length prefix"])
+    if let pointer = try decodePointerFrame(from: data) {
+        let type: RemoteMessageType = pointer.isScroll ? .scroll : .mouseMove
+        let payload = try JSONEncoder().encode(
+            MouseMoveMessage(deltaX: pointer.deltaX, deltaY: pointer.deltaY)
+        )
+        return (RemoteMessage(type: type, payload: payload), pointer.consumed)
     }
-    let length = data.withUnsafeBytes { $0.load(as: UInt32.self).bigEndian }
-    let totalLength = Int(length) + 4
-    guard data.count >= totalLength else {
-        throw NSError(domain: "RemoteProtocol", code: 2, userInfo: [NSLocalizedDescriptionKey: "Incomplete message"])
+    return try data.withUnsafeBytes { buf in
+        guard buf.count >= 4 else { throw RemoteProtocolError.insufficientData }
+        let length = UInt32(bigEndian: buf.loadUnaligned(fromByteOffset: 0, as: UInt32.self))
+        guard length > 0, length <= 1_048_576 else { throw RemoteProtocolError.invalidLength }
+        let totalLength = Int(length) + 4
+        guard buf.count >= totalLength else { throw RemoteProtocolError.incompleteMessage }
+        let messageData = Data(buf[4..<totalLength])
+        let message = try JSONDecoder().decode(RemoteMessage.self, from: messageData)
+        return (message, totalLength)
     }
-    let messageData = data.subdata(in: 4..<totalLength)
-    let message = try JSONDecoder().decode(RemoteMessage.self, from: messageData)
-    return (message, totalLength)
 }

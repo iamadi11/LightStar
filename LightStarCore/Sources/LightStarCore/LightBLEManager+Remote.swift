@@ -1,35 +1,57 @@
 #if os(macOS)
 import SwiftUI
 import CoreGraphics
+import AppKit
 
 /// Extension for integrating RemoteControlServer with LightBLEManager.
 public extension LightBLEManager {
     
     /// Create a LightStarState snapshot for remote clients.
     func createStateSnapshot() -> LightStarState {
-        let (h, s, _) = color.hsvComponents
         var syncColorInfo: ColorInfo? = nil
         if let sc = syncColor {
             let (sh, ss, sv) = sc.hsvComponents
             syncColorInfo = ColorInfo(hue: sh, saturation: ss, brightness: sv)
         }
+        let displays = attachedDisplays()
         
         return LightStarState(
             isConnected: connectionState == .connected,
             isOn: isOn,
             brightness: brightness,
-            colorHue: h,
-            colorSaturation: s,
+            colorHue: colorHue,
+            colorSaturation: colorSat,
             colorTemperature: colorTemperature,
             syncMode: syncMode.rawValue,
             effectID: effectModeActive ? effectID : nil,
             effectSpeed: effectSpeed,
             effectForward: effectForward,
-            selectedDisplayID: selectedDisplayID,
-            availableDisplays: availableDisplays.map { DisplayInfo(id: $0.id, name: $0.name) },
+            selectedDisplayID: selectedDisplayID ?? displays.first?.id,
+            availableDisplays: displays.map { DisplayInfo(id: $0.id, name: $0.name) },
             syncColor: syncColorInfo,
-            protectedContentDetected: screenSampler.protectedContentDetected
+            protectedContentDetected: screenSampler.protectedContentDetected,
+            trackpad: MacTrackpadPreferences.current()
         )
+    }
+
+    /// NSScreen list — does not need Screen Recording or the menu-bar popover.
+    func attachedDisplays() -> [(id: CGDirectDisplayID, name: String)] {
+        NSScreen.screens.compactMap { screen in
+            guard let id = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID else {
+                return nil
+            }
+            return (id, screen.localizedName)
+        }
+    }
+
+    func refreshAttachedDisplays() {
+        let next = attachedDisplays()
+        if next.map(\.id) != availableDisplays.map(\.id) {
+            availableDisplays = next
+        }
+        if selectedDisplayID == nil {
+            selectedDisplayID = next.first?.id
+        }
     }
     
     /// Handle a remote control command and return optional response.
@@ -73,6 +95,18 @@ public extension LightBLEManager {
             if let cmd = try? message.decode(SelectDisplayMessage.self) {
                 selectedDisplayID = cmd.displayID
             }
+        case .connectStrip:
+            if connectionState == .disconnected {
+                connect()
+            }
+        case .disconnectStrip:
+            if connectionState != .disconnected {
+                disconnect()
+            }
+        case .writeFrame:
+            if let cmd = try? message.decode(WriteFrameMessage.self) {
+                write(Array(cmd.bytes))
+            }
         default:
             break
         }
@@ -94,6 +128,7 @@ public final class RemoteControlCoordinator: ObservableObject {
         self.ble = ble
         self.server = RemoteControlServer()
         self.inputController = MacInputController()
+        self.server.pointerInjector = inputController.pointerInjector
         
         setupServer()
     }
@@ -107,18 +142,42 @@ public final class RemoteControlCoordinator: ObservableObject {
         }
         
         server.onCommand = { [weak self] message, respond in
-            guard let self = self else { return }
-            
-            Task { @MainActor in
-                let response = self.handleCommand(message)
-                respond(response)
+            guard let self else { return }
+            let response = self.handleCommand(message)
+            respond(response)
+        }
+        server.onClientsChanged = { [weak self] clients in
+            guard let self else { return }
+            self.ble?.refreshAttachedDisplays()
+            guard !clients.isEmpty else { return }
+            self.inputController.ensureAccessibility()
+            if let state = self.ble?.createStateSnapshot() {
+                self.server.broadcastStateUpdate(state)
             }
         }
     }
     
+    private func accessibilityDeniedMessage() -> RemoteMessage? {
+        try? RemoteMessage(
+            type: .error,
+            content: ErrorMessage(
+                code: 1,
+                message: "On the Mac, enable LightStar in System Settings → Privacy & Security → Accessibility, then quit and reopen LightStar."
+            )
+        )
+    }
+
     private func handleCommand(_ message: RemoteMessage) -> RemoteMessage? {
         switch message.type {
-        // Input commands
+        case .mouseMove, .mouseDown, .mouseUp, .rightClick, .scroll, .keyDown, .keyUp, .textInput:
+            if !inputController.ensureAccessibility() {
+                return accessibilityDeniedMessage()
+            }
+        default:
+            break
+        }
+
+        switch message.type {
         case .mouseMove:
             if let cmd = try? message.decode(MouseMoveMessage.self) {
                 inputController.moveMouse(deltaX: cmd.deltaX, deltaY: cmd.deltaY)
@@ -126,12 +185,12 @@ public final class RemoteControlCoordinator: ObservableObject {
             return nil
         case .mouseDown:
             if let cmd = try? message.decode(MouseButtonMessage.self) {
-                inputController.mouseDown(button: cmd.button)
+                inputController.mouseDown(button: cmd.button, clickCount: cmd.clickCount ?? 1)
             }
             return nil
         case .mouseUp:
             if let cmd = try? message.decode(MouseButtonMessage.self) {
-                inputController.mouseUp(button: cmd.button)
+                inputController.mouseUp(button: cmd.button, clickCount: cmd.clickCount ?? 1)
             }
             return nil
         case .rightClick:
@@ -162,6 +221,19 @@ public final class RemoteControlCoordinator: ObservableObject {
                 inputController.sendMediaKey(cmd.key)
             }
             return nil
+        case .macAction:
+            if let cmd = try? message.decode(MacActionMessage.self) {
+                switch cmd.action {
+                case .missionControl, .launchpad, .lockScreen:
+                    break
+                default:
+                    if !inputController.ensureAccessibility() {
+                        return accessibilityDeniedMessage()
+                    }
+                }
+                inputController.perform(cmd.action)
+            }
+            return nil
             
         // Light commands - delegate to BLE manager
         default:
@@ -171,6 +243,7 @@ public final class RemoteControlCoordinator: ObservableObject {
     
     /// Start the remote control server and begin observing BLE state.
     public func start() {
+        ble?.refreshAttachedDisplays()
         server.start()
         startStateObservation()
     }
@@ -191,6 +264,9 @@ public final class RemoteControlCoordinator: ObservableObject {
                 _ = ble.isOn
                 _ = ble.brightness
                 _ = ble.color
+                _ = ble.colorHue
+                _ = ble.colorSat
+                _ = ble.colorTemperature
                 _ = ble.syncMode
                 _ = ble.syncColor
                 _ = ble.connectionState

@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import ApplicationServices
 import ServiceManagement
 import LightStarCore
 
@@ -47,7 +48,30 @@ struct SettingsView: View {
                 ), in: 8...300)
             }
 
+            Section("iPhone Remote") {
+                if AXIsProcessTrusted() {
+                    LabeledContent("Pointer & keyboard", value: "Enabled")
+                } else {
+                    Text("Trackpad and keyboard from the iPhone need Accessibility access.")
+                        .foregroundStyle(.secondary)
+                    Button("Enable in System Settings…") {
+                        NSApp.setActivationPolicy(.regular)
+                        NSApp.activate(ignoringOtherApps: true)
+                        let promptKey = "AXTrustedCheckOptionPrompt" as CFString
+                        AXIsProcessTrustedWithOptions([promptKey: true] as CFDictionary)
+                        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
+                            NSWorkspace.shared.open(url)
+                        }
+                    }
+                }
+            }
+
             Section("Scenes") {
+                Toggle("Sync Presets via iCloud", isOn: Binding(
+                    get: { presets.iCloudEnabled },
+                    set: { presets.iCloudEnabled = $0 }
+                ))
+                .disabled(!presets.iCloudAvailable)
                 HStack {
                     Button("Import…") { presets.importFromFile() }
                     Button("Export…") { presets.exportToFile() }
@@ -65,16 +89,24 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
+        .scrollContentBackground(.hidden)
+        .tint(ble.stripAccent)
         .frame(minWidth: 420, minHeight: 360)
         .padding()
+        .background {
+            LightStarVisualEffect(material: .sidebar)
+                .ignoresSafeArea()
+        }
     }
 }
 
 enum WindowActions {
     @MainActor static var openControl: (() -> Void)?
+    @MainActor static var closePopover: (() -> Void)?
 }
 
 @MainActor func openLightStarSettings() {
+    WindowActions.closePopover?()
     NSApp.activate(ignoringOtherApps: true)
     NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
 }

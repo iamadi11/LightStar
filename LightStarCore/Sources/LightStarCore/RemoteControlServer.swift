@@ -19,13 +19,17 @@ public final class RemoteControlServer: ObservableObject {
     
     /// Called when a client sends a control command.
     public var onCommand: ((RemoteMessage, @escaping (RemoteMessage?) -> Void) -> Void)?
+    /// Pointer injection off the MainActor. Set by RemoteControlCoordinator.
+    public var pointerInjector: MacPointerInjector?
     
     /// Called to get current state for state sync.
     public var getState: (() -> LightStarState)?
+
+    /// Called when the authenticated client list changes.
+    public var onClientsChanged: (([String]) -> Void)?
     
     private var listener: NWListener?
     private var connections: [String: ClientConnection] = [:]
-    private var bonjourService: NetService?
     private let queue = DispatchQueue(label: "lightstar.server", qos: .userInteractive)
     
     private let macName: String
@@ -39,10 +43,13 @@ public final class RemoteControlServer: ObservableObject {
         state = .starting
         
         do {
-            let params = NWParameters.tcp
-            params.allowLocalEndpointReuse = true
+            let params = makeLightStarTCPParameters()
             
             listener = try NWListener(using: params, on: NWEndpoint.Port(rawValue: port)!)
+            listener?.service = NWListener.Service(
+                name: macName,
+                type: kLightStarServiceType
+            )
             listener?.stateUpdateHandler = { [weak self] newState in
                 Task { @MainActor in
                     self?.handleListenerStateChange(newState, port: port)
@@ -54,8 +61,6 @@ public final class RemoteControlServer: ObservableObject {
                 }
             }
             listener?.start(queue: queue)
-            
-            startBonjourAdvertising(port: port)
         } catch {
             state = .error(error.localizedDescription)
         }
@@ -64,8 +69,6 @@ public final class RemoteControlServer: ObservableObject {
     public func stop() {
         listener?.cancel()
         listener = nil
-        bonjourService?.stop()
-        bonjourService = nil
         
         for (_, connection) in connections {
             connection.close()
@@ -90,7 +93,7 @@ public final class RemoteControlServer: ObservableObject {
         case .ready:
             state = .running(port: port)
         case .failed(let error):
-            state = .error(error.localizedDescription)
+            state = .error(lightStarNetworkErrorMessage(error))
             stop()
         case .cancelled:
             state = .stopped
@@ -102,7 +105,12 @@ public final class RemoteControlServer: ObservableObject {
     private func handleNewConnection(_ nwConnection: NWConnection) {
         let id = UUID().uuidString
         let connection = ClientConnection(id: id, connection: nwConnection)
+        let injector = pointerInjector
+        connection.onPointer = { dx, dy, isScroll in
+            injector?.applyPointer(deltaX: dx, deltaY: dy, isScroll: isScroll) == true
+        }
         connection.onMessage = { [weak self] message in
+            if injector?.handle(message) == true { return }
             Task { @MainActor in
                 self?.handleMessage(message, from: id)
             }
@@ -224,18 +232,7 @@ public final class RemoteControlServer: ObservableObject {
         connectedClients = connections.values
             .filter { $0.authenticated }
             .compactMap { $0.deviceName }
-    }
-    
-    // MARK: - Bonjour
-    
-    private func startBonjourAdvertising(port: UInt16) {
-        bonjourService = NetService(
-            domain: "local.",
-            type: kLightStarServiceType,
-            name: macName,
-            port: Int32(port)
-        )
-        bonjourService?.publish()
+        onClientsChanged?(connectedClients)
     }
 }
 
@@ -250,6 +247,7 @@ private final class ClientConnection: @unchecked Sendable {
     var authenticated = false
     
     var onMessage: ((RemoteMessage) -> Void)?
+    var onPointer: ((Double, Double, Bool) -> Bool)?
     var onDisconnect: (() -> Void)?
     
     private var receiveBuffer = Data()
@@ -275,7 +273,7 @@ private final class ClientConnection: @unchecked Sendable {
     
     func send(_ message: RemoteMessage) {
         guard let data = try? encodeMessage(message) else { return }
-        connection.send(content: data, completion: .contentProcessed { _ in })
+        connection.send(content: data, completion: .idempotent)
     }
     
     func close() {
@@ -302,12 +300,38 @@ private final class ClientConnection: @unchecked Sendable {
     private func processBuffer() {
         while receiveBuffer.count >= 4 {
             do {
+                if let pointer = try decodePointerFrame(from: receiveBuffer) {
+                    receiveBuffer.removeFirst(pointer.consumed)
+                    compactBufferIfNeeded()
+                    if onPointer?(pointer.deltaX, pointer.deltaY, pointer.isScroll) == true {
+                        continue
+                    }
+                    let type: RemoteMessageType = pointer.isScroll ? .scroll : .mouseMove
+                    if let message = try? RemoteMessage(
+                        type: type,
+                        content: MouseMoveMessage(deltaX: pointer.deltaX, deltaY: pointer.deltaY)
+                    ) {
+                        onMessage?(message)
+                    }
+                    continue
+                }
                 let (message, consumed) = try decodeMessage(from: receiveBuffer)
                 receiveBuffer.removeFirst(consumed)
+                compactBufferIfNeeded()
                 onMessage?(message)
-            } catch {
+            } catch RemoteProtocolError.insufficientData, RemoteProtocolError.incompleteMessage {
                 break
+            } catch {
+                receiveBuffer.removeAll()
+                onDisconnect?()
+                return
             }
+        }
+    }
+
+    private func compactBufferIfNeeded() {
+        if receiveBuffer.startIndex != 0 {
+            receiveBuffer = Data(receiveBuffer)
         }
     }
 }
