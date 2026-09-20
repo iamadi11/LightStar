@@ -20,9 +20,11 @@ public extension LightBLEManager {
     public func startCircadianTimer() {
         circadianTimer?.invalidate()
         applyCircadianCCT()
-        circadianTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
+        let t = Timer(timeInterval: 60, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.applyCircadianCCT() }
         }
+        RunLoop.main.add(t, forMode: .common)
+        circadianTimer = t
     }
 
     public func stopCircadianTimer() {

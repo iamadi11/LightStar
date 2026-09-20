@@ -198,19 +198,16 @@ public final class MacInputController: ObservableObject {
             if let event = CGEvent(keyboardEventSource: eventSource, virtualKey: code, keyDown: true) {
                 event.flags = modifiers
                 event.post(tap: .cghidEventTap)
-                event.post(tap: .cgSessionEventTap)
             }
         }
 
         if let down = CGEvent(keyboardEventSource: eventSource, virtualKey: keyCode, keyDown: true) {
             down.flags = modifiers
             down.post(tap: .cghidEventTap)
-            down.post(tap: .cgSessionEventTap)
         }
         if let up = CGEvent(keyboardEventSource: eventSource, virtualKey: keyCode, keyDown: false) {
             up.flags = modifiers
             up.post(tap: .cghidEventTap)
-            up.post(tap: .cgSessionEventTap)
         }
 
         var remainingFlags = modifiers
@@ -219,7 +216,6 @@ public final class MacInputController: ObservableObject {
             if let event = CGEvent(keyboardEventSource: eventSource, virtualKey: code, keyDown: false) {
                 event.flags = remainingFlags
                 event.post(tap: .cghidEventTap)
-                event.post(tap: .cgSessionEventTap)
             }
         }
     }
@@ -229,7 +225,6 @@ public final class MacInputController: ObservableObject {
         if let event = CGEvent(keyboardEventSource: eventSource, virtualKey: keyCode, keyDown: true) {
             event.flags = modifiers
             event.post(tap: .cghidEventTap)
-            event.post(tap: .cgSessionEventTap)
         }
     }
 
@@ -238,7 +233,6 @@ public final class MacInputController: ObservableObject {
         if let event = CGEvent(keyboardEventSource: eventSource, virtualKey: keyCode, keyDown: false) {
             event.flags = modifiers
             event.post(tap: .cghidEventTap)
-            event.post(tap: .cgSessionEventTap)
         }
     }
 

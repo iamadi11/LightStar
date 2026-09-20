@@ -414,8 +414,10 @@ public func encodePointerFrame(deltaX: Double, deltaY: Double, isScroll: Bool) -
     var payload = Data(count: kPointerFramePayloadLength)
     payload[0] = kPointerFrameMagic
     payload[1] = isScroll ? 1 : 0
-    var x = Int16(clamping: Int((deltaX * 10).rounded())).littleEndian
-    var y = Int16(clamping: Int((deltaY * 10).rounded())).littleEndian
+    let clampedX = deltaX.isFinite ? deltaX : 0.0
+    let clampedY = deltaY.isFinite ? deltaY : 0.0
+    var x = Int16(clamping: Int((clampedX * 10).rounded())).littleEndian
+    var y = Int16(clamping: Int((clampedY * 10).rounded())).littleEndian
     payload.replaceSubrange(2..<4, with: Data(bytes: &x, count: 2))
     payload.replaceSubrange(4..<6, with: Data(bytes: &y, count: 2))
     data.append(payload)

@@ -122,19 +122,21 @@ final class SecurityTests: XCTestCase {
     
     /// TEST_ID: S008
     /// Tests oversized message handling.
-    /// The protocol should have size limits to prevent memory exhaustion.
+    /// The protocol must reject frames larger than 1 MB to prevent memory exhaustion.
     func testOversizedMessageHandling() throws {
-        // Create a message with very large payload
-        let largeData = Data(repeating: 0x41, count: 100_000_000) // 100MB
-        
-        // This SHOULD be rejected at the framing level
-        // Current implementation: NO SIZE LIMIT (security weakness)
-        var length = UInt32(largeData.count).bigEndian
-        var frame = Data(bytes: &length, count: 4)
-        frame.append(largeData)
-        
-        // Note: This test documents expected behavior, not current behavior
-        // The actual implementation should reject this
+        // Build a frame with length field claiming 2 MB (> the 1 MB protocol limit)
+        let oversizeLength = UInt32(2_000_000)
+        var lengthBE = oversizeLength.bigEndian
+        var frame = Data(bytes: &lengthBE, count: 4)
+        // Pad just enough bytes so the decoder has the full declared length
+        frame.append(Data(repeating: 0x41, count: Int(oversizeLength)))
+
+        XCTAssertThrowsError(try decodeMessage(from: frame)) { error in
+            if let protoError = error as? RemoteProtocolError {
+                XCTAssertEqual(protoError, .invalidLength,
+                               "Oversized frame must be rejected with invalidLength")
+            }
+        }
     }
     
     /// TEST_ID: S009
@@ -170,36 +172,46 @@ final class SecurityTests: XCTestCase {
     // MARK: - Input Validation Tests
     
     /// TEST_ID: S011
-    /// Tests that extreme mouse delta values are handled.
+    /// Tests that extreme mouse delta values are sanitised by encodePointerFrame.
+    /// Non-finite inputs must be clamped to 0; finite overflow must be clamped to ±32767/10.
     func testExtremeMouseDeltas() throws {
-        let extremeCases: [(Double, Double)] = [
-            (Double.greatestFiniteMagnitude, 0),
-            (0, Double.greatestFiniteMagnitude),
-            (-Double.greatestFiniteMagnitude, 0),
-            (Double.nan, 0),  // NaN handling
-            (Double.infinity, 0),  // Infinity handling
+        let clampMax = Double(Int16.max) / 10.0   // 3276.7
+
+        let cases: [(dx: Double, dy: Double, expectFinite: Bool)] = [
+            (.greatestFiniteMagnitude, 0,    true),
+            (0, .greatestFiniteMagnitude,    true),
+            (-.greatestFiniteMagnitude, 0,   true),
+            (.nan,      0,                   true),  // NaN → 0
+            (.infinity, 0,                   true),  // Infinity → clamped
         ]
-        
-        for (dx, dy) in extremeCases {
-            let payload = MouseMoveMessage(deltaX: dx, deltaY: dy)
-            // Should encode without crashing
-            _ = try? RemoteMessage(type: .mouseMove, content: payload)
+
+        for (dx, dy, expectFinite) in cases {
+            let frame = encodePointerFrame(deltaX: dx, deltaY: dy, isScroll: false)
+            XCTAssertEqual(frame.count, kPointerFrameLength,
+                           "Frame must be exactly \(kPointerFrameLength) bytes")
+            if expectFinite {
+                let decoded = try XCTUnwrap(try decodePointerFrame(from: frame))
+                XCTAssertTrue(decoded.deltaX.isFinite && decoded.deltaY.isFinite,
+                              "Decoded deltas must be finite, got (\(decoded.deltaX), \(decoded.deltaY))")
+                XCTAssertLessThanOrEqual(abs(decoded.deltaX), clampMax)
+                XCTAssertLessThanOrEqual(abs(decoded.deltaY), clampMax)
+            }
         }
     }
     
     /// TEST_ID: S012
-    /// Tests malformed UTF-8 in text input.
+    /// Tests that non-UTF-8 bytes in a text-input payload are rejected by the decoder.
     func testMalformedTextInput() throws {
-        // Invalid UTF-8 sequence
+        // Raw bytes that are not valid UTF-8 and not valid JSON — must not decode.
         let invalidUTF8 = Data([0xFF, 0xFE, 0x00, 0x01])
-        let jsonString = """
-        {"text":"\\u0000\\u0001\\u0002"}
-        """
-        
-        // Should handle gracefully
-        if let jsonData = jsonString.data(using: .utf8) {
-            _ = try? JSONDecoder().decode(TextInputMessage.self, from: jsonData)
-        }
+        XCTAssertThrowsError(try JSONDecoder().decode(TextInputMessage.self, from: invalidUTF8),
+                             "Malformed UTF-8 payload must not produce a TextInputMessage")
+
+        // Valid JSON but with an embedded NUL — should decode to a string (JSON spec allows it).
+        let nullEmbedded = #"{"text":"\u0000\u0001\u0002"}"#.data(using: .utf8)!
+        let msg = try JSONDecoder().decode(TextInputMessage.self, from: nullEmbedded)
+        XCTAssertEqual(msg.text.unicodeScalars.first?.value, 0,
+                       "Control characters in text must be preserved as decoded, not stripped")
     }
     
     // MARK: - Mock Lighting Controller Security Tests

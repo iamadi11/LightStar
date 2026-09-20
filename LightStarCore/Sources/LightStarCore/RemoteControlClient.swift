@@ -243,10 +243,15 @@ public final class RemoteControlClient: ObservableObject {
                 guard let self = self else { return }
                 
                 if let data = data, !data.isEmpty {
+                    guard self.receiveBuffer.count + data.count <= self.maxReceiveBufferSize else {
+                        self.receiveBuffer.removeAll()
+                        self.disconnect()
+                        return
+                    }
                     self.receiveBuffer.append(data)
                     self.processBuffer()
                 }
-                
+
                 if isComplete || error != nil {
                     self.disconnect()
                 } else {
@@ -255,14 +260,8 @@ public final class RemoteControlClient: ObservableObject {
             }
         }
     }
-    
+
     private func processBuffer() {
-        if receiveBuffer.count > maxReceiveBufferSize {
-            receiveBuffer.removeAll()
-            disconnect()
-            state = .error("Buffer overflow - disconnected")
-            return
-        }
         while receiveBuffer.count >= 4 {
             do {
                 let (message, consumed) = try decodeMessage(from: receiveBuffer)
@@ -551,10 +550,13 @@ private final class PointerChannel: @unchecked Sendable {
         attach(nil)
     }
 
+    private static let maxAccumulated = 500.0
+
     func addMove(deltaX: Double, deltaY: Double) {
+        guard deltaX.isFinite, deltaY.isFinite else { return }
         lock.lock()
-        moveX += deltaX
-        moveY += deltaY
+        moveX = min(max(moveX + deltaX, -Self.maxAccumulated), Self.maxAccumulated)
+        moveY = min(max(moveY + deltaY, -Self.maxAccumulated), Self.maxAccumulated)
         let shouldFlush = !flushQueued
         if shouldFlush { flushQueued = true }
         lock.unlock()
@@ -562,9 +564,10 @@ private final class PointerChannel: @unchecked Sendable {
     }
 
     func addScroll(deltaX: Double, deltaY: Double) {
+        guard deltaX.isFinite, deltaY.isFinite else { return }
         lock.lock()
-        scrollX += deltaX
-        scrollY += deltaY
+        scrollX = min(max(scrollX + deltaX, -Self.maxAccumulated), Self.maxAccumulated)
+        scrollY = min(max(scrollY + deltaY, -Self.maxAccumulated), Self.maxAccumulated)
         let shouldFlush = !flushQueued
         if shouldFlush { flushQueued = true }
         lock.unlock()

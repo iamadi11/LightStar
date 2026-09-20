@@ -12,6 +12,7 @@ public final class MicAudioSampler {
     private(set) var isRunning = false
 
     private var engine: AVAudioEngine?
+    private var engineConfigObserver: Any?
     private let analyzeQueue = DispatchQueue(label: "audio.mic", qos: .userInteractive)
     private let fftN = 512
 
@@ -61,6 +62,10 @@ public final class MicAudioSampler {
 
         let sampleRate = fmt.sampleRate
         let channelCount = Int(fmt.channelCount)
+        guard channelCount > 0 else {
+            throw NSError(domain: "MicAudio", code: 2,
+                          userInfo: [NSLocalizedDescriptionKey: "No audio channels available"])
+        }
         input.installTap(onBus: 0, bufferSize: AVAudioFrameCount(fftN), format: fmt) {
             [weak self] buffer, _ in
             guard let self,
@@ -107,11 +112,26 @@ public final class MicAudioSampler {
         }
         engine = eng
         isRunning = true
+
+        engineConfigObserver = NotificationCenter.default.addObserver(
+            forName: .AVAudioEngineConfigurationChange,
+            object: eng,
+            queue: .main
+        ) { [weak self] _ in
+            guard let self, self.isRunning else { return }
+            Task { @MainActor [weak self] in
+                guard let self, self.isRunning else { return }
+                await self.stop()
+                try? await self.start()
+            }
+        }
     }
 
     public func stop() async {
         guard isRunning else { return }
         isRunning = false
+        if let obs = engineConfigObserver { NotificationCenter.default.removeObserver(obs) }
+        engineConfigObserver = nil
         engine?.inputNode.removeTap(onBus: 0)
         engine?.stop()
         engine = nil

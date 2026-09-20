@@ -61,8 +61,8 @@ public extension LightBLEManager {
                 await MainActor.run { self.setupScreenCallback() }
             } catch {
                 await MainActor.run {
-                    self.setSyncError(error)
-                    self.syncMode = .off
+                    self.setSyncError(error)  // capture pendingSyncMode while mode is still .video/.combined
+                    self.stopSyncInline()     // stops audio engine, saves lastSyncMode, sets syncMode = .off
                 }
             }
         }
@@ -104,13 +104,13 @@ public extension LightBLEManager {
         case .video:
             setupScreenCallback()
             screenSampler.selectedDisplayID = selectedDisplayID
+            syncMode = .video  // set before start so warm-up frames pass isSyncingVideo guard
             do {
                 try await screenSampler.start()
-                syncMode = .video
             } catch {
                 screenSampler.onColor = nil
-                syncMode = .off
                 setSyncError(error)
+                syncMode = .off
                 restoreSteadyState()
             }
 
@@ -126,13 +126,13 @@ public extension LightBLEManager {
             } else {
                 let useMic = audioInputSource == .mic
                 setupAudioCallback(useMic: useMic)
+                syncMode = .audio  // set before start so warm-up frames pass isSyncingAudio guard
                 do {
                     if useMic { try await micAudio.start() } else { try await systemAudio.start() }
-                    syncMode = .audio
                 } catch {
                     if useMic { micAudio.onBands = nil } else { systemAudio.onBands = nil }
-                    syncMode = .off
                     setSyncError(error)
+                    syncMode = .off
                     restoreSteadyState()
                 }
             }
@@ -140,6 +140,7 @@ public extension LightBLEManager {
         case .combined:
             setupScreenCallback()
             screenSampler.selectedDisplayID = selectedDisplayID
+            syncMode = .combined  // set before start so warm-up frames pass guards
             var screenErr: Error? = nil
             var audioErr:  Error? = nil
             async let screenStart: () = screenSampler.start()
@@ -172,7 +173,11 @@ public extension LightBLEManager {
                      : screenOk           ? .video
                      : audioOk            ? .audio
                      :                     .off
-            if let e = screenErr ?? audioErr { setSyncError(e) }
+            if let e = screenErr ?? audioErr {
+                // When both fail syncMode == .off; save pendingSyncMode before setSyncError reads it.
+                if syncMode == .off { pendingSyncMode = .combined }
+                setSyncError(e)
+            }
             if syncMode == .off { restoreSteadyState() }
         }
     }
