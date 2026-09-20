@@ -213,9 +213,11 @@ public final class MacInputController: ObservableObject {
             up.post(tap: .cgSessionEventTap)
         }
 
-        for (_, code) in active.reversed() {
+        var remainingFlags = modifiers
+        for (flag, code) in active.reversed() {
+            remainingFlags.remove(flag)
             if let event = CGEvent(keyboardEventSource: eventSource, virtualKey: code, keyDown: false) {
-                event.flags = modifiers
+                event.flags = remainingFlags
                 event.post(tap: .cghidEventTap)
                 event.post(tap: .cgSessionEventTap)
             }

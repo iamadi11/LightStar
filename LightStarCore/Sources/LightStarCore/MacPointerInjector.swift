@@ -12,7 +12,7 @@ public final class MacPointerInjector: @unchecked Sendable {
 
     private let lock = NSLock()
     private let cacheLock = NSLock()
-    private let eventSource = CGEventSource(stateID: .hidSystemState)!
+    private let eventSource: CGEventSource?
     private var location: CGPoint
     private var posted = CGPoint.zero
     private var leftDown = false
@@ -28,7 +28,8 @@ public final class MacPointerInjector: @unchecked Sendable {
     private var lastTrustRead: CFTimeInterval = -100
 
     public init() {
-        eventSource.localEventsSuppressionInterval = 0
+        eventSource = CGEventSource(stateID: .hidSystemState)
+        eventSource?.localEventsSuppressionInterval = 0
         location = Self.systemCursor()
         posted = location
         haveCursor = true
@@ -134,8 +135,19 @@ public final class MacPointerInjector: @unchecked Sendable {
         defer { lock.unlock() }
         refreshCursorIfNeededLocked()
         if button == 0 { leftDown = true }
-        let type: CGEventType = button == 0 ? .leftMouseDown : .rightMouseDown
-        let mouseButton: CGMouseButton = button == 0 ? .left : .right
+        let type: CGEventType
+        let mouseButton: CGMouseButton
+        switch button {
+        case 0:
+            type = .leftMouseDown
+            mouseButton = .left
+        case 1:
+            type = .rightMouseDown
+            mouseButton = .right
+        default:
+            type = .otherMouseDown
+            mouseButton = .center
+        }
         postLocked(type: type, button: mouseButton, clickState: Int64(max(1, clickCount)))
     }
 
@@ -144,8 +156,19 @@ public final class MacPointerInjector: @unchecked Sendable {
         defer { lock.unlock() }
         refreshCursorIfNeededLocked()
         if button == 0 { leftDown = false }
-        let type: CGEventType = button == 0 ? .leftMouseUp : .rightMouseUp
-        let mouseButton: CGMouseButton = button == 0 ? .left : .right
+        let type: CGEventType
+        let mouseButton: CGMouseButton
+        switch button {
+        case 0:
+            type = .leftMouseUp
+            mouseButton = .left
+        case 1:
+            type = .rightMouseUp
+            mouseButton = .right
+        default:
+            type = .otherMouseUp
+            mouseButton = .center
+        }
         postLocked(type: type, button: mouseButton, clickState: Int64(max(1, clickCount)))
     }
 
@@ -203,6 +226,8 @@ public final class MacPointerInjector: @unchecked Sendable {
         defer { lock.unlock() }
         location = Self.systemCursor()
         posted = location
+        fracX = 0
+        fracY = 0
         haveCursor = true
         lastInjectedAt = ProcessInfo.processInfo.systemUptime
         postLocked(type: .leftMouseDown, button: .left, clickState: 2)
