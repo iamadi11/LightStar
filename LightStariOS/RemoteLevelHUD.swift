@@ -84,7 +84,7 @@ final class RemoteLevelHUDModel: ObservableObject {
         self.level = level
         visible = true
         hideTask?.cancel()
-        hideTask = Task { [weak self] @MainActor in
+        hideTask = Task { @MainActor [weak self] in
             try? await Task.sleep(nanoseconds: 1_200_000_000)
             guard !Task.isCancelled else { return }
             self?.visible = false
