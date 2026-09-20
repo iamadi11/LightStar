@@ -35,7 +35,12 @@ public final class RemoteControlServer: ObservableObject {
     private var listener: NWListener?
     private var connections: [String: ClientConnection] = [:]
     private let queue = DispatchQueue(label: "lightstar.server", qos: .userInteractive)
-    
+    private let maxConnections = 10
+
+    /// Global brute-force protection: counts total failed pairing attempts across all connections.
+    private var globalFailedPairingAttempts = 0
+    private var globalPairingLockoutUntil: Date = .distantPast
+
     private let macName: String
     
     public init() {
@@ -82,10 +87,10 @@ public final class RemoteControlServer: ObservableObject {
         state = .stopped
     }
     
-    /// Broadcast state update to all connected clients.
+    /// Broadcast state update to all authenticated connected clients.
     public func broadcastStateUpdate(_ state: LightStarState) {
         guard let message = try? RemoteMessage(type: .stateUpdate, content: state) else { return }
-        for (_, connection) in connections {
+        for (_, connection) in connections where connection.authenticated {
             connection.send(message)
         }
     }
@@ -107,6 +112,10 @@ public final class RemoteControlServer: ObservableObject {
     }
     
     private func handleNewConnection(_ nwConnection: NWConnection) {
+        guard connections.count < maxConnections else {
+            nwConnection.cancel()
+            return
+        }
         let id = UUID().uuidString
         let connection = ClientConnection(id: id, connection: nwConnection)
         let injector = pointerInjector
@@ -212,7 +221,9 @@ public final class RemoteControlServer: ObservableObject {
     /// Generate a new pairing code that expires after 60 seconds.
     public func generatePairingCode() -> String {
         pairingCodeExpireTask?.cancel()
-        let code = String(format: "%04d", Int.random(in: 0...9999))
+        let chars = Array("ABCDEFGHJKLMNPQRSTUVWXYZ23456789")
+        var rng = SystemRandomNumberGenerator()
+        let code = String((0..<6).map { _ in chars.randomElement(using: &rng)! })
         activePairingCode = code
         pairingCodeExpireTask = Task { @MainActor in
             try? await Task.sleep(nanoseconds: 60_000_000_000)
@@ -223,6 +234,15 @@ public final class RemoteControlServer: ObservableObject {
     }
     
     private func handlePair(_ message: RemoteMessage, connection: ClientConnection) {
+        // Check server-level global lockout first (prevents parallel connection brute force).
+        if Date() < globalPairingLockoutUntil {
+            let error = PairAckMessage(success: false, errorMessage: "Too many failed attempts")
+            if let response = try? RemoteMessage(type: .pairAck, content: error) {
+                connection.send(response)
+            }
+            connection.close()
+            return
+        }
         guard !connection.pairingLockedOut else {
             let error = PairAckMessage(success: false, errorMessage: "Too many failed attempts")
             if let response = try? RemoteMessage(type: .pairAck, content: error) {
@@ -242,18 +262,27 @@ public final class RemoteControlServer: ObservableObject {
         guard let expectedCode = activePairingCode,
               pair.pairingCode == expectedCode else {
             connection.failedPairingAttempts += 1
-            if connection.failedPairingAttempts >= 5 {
+            globalFailedPairingAttempts += 1
+            // Per-connection lockout after 3 attempts; global lockout with exponential backoff.
+            if connection.failedPairingAttempts >= 3 {
                 connection.pairingLockedOut = true
+            }
+            if globalFailedPairingAttempts >= 5 {
+                let backoff = min(300.0, pow(2.0, Double(globalFailedPairingAttempts - 5)))
+                globalPairingLockoutUntil = Date().addingTimeInterval(backoff)
             }
             let error = PairAckMessage(success: false, errorMessage: "Invalid pairing code")
             if let response = try? RemoteMessage(type: .pairAck, content: error) {
                 connection.send(response)
             }
+            connection.close()
             return
         }
         
         activePairingCode = nil
         pairingCodeExpireTask?.cancel()
+        globalFailedPairingAttempts = 0
+        globalPairingLockoutUntil = .distantPast
         connection.authenticated = true
         let ack = PairAckMessage(success: true, sessionToken: UUID().uuidString)
         if let response = try? RemoteMessage(type: .pairAck, content: ack) {
@@ -326,6 +355,11 @@ private final class ClientConnection: @unchecked Sendable {
             guard let self = self else { return }
             
             if let data = data, !data.isEmpty {
+                guard self.receiveBuffer.count + data.count <= self.maxReceiveBufferSize else {
+                    self.receiveBuffer.removeAll()
+                    self.onDisconnect?()
+                    return
+                }
                 self.receiveBuffer.append(data)
                 self.processBuffer()
             }
@@ -339,11 +373,6 @@ private final class ClientConnection: @unchecked Sendable {
     }
     
     private func processBuffer() {
-        if receiveBuffer.count > maxReceiveBufferSize {
-            receiveBuffer.removeAll()
-            onDisconnect?()
-            return
-        }
         while receiveBuffer.count >= 4 {
             do {
                 if let pointer = try decodePointerFrame(from: receiveBuffer) {

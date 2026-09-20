@@ -52,12 +52,18 @@ final class UserJourneyTests: XCTestCase {
     /// Tests failed pairing with wrong code.
     func testFailedPairingJourney() {
         let authenticator = MockSessionAuthenticator()
-        let _ = authenticator.generatePairingCode()  // Generate but don't use
-        
+        let realCode = authenticator.generatePairingCode()
+
+        // Produce a wrong code by rotating the first character — guaranteed != realCode.
+        let chars = Array("ABCDEFGHJKLMNPQRSTUVWXYZ23456789")
+        let firstChar = realCode.unicodeScalars.first.map(Character.init) ?? Character("A")
+        let nextChar = chars[(chars.firstIndex(of: firstChar).map { ($0 + 1) % chars.count } ?? 1)]
+        let wrongCode = String(nextChar) + realCode.dropFirst()
+
         // Client sends wrong code
-        let token = authenticator.validatePairingCode("999999", clientID: "test-client")
+        let token = authenticator.validatePairingCode(wrongCode, clientID: "test-client")
         XCTAssertNil(token, "Wrong pairing code should be rejected")
-        
+
         // Failed attempt should be tracked
         XCTAssertEqual(authenticator.failedAttemptCount(for: "test-client"), 1)
     }

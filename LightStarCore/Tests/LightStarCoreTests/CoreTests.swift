@@ -34,10 +34,15 @@ final class BLEProtocolTests: XCTestCase {
 
 final class ColorMathTests: XCTestCase {
     func testHueLUTIsMonotonicNonDecreasing() {
-        var last = -1.0
+        var lastObs = -1.0
+        var lastSend = -1.0
         for pair in ColorMath.hueLUT {
-            XCTAssertGreaterThanOrEqual(pair.obs, last)
-            last = pair.obs
+            XCTAssertGreaterThanOrEqual(pair.obs, lastObs,
+                "obs column must be non-decreasing, got \(pair.obs) after \(lastObs)")
+            XCTAssertGreaterThanOrEqual(pair.send, lastSend,
+                "send column must be non-decreasing, got \(pair.send) after \(lastSend)")
+            lastObs = pair.obs
+            lastSend = pair.send
         }
     }
 
@@ -152,6 +157,26 @@ final class BLEWriteCoalescerTests: XCTestCase {
         XCTAssertEqual(drained[1][1], 0x04)
         XCTAssertEqual(drained[2][1], 0x05)
     }
+
+    func testFlushClearsQueue() {
+        let coalescer = BLEWriteCoalescer(send: { _ in }, isConnected: { true })
+        coalescer.enqueue(Cmd.powerOn)
+        coalescer.enqueue(Cmd.hue(0.5, saturation: 1))
+        coalescer.flush()
+        let drained = coalescer.drainOrderedForTesting()
+        XCTAssertTrue(drained.isEmpty, "flush() must remove all pending frames")
+    }
+
+    func testEnqueueWhileDisconnectedDropsFrame() {
+        var sent: [Data] = []
+        let coalescer = BLEWriteCoalescer(send: { sent.append($0) }, isConnected: { false })
+        coalescer.enqueue(Cmd.powerOn)
+        let drained = coalescer.drainOrderedForTesting()
+        XCTAssertTrue(drained.isEmpty,
+                      "enqueue while disconnected must not add to the queue")
+        XCTAssertTrue(sent.isEmpty,
+                      "enqueue while disconnected must not trigger a send")
+    }
 }
 
 @MainActor
@@ -222,15 +247,15 @@ final class RemoteProtocolTests: XCTestCase {
         let frame = encodePointerFrame(deltaX: 12.3, deltaY: -4.1, isScroll: false)
         XCTAssertEqual(frame.count, kPointerFrameLength)
         let pointer = try decodePointerFrame(from: frame)
-        XCTAssertEqual(pointer?.deltaX ?? 0, 12.3, accuracy: 0.1)
-        XCTAssertEqual(pointer?.deltaY ?? 0, -4.1, accuracy: 0.1)
+        XCTAssertEqual(pointer?.deltaX ?? 0, 12.3, accuracy: 0.05)
+        XCTAssertEqual(pointer?.deltaY ?? 0, -4.1, accuracy: 0.05)
         XCTAssertEqual(pointer?.isScroll, false)
 
         let (message, consumed) = try decodeMessage(from: frame)
         XCTAssertEqual(message.type, .mouseMove)
         XCTAssertEqual(consumed, kPointerFrameLength)
         let move = try message.decode(MouseMoveMessage.self)
-        XCTAssertEqual(move.deltaX, 12.3, accuracy: 0.1)
+        XCTAssertEqual(move.deltaX, 12.3, accuracy: 0.05)
     }
 
     func testBinaryScrollBesideJSON() throws {
@@ -307,12 +332,16 @@ final class RemoteProtocolTests: XCTestCase {
     func testLengthPrefixIsBigEndian() throws {
         let msg = RemoteMessage(type: .ping)
         let encoded = try encodeMessage(msg)
-        
-        // Big-endian means most significant byte first
-        // For small messages (<256 bytes), first 3 bytes should be 0
+
+        // Big-endian 4-byte length prefix: for a small message the top 3 bytes are 0
+        // and the LSB equals the actual payload length.
         XCTAssertEqual(encoded[0], 0)
         XCTAssertEqual(encoded[1], 0)
         XCTAssertEqual(encoded[2], 0)
+        let payloadLength = Int(encoded[3])
+        XCTAssertGreaterThan(payloadLength, 0, "Length byte must be non-zero")
+        XCTAssertEqual(encoded.count, payloadLength + 4,
+                       "Total frame size must equal 4-byte prefix + payload length")
     }
     
     func testIncompleteMessageThrows() {

@@ -258,6 +258,10 @@ public final class LightBLEManager: NSObject {
 #endif
     }
 
+    deinit {
+        circadianTimer?.invalidate()
+    }
+
     // MARK: - Public API
 
     public func connect() {
@@ -347,10 +351,11 @@ public final class LightBLEManager: NSObject {
 
     public func setPower(on: Bool) {
         isOn = on
+        // Cancel connect-sequence task in both directions so it cannot overwrite isOn.
+        connectSequenceTask?.cancel(); connectSequenceTask = nil
         if !on {
             // Cancel ALL pending async work before powerOff — any hue/brightness
             // packet arriving after powerOff wakes the BC/55 strip back up.
-            connectSequenceTask?.cancel(); connectSequenceTask = nil
             colorDebounce?.cancel(); colorDebounce = nil
             stopSyncInline()
         }
@@ -662,6 +667,8 @@ extension LightBLEManager: CBPeripheralDelegate {
                         self.write(Cmd.powerOn)
                         do { try await Task.sleep(nanoseconds: 500_000_000) } catch { return }
                     }
+                    // Guard: user may have tapped power while sequence was sleeping.
+                    guard !Task.isCancelled else { return }
                     self.isOn = targetOn
                     let (h, s, _) = self.color.hsvComponents
                     self.write(Cmd.hue(h, saturation: s))

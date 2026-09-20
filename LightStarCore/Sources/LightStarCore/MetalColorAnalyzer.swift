@@ -177,6 +177,10 @@ public final class MetalColorAnalyzer: @unchecked Sendable {
         commandBuffer.waitUntilCompleted()
         CVMetalTextureCacheFlush(textureCache, 0)
 
+        guard commandBuffer.status != .error else {
+            return cpuFallbackAnalysis(pixelBuffer)
+        }
+
         // Read results from GPU
         return extractResults(width: width, height: height)
     }

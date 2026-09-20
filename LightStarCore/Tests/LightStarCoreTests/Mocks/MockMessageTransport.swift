@@ -131,7 +131,7 @@ public actor MockMessageTransport: MessageTransport {
         case .ping:
             return try? RemoteMessage(type: .pong, content: EmptyMessage())
         case .hello:
-            return try? RemoteMessage(type: .helloAck, content: HelloAckMessage(serverName: "MockServer", serverVersion: "1.0", requiresPairing: true))
+            return try? RemoteMessage(type: .helloAck, content: HelloAckMessage(accepted: true, macName: "MockServer", requiresPairing: true))
         default:
             return nil
         }

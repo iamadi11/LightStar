@@ -62,15 +62,19 @@ public extension LightBLEManager {
                 setPower(on: cmd.on)
             }
         case .setBrightness:
-            if let cmd = try? message.decode(SetBrightnessMessage.self) {
+            if let cmd = try? message.decode(SetBrightnessMessage.self),
+               cmd.brightness.isFinite, (0.0...1.0).contains(cmd.brightness) {
                 setBrightness(cmd.brightness)
             }
         case .setColor:
-            if let cmd = try? message.decode(SetColorMessage.self) {
+            if let cmd = try? message.decode(SetColorMessage.self),
+               cmd.hue.isFinite, (0.0...1.0).contains(cmd.hue),
+               cmd.saturation.isFinite, (0.0...1.0).contains(cmd.saturation) {
                 setHue(cmd.hue, saturation: cmd.saturation)
             }
         case .setColorTemperature:
-            if let cmd = try? message.decode(SetColorTemperatureMessage.self) {
+            if let cmd = try? message.decode(SetColorTemperatureMessage.self),
+               cmd.temperature.isFinite, (0.0...1.0).contains(cmd.temperature) {
                 setColorTemperature(cmd.temperature)
             }
         case .setEffect:
@@ -78,7 +82,8 @@ public extension LightBLEManager {
                 setEffect(id: cmd.effectID)
             }
         case .setEffectSpeed:
-            if let cmd = try? message.decode(SetEffectSpeedMessage.self) {
+            if let cmd = try? message.decode(SetEffectSpeedMessage.self),
+               cmd.speed.isFinite, (0.0...1.0).contains(cmd.speed) {
                 setEffectSpeed(cmd.speed)
             }
         case .setEffectDirection:

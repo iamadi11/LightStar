@@ -31,6 +31,7 @@ public enum ColorMath {
     }
 
     public static func kelvinToHS(_ k: Double) -> (Double, Double) {
+        let k = max(2700, min(6500, k))
         switch k {
         case ..<3350:
             let t = (k - 2700) / 650
