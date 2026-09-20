@@ -60,6 +60,11 @@ struct MacControlsView: View {
                 }
             }
             .animation(.easeOut(duration: 0.12), value: mediaHUD.visible)
+            .onChange(of: client.state) { _, newState in
+                if case .connected = newState {
+                    mediaHUD.reset()
+                }
+            }
         }
     }
 

@@ -43,6 +43,16 @@ final class RemoteLevelHUDModel: ObservableObject {
     private var brightness = 0.5
     private var hideTask: Task<Void, Never>?
 
+    /// Reset local volume/brightness state to neutral values.
+    /// Call this when reconnecting to avoid showing stale values.
+    func reset() {
+        volume = 0.5
+        brightness = 0.5
+        visible = false
+        hideTask?.cancel()
+        hideTask = nil
+    }
+
     func handle(_ key: MediaKeyMessage.MediaKey) {
         switch key {
         case .volumeUp:

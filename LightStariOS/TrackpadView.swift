@@ -156,6 +156,11 @@ struct TrackpadView: View {
             if phase != .active { gyro.disengage() }
             if phase == .active { syncInterfaceOrientation() }
         }
+        .onChange(of: client.state) { _, newState in
+            if case .connected = newState {
+                mediaHUD.reset()
+            }
+        }
         .onReceive(NotificationCenter.default.publisher(for: UIDevice.orientationDidChangeNotification)) { _ in
             syncInterfaceOrientation()
         }
