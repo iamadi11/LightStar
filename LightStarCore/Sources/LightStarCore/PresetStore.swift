@@ -44,7 +44,7 @@ public final class PresetStore {
 
     public func save() {
         guard let data = try? JSONEncoder().encode(presets) else { return }
-        try? data.write(to: Self.storeURL)
+        try? data.write(to: Self.storeURL, options: .atomic)
         if iCloudEnabled { pushToiCloud() }
     }
 
@@ -75,7 +75,7 @@ public final class PresetStore {
                 presets[idx] = remote
             }
         }
-        if let data = try? JSONEncoder().encode(presets) { try? data.write(to: Self.storeURL) }
+        if let data = try? JSONEncoder().encode(presets) { try? data.write(to: Self.storeURL, options: .atomic) }
     }
 
     private func observeiCloud() {

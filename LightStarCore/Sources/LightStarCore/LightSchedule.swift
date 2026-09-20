@@ -8,9 +8,9 @@ public struct LightSchedule: Codable, Identifiable, Equatable {
     public var days: Set<Int>      // 1=Sun … 7=Sat (Calendar weekday)
     public var isEnabled: Bool = true
     public var action: ScheduledAction
-    /// Optional so existing JSON still decodes. New schedules set this to `.now`
+    /// Optional so existing JSON still decodes. New schedules default to `.now`
     /// so a catch-up window cannot fire for a time that passed before creation.
-    public var lastFiredAt: Date? = nil
+    public var lastFiredAt: Date? = Date()
     /// When true, also push this schedule as a BC0D firmware timer (Mac asleep / out of range).
     public var useFirmwareTimer: Bool? = nil
 
@@ -27,7 +27,7 @@ public struct LightSchedule: Codable, Identifiable, Equatable {
         days: Set<Int>,
         isEnabled: Bool = true,
         action: ScheduledAction,
-        lastFiredAt: Date? = nil,
+        lastFiredAt: Date? = Date(),
         useFirmwareTimer: Bool? = nil
     ) {
         self.id = id
@@ -117,7 +117,7 @@ public final class ScheduleStore {
 
     public func persist() {
         guard let data = try? JSONEncoder().encode(schedules) else { return }
-        try? data.write(to: Self.storeURL)
+        try? data.write(to: Self.storeURL, options: .atomic)
     }
 
     public func reschedule() {

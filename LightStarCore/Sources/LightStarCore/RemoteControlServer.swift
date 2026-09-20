@@ -148,12 +148,14 @@ public final class RemoteControlServer: ObservableObject {
             connections.removeValue(forKey: clientID)
             updateConnectedClientsList()
         case .getState:
+            guard connection.authenticated else { return }
             if let state = getState?() {
                 if let response = try? RemoteMessage(type: .stateUpdate, content: state) {
                     connection.send(response)
                 }
             }
         default:
+            guard connection.authenticated else { return }
             onCommand?(message) { response in
                 if let response = response {
                     connection.send(response)

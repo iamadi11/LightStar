@@ -50,6 +50,9 @@ public final class RemoteControlClient: ObservableObject {
     private let deviceName: String
     private var connectedServerName: String?
     private var pingTask: Task<Void, Never>?
+    private var lastPongTime: Date?
+    private var connectionTimeoutTask: Task<Void, Never>?
+    private let maxReceiveBufferSize = 2 * 1024 * 1024 // 2MB
     
     public init() {
         #if os(iOS)
@@ -127,6 +130,7 @@ public final class RemoteControlClient: ObservableObject {
     public func connect(to server: DiscoveredServer) {
         pingTask?.cancel()
         pingTask = nil
+        connectionTimeoutTask?.cancel()
         connection?.cancel()
         connection = nil
         receiveBuffer = Data()
@@ -134,6 +138,18 @@ public final class RemoteControlClient: ObservableObject {
         requiresPairing = false
         state = .connecting(server.name)
         connectedServerName = server.name
+        
+        connectionTimeoutTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 10_000_000_000)
+            guard !Task.isCancelled else { return }
+            if case .connecting = self.state {
+                self.disconnect()
+                self.state = .error("Connection timed out")
+            } else if case .authenticating = self.state {
+                self.disconnect()
+                self.state = .error("Authentication timed out")
+            }
+        }
         
         let params = makeLightStarTCPParameters()
         connection = NWConnection(to: server.endpoint, using: params)
@@ -237,6 +253,12 @@ public final class RemoteControlClient: ObservableObject {
     }
     
     private func processBuffer() {
+        if receiveBuffer.count > maxReceiveBufferSize {
+            receiveBuffer.removeAll()
+            disconnect()
+            state = .error("Buffer overflow - disconnected")
+            return
+        }
         while receiveBuffer.count >= 4 {
             do {
                 let (message, consumed) = try decodeMessage(from: receiveBuffer)
@@ -262,7 +284,7 @@ public final class RemoteControlClient: ObservableObject {
         case .pairAck:
             handlePairAck(message)
         case .pong:
-            break
+            lastPongTime = Date()
         case .stateUpdate:
             handleStateUpdate(message)
         case .error:
@@ -282,6 +304,7 @@ public final class RemoteControlClient: ObservableObject {
         guard let ack = try? message.decode(HelloAckMessage.self) else { return }
         
         if !ack.accepted {
+            connectionTimeoutTask?.cancel()
             cleanupConnection()
             state = .error(ack.errorMessage ?? "Connection rejected")
             return
@@ -291,6 +314,7 @@ public final class RemoteControlClient: ObservableObject {
             requiresPairing = true
             state = .authenticating
         } else {
+            connectionTimeoutTask?.cancel()
             requiresPairing = false
             state = .connected(ack.macName)
             startPingTimer()
@@ -299,8 +323,10 @@ public final class RemoteControlClient: ObservableObject {
     }
     
     private func handlePairAck(_ message: RemoteMessage) {
+        guard case .authenticating = state else { return }
         guard let ack = try? message.decode(PairAckMessage.self) else { return }
         
+        connectionTimeoutTask?.cancel()
         if ack.success {
             requiresPairing = false
             state = .connected(connectedServerName ?? "Mac")
@@ -319,10 +345,16 @@ public final class RemoteControlClient: ObservableObject {
     
     private func startPingTimer() {
         pingTask?.cancel()
+        lastPongTime = Date()
         pingTask = Task { @MainActor in
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 5_000_000_000)
                 guard !Task.isCancelled, case .connected = self.state else { break }
+                if let lastPong = self.lastPongTime, Date().timeIntervalSince(lastPong) > 15 {
+                    self.disconnect()
+                    self.state = .error("Connection timed out")
+                    break
+                }
                 self.send(RemoteMessage(type: .ping))
             }
         }
