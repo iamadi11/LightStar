@@ -136,7 +136,7 @@ public extension LightBLEManager {
         cal.timeZone = TimeZone.current
         let now = Date()
         let c = cal.dateComponents([.year, .month, .day, .hour, .minute, .second, .weekday], from: now)
-        let yr  = UInt8((c.year ?? 2024) - 2000)
+        let yr  = UInt8(max(0, min(255, (c.year ?? 2024) - 2000)))
         let mo  = UInt8(c.month ?? 1)
         let day = UInt8(c.day ?? 1)
         let hr  = UInt8(c.hour ?? 0)

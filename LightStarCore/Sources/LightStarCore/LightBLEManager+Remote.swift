@@ -105,7 +105,7 @@ public extension LightBLEManager {
                 disconnect()
             }
         case .writeFrame:
-            if let cmd = try? message.decode(WriteFrameMessage.self) {
+            if let cmd = try? message.decode(WriteFrameMessage.self), cmd.bytes.count <= 512 {
                 write(Array(cmd.bytes))
             }
         default:
@@ -215,7 +215,7 @@ public final class RemoteControlCoordinator: ObservableObject {
             return nil
         case .textInput:
             if let cmd = try? message.decode(TextInputMessage.self) {
-                inputController.typeText(cmd.text)
+                inputController.typeText(String(cmd.text.prefix(1024)))
             }
             return nil
         case .mediaKey:

@@ -117,10 +117,12 @@ extension ScreenCaptureKitProvider: SCStreamOutput {
         guard type == .screen else { return }
         guard let pb = sb.imageBuffer else { return }
         
+        // Capture useMetalAnalysis before async dispatch to avoid data race
+        let wantMetal = useMetalAnalysis
         // Use Metal GPU analysis when available and enabled
         let analysis: FrameAnalysis
         let usedMetal: Bool
-        if useMetalAnalysis, let metal = MetalColorAnalyzer.shared {
+        if wantMetal, let metal = MetalColorAnalyzer.shared {
             analysis = metal.analyze(pb)
             usedMetal = true
         } else {

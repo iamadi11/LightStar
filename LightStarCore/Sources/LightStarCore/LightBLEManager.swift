@@ -141,7 +141,7 @@ public final class LightBLEManager: NSObject {
     public var colorHistory: [(h: Double, s: Double)] = {
         guard let data = UserDefaults.standard.data(forKey: "colorHistory"),
               let arr = try? JSONDecoder().decode([[Double]].self, from: data) else { return [] }
-        return arr.map { ($0[0], $0[1]) }
+        return arr.compactMap { $0.count >= 2 ? ($0[0], $0[1]) : nil }
     }()
 
     // MARK: - Circadian auto color temperature
@@ -164,10 +164,10 @@ public final class LightBLEManager: NSObject {
     public var capturedRSSI: Int = 0
     // MARK: - BLE UUIDs
 
-    nonisolated(unsafe) private static let serviceUUID    = CBUUID(string: "FFF0")
-    nonisolated(unsafe) private static let writeCharUUID  = CBUUID(string: "FFF3")
-    nonisolated(unsafe) private static let notifyCharUUID = CBUUID(string: "FFF4")
-    nonisolated(unsafe) private static let advertisedUUID = CBUUID(string: "2022")
+    private static let serviceUUID    = CBUUID(string: "FFF0")
+    private static let writeCharUUID  = CBUUID(string: "FFF3")
+    private static let notifyCharUUID = CBUUID(string: "FFF4")
+    private static let advertisedUUID = CBUUID(string: "2022")
 
     // MARK: - Multi-light
 
@@ -216,6 +216,7 @@ public final class LightBLEManager: NSObject {
     public let micAudio = MicAudioSampler()
     public var transitionTask: Task<Void, Never>?
     public var fadeTask: Task<Void, Never>?
+    public var syncCleanupTask: Task<Void, Never>?
     public var coalescer: BLEWriteCoalescer!
     public var beatHue: Double = 0
     public var flashLevel: Double = 0

@@ -175,7 +175,8 @@ public final class MetalColorAnalyzer: @unchecked Sendable {
         computeEncoder.endEncoding()
         commandBuffer.commit()
         commandBuffer.waitUntilCompleted()
-        
+        CVMetalTextureCacheFlush(textureCache, 0)
+
         // Read results from GPU
         return extractResults(width: width, height: height)
     }

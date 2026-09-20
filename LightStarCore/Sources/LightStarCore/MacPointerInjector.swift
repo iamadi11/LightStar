@@ -75,6 +75,7 @@ public final class MacPointerInjector: @unchecked Sendable {
 
     public func applyPointer(deltaX: Double, deltaY: Double, isScroll: Bool) -> Bool {
         guard isTrusted() else { return false }
+        guard deltaX.isFinite, deltaY.isFinite else { return false }
         if isScroll {
             scroll(deltaX: deltaX, deltaY: deltaY)
         } else {
@@ -83,7 +84,17 @@ public final class MacPointerInjector: @unchecked Sendable {
         return true
     }
 
+    public func cleanup() {
+        lock.lock()
+        defer { lock.unlock() }
+        if leftDown {
+            leftDown = false
+            postLocked(type: .leftMouseUp, button: .left, clickState: 1)
+        }
+    }
+
     public func move(deltaX: Double, deltaY: Double) {
+        guard deltaX.isFinite, deltaY.isFinite else { return }
         lock.lock()
         defer { lock.unlock() }
         let dx = deltaX * mouseSensitivity
@@ -199,6 +210,7 @@ public final class MacPointerInjector: @unchecked Sendable {
     }
 
     public func scroll(deltaX: Double, deltaY: Double) {
+        guard deltaX.isFinite, deltaY.isFinite else { return }
         lock.lock()
         let mapped = RemoteScrollMapping.eventDeltas(
             fingerDeltaX: deltaX * scrollSensitivity,

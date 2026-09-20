@@ -56,14 +56,18 @@ public extension LightBLEManager {
         guard isSyncingVideo else { return }
         Task { [weak self] in
             guard let self else { return }
-            try? await self.screenSampler.start()
-            await MainActor.run { self.setupScreenCallback() }
+            do {
+                try await self.screenSampler.start()
+                await MainActor.run { self.setupScreenCallback() }
+            } catch {
+                await MainActor.run {
+                    self.setSyncError(error)
+                    self.syncMode = .off
+                }
+            }
         }
     }
 
-    // Synchronously tears down all sync state — safe to call from non-async context.
-    private var syncCleanupTask: Task<Void, Never>?
-    
     public func stopSyncInline() {
         transitionTask?.cancel(); transitionTask = nil
         fadeTask?.cancel(); fadeTask = nil
