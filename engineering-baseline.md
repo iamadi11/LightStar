@@ -1,9 +1,18 @@
 # Engineering Baseline
 
-Recorded: 2026-09-20
-Environment: Cursor Cloud Agent (Linux 6.12, no Swift toolchain)
-Repository: `iamadi11/LightStar`
-Local HEAD after rebase: `db5c5d6` (`origin/main`)
+Recorded: 2026-09-20 (updated)
+HEAD: `26f9cd6` on `origin/main`
+
+## Latest CI evidence
+
+| Commit | Run | Result |
+|--------|-----|--------|
+| `26f9cd6` main push | 35534071590 | **cancelled** after 2s — tests not run |
+| PR `0754826` / later mock-lock commit | 35534072435 | **failure** — NSLock in async mock `send` |
+| Pre-merge `db5c5d6` | 35533715892 | **failure** — deinit isolation |
+
+Local `swift test` / `xcodebuild`: **not executed** (no Swift on this Linux agent).
+
 
 ## Product
 

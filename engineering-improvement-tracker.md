@@ -1,52 +1,42 @@
 # Engineering Improvement Tracker
 
 Last updated: 2026-09-20
-Branch: `cursor/engineering-excellence-sdlc-6022`
-Base: `origin/main` @ `db5c5d6`
+Branch: `cursor/sdlc-quality-pass-6022`
+Base: `origin/main` @ `26f9cd6`
 
 ## Status
 
 | Phase | State |
 |-------|--------|
-| 0 Discovery | In progress |
-| 1 Baseline | In progress — CI currently failing on `main` |
-| 2 QA investigation | Pending independent agents |
-| 3 Triage | In progress (CI + pairing mismatch confirmed) |
-| 4 Product decision | Pairing UX documented, no silent default change |
-| 5 Bug fixes | In progress |
-| 6–8 Engineering excellence | Not started |
-| 9 Automated validation | Blocked locally (Linux, no Swift). CI is the validation gate. |
-| 10 Manual cloud | Not available (no macOS/iOS runtime, no hardware) |
-| 11 Installation | Not available in this environment |
-| 12 Independent verification | Pending after CI green |
-| 18 Merge to main | Not ready |
+| 0 Discovery | Complete (this pass) |
+| 1 Baseline | CI on `26f9cd6` **cancelled**; prior PR CI **failed** on NSLock-in-async |
+| 2 QA | Agents running; ENG-004 confirmed from CI logs |
+| 3–5 | ENG-004/005 being fixed |
+| 6–8 | No speculative refactors |
+| 9 | GitHub Actions on this PR |
+| 10–11 | Not available (Linux, no devices) |
+| 18 | Merge after CI green |
 
 ## Confirmed bugs
 
 | ID | Title | Severity | Status |
 |----|-------|----------|--------|
-| ENG-001 | Swift 6 `deinit` isolation compile errors break CI | Critical | Fixing |
-| ENG-002 | iOS pairing field expects 4 numeric digits; server generates 6 alphanumeric | High | Fixed on branch |
-| ENG-003 | `MockMessageTransport` actor isolation vs `MessageTransport` | High (CI) | Fixing |
+| ENG-001 | Swift 6 deinit isolation | Critical | Fixed on main `26f9cd6` |
+| ENG-002 | iOS pairing 4 vs 6 chars | High | Fixed on main `26f9cd6` |
+| ENG-003 | Mock actor isolation | High (CI) | Incomplete — NSLock in async still failed |
+| ENG-004 | NSLock.lock() in async `send` | High (CI) | Fixing |
+| ENG-005 | Server protocol error does not cancel NWConnection | Medium | Fixing |
 
 ## Product decisions
 
-| ID | Question | Decision |
-|----|----------|----------|
-| PD-001 | Enable pairing by default? | **No** — would change LAN connect UX. Mac Settings has no pairing-code display. Keep `requirePairing = false` until a Mac UI exists. |
-| PD-002 | Pairing code format | **Keep 6-char alphanumeric** already merged on `main`. Update iOS entry field to match. Do not revert to 4-digit. |
+| ID | Decision |
+|----|----------|
+| PD-001 | Pairing stays off by default |
+| PD-002 | Keep 6-char alphanumeric pairing codes |
 
 ## Remaining risks
 
-- No Swift/Xcode on this Linux cloud agent — cannot run `swift test` or `xcodebuild` locally.
-- No BLE strip, Mac, or iPhone — hardware journeys unverified here.
-- Pairing remains unused in production until Mac exposes a pairing UI (`PD-001`).
-- Remote control has no TLS (LAN-only trust). Changing that is a product/architecture decision.
-
-## Active tasks
-
-1. Unblock CI (ENG-001).
-2. Align iOS pairing input with server (ENG-002).
-3. Record baseline from GitHub Actions.
-4. Independent QA on remaining code.
-5. Only implement further changes with evidence.
+- Local Swift/Xcode unavailable
+- Hardware journeys unverified
+- `main` CI for `26f9cd6` was cancelled — compile/test of that merge is unproven
+- LAN remote control has no TLS

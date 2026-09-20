@@ -349,6 +349,12 @@ private final class ClientConnection: @unchecked Sendable {
     func close() {
         connection.cancel()
     }
+
+    private func failConnection() {
+        receiveBuffer.removeAll()
+        connection.cancel()
+        onDisconnect?()
+    }
     
     private func startReceiving() {
         connection.receive(minimumIncompleteLength: 1, maximumLength: 65536) { [weak self] data, _, isComplete, error in
@@ -356,23 +362,25 @@ private final class ClientConnection: @unchecked Sendable {
             
             if let data = data, !data.isEmpty {
                 guard self.receiveBuffer.count + data.count <= self.maxReceiveBufferSize else {
-                    self.receiveBuffer.removeAll()
-                    self.onDisconnect?()
+                    self.failConnection()
                     return
                 }
                 self.receiveBuffer.append(data)
-                self.processBuffer()
+                if !self.processBuffer() {
+                    self.failConnection()
+                    return
+                }
             }
             
             if isComplete || error != nil {
-                self.onDisconnect?()
+                self.failConnection()
             } else {
                 self.startReceiving()
             }
         }
     }
     
-    private func processBuffer() {
+    private func processBuffer() -> Bool {
         while receiveBuffer.count >= 4 {
             do {
                 if let pointer = try decodePointerFrame(from: receiveBuffer) {
@@ -398,10 +406,10 @@ private final class ClientConnection: @unchecked Sendable {
                 break
             } catch {
                 receiveBuffer.removeAll()
-                onDisconnect?()
-                return
+                return false
             }
         }
+        return true
     }
 
     private func compactBufferIfNeeded() {

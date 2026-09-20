@@ -42,6 +42,22 @@ Sources: GitHub Actions logs, repository inspection. Independent QA agents still
 - **Fix:** Same pattern as other mocks — `final class` + `NSLock` + `@unchecked Sendable`
 - **Status:** Implemented on this branch
 
+### ENG-004 — NSLock used from async test mock (CI still red)
+
+- **Severity:** High (CI)
+- **Evidence:** PR run `35534072435` — `MockMessageTransport.swift:36` `lock is unavailable from asynchronous contexts`
+- **Root cause:** ENG-003 converted actor to class with NSLock; Swift 6 forbids NSLock in `async` functions
+- **Fix:** Drop the lock (mock is unused by tests, single-threaded helper)
+- **Status:** Implementing
+
+### ENG-005 — Server leaves TCP connection open after protocol/buffer failure
+
+- **Severity:** Medium
+- **Evidence:** `RemoteControlServer.swift` `startReceiving` overflow and `processBuffer` catch call `onDisconnect` but do not `connection.cancel()`, then continue `startReceiving()` when the receive is incomplete
+- **Fix:** `failConnection()` cancels NWConnection and stops the receive loop
+- **Product behavior:** Valid clients unchanged
+- **Status:** Implementing
+
 ## Not treated as confirmed product bugs
 
 | Item | Classification | Reason |
