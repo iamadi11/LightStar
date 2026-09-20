@@ -71,18 +71,27 @@ private struct ScheduleRow: View {
         .padding(.vertical, 2)
     }
 
+    private static let timeFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.timeStyle = .short
+        f.dateStyle = .none
+        return f
+    }()
+    
     private var timeString: String {
-        let f = DateFormatter(); f.timeStyle = .short; f.dateStyle = .none
-        return f.string(from: schedule.time)
+        Self.timeFormatter.string(from: schedule.time)
     }
 
     private var daysString: String {
         let names = ["Su","Mo","Tu","We","Th","Fr","Sa"]
-        if schedule.days.count == 7 { return "Every day" }
+        let validDays = schedule.days.filter { (1...7).contains($0) }
+        if validDays.count == 7 { return "Every day" }
         let weekdays = Set([2,3,4,5,6])
-        if schedule.days == weekdays { return "Weekdays" }
-        if schedule.days == Set([1,7]) { return "Weekends" }
-        return schedule.days.sorted().map { names[$0 - 1] }.joined(separator: ",")
+        if validDays == weekdays { return "Weekdays" }
+        if validDays == Set([1,7]) { return "Weekends" }
+        return validDays.sorted().compactMap { 
+            names.indices.contains($0 - 1) ? names[$0 - 1] : nil 
+        }.joined(separator: ",")
     }
 
     private var actionLabel: String {

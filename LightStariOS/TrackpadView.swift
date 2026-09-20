@@ -699,7 +699,7 @@ final class MacTrackpadUIView: UIView {
             if now - lastTapAt < doubleWindow {
                 client?.sendMouseDown(clickCount: 2)
                 client?.sendMouseUp(clickCount: 2)
-                lastTapAt = 0
+                lastTapAt = now - doubleWindow - 1
             } else {
                 client?.sendMouseDown(clickCount: 1)
                 client?.sendMouseUp(clickCount: 1)
@@ -716,6 +716,9 @@ final class MacTrackpadUIView: UIView {
 
     private func resetGestureState() {
         cancelLongPress()
+        if isClickDrag {
+            client?.sendMouseUp()
+        }
         potentialTap = true
         twoFingerTapCandidate = false
         peakFingerCount = 0

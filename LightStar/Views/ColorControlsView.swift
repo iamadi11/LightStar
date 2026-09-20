@@ -123,9 +123,9 @@ struct ColorControlView: View {
     }
 
     private func syncFromBLE() {
-        hue = ble.colorHue
-        sat = ble.colorSat
-        colorTemp = ble.colorTemperature
+        if abs(hue - ble.colorHue) > 0.01 { hue = ble.colorHue }
+        if abs(sat - ble.colorSat) > 0.01 { sat = ble.colorSat }
+        if abs(colorTemp - ble.colorTemperature) > 0.01 { colorTemp = ble.colorTemperature }
     }
 
     private func sendColor() {

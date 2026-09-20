@@ -92,7 +92,16 @@ public final class MicAudioSampler {
             }
         }
 
-        try eng.start()
+        do {
+            try eng.start()
+        } catch {
+            if let s = fftSetup { vDSP_DFT_DestroySetup(s); fftSetup = nil }
+            input.removeTap(onBus: 0)
+            #if os(iOS)
+            try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+            #endif
+            throw error
+        }
         engine = eng
         isRunning = true
     }
@@ -104,6 +113,9 @@ public final class MicAudioSampler {
         engine?.stop()
         engine = nil
         onBands = nil
+        #if os(iOS)
+        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+        #endif
         await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
             analyzeQueue.async {
                 if let s = self.fftSetup { vDSP_DFT_DestroySetup(s); self.fftSetup = nil }

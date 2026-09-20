@@ -8,6 +8,8 @@ import simd
 /// Provides significant performance improvement for larger frame sizes.
 public final class MetalColorAnalyzer: @unchecked Sendable {
     
+    private let analysisLock = NSLock()
+    
     public static let shared: MetalColorAnalyzer? = {
         do {
             return try MetalColorAnalyzer()
@@ -106,6 +108,9 @@ public final class MetalColorAnalyzer: @unchecked Sendable {
     /// - Parameter pixelBuffer: The input pixel buffer (BGRA format)
     /// - Returns: Frame analysis with dominant color and black pixel detection
     public func analyze(_ pixelBuffer: CVPixelBuffer) -> FrameAnalysis {
+        analysisLock.lock()
+        defer { analysisLock.unlock() }
+        
         let width = CVPixelBufferGetWidth(pixelBuffer)
         let height = CVPixelBufferGetHeight(pixelBuffer)
         

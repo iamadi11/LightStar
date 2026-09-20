@@ -616,8 +616,15 @@ private extension MenuBarView {
 
     func saveCurrentAsPreset(named name: String) {
         var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
-        (NSColor(ble.color).usingColorSpace(.sRGB) ?? NSColor(ble.color))
-            .getRed(&r, green: &g, blue: &b, alpha: &a)
+        if let srgbColor = NSColor(ble.color).usingColorSpace(.sRGB) {
+            srgbColor.getRed(&r, green: &g, blue: &b, alpha: &a)
+        } else if let deviceColor = NSColor(ble.color).usingColorSpace(.deviceRGB) {
+            deviceColor.getRed(&r, green: &g, blue: &b, alpha: &a)
+        } else {
+            let hsv = ble.color.hsvComponents
+            let c = NSColor(hue: hsv.0, saturation: hsv.1, brightness: hsv.2, alpha: 1)
+            c.getRed(&r, green: &g, blue: &b, alpha: &a)
+        }
         let p = Preset(name: name, red: Double(r), green: Double(g),
                        blue: Double(b), brightness: ble.brightness)
         presets.presets.append(p)
