@@ -10,9 +10,9 @@ Base: `origin/main` @ `26f9cd6`
 |-------|--------|
 | 0 Discovery | Complete |
 | 1 Baseline | CI on `26f9cd6` cancelled; PR tests compiled then failed S011 Int16 range |
-| 2 QA | Independent adversarial QA confirmed BLE/connect/sync/client bugs |
-| 3–5 | ENG-007…015 implemented; ENG-006 test range corrected |
-| 6–8 | Policy helpers only; no speculative refactors |
+| 2 QA | Independent iOS/Mac/remote QA; mock suites documented as non-production |
+| 3–5 | ENG-007…019 implemented |
+| 6–8 | Policy helpers only; mock Security/UserJourney not rewritten |
 | 9 | GitHub Actions on this PR after push |
 | 10–11 | Not available (Linux, no devices) |
 | 18 | Merge after CI green |
@@ -36,6 +36,10 @@ Base: `origin/main` @ `26f9cd6`
 | ENG-013 | Multi-light scan stops on first advertisement | Medium | Fixed on this branch |
 | ENG-014 | Listener `.error` overwritten; pointer injector leak | Medium | Fixed on this branch |
 | ENG-015 | Pairing timeout / error clobber | Medium | Fixed on this branch |
+| ENG-016 | Hide keyboard sends deletes for typed text | High | Fixed on this branch |
+| ENG-017 | Click-drag + extra finger scrolls | High | Fixed on this branch |
+| ENG-018 | Connect strip wipes lastSyncMode | Medium | Fixed on this branch |
+| ENG-019 | Cancelled sync build still starts capture | Medium | Fixed on this branch |
 
 ## Product decisions
 

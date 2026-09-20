@@ -265,3 +265,44 @@ public enum RemoteDisplayGeometry {
         CGPoint(x: bounds.midX, y: bounds.midY)
     }
 }
+
+/// Hidden iPhone TextField → Mac keystrokes. A local buffer reset (hiding the
+/// keyboard) must not be turned into deletes; those characters were already sent.
+public enum RemoteTypingDelta: Equatable, Sendable {
+    case none
+    case insert(String)
+    case delete(Int)
+    case replace(delete: Int, insert: String)
+
+    public static func from(oldValue: String, newValue: String) -> RemoteTypingDelta {
+        if newValue == oldValue { return .none }
+        if newValue.count > oldValue.count, newValue.hasPrefix(oldValue) {
+            return .insert(String(newValue.dropFirst(oldValue.count)))
+        }
+        if newValue.count < oldValue.count, oldValue.hasPrefix(newValue) {
+            return .delete(oldValue.count - newValue.count)
+        }
+        return .replace(delete: oldValue.count, insert: newValue)
+    }
+
+    public static func shouldEmit(forLocalBufferReset: Bool) -> Bool {
+        !forLocalBufferReset
+    }
+}
+
+/// Once a click-drag (long-press or three-finger drag) owns the mouse button,
+/// extra fingers must not switch the gesture to scroll.
+public enum RemoteTrackpadMoveKind: Equatable, Sendable {
+    case pointer
+    case scroll
+    case threeFinger
+
+    public static func kind(fingerCount: Int, isClickDrag: Bool) -> RemoteTrackpadMoveKind {
+        if isClickDrag { return .pointer }
+        switch fingerCount {
+        case 1: return .pointer
+        case 2: return .scroll
+        default: return .threeFinger
+        }
+    }
+}

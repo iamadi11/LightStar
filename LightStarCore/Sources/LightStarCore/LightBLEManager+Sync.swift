@@ -91,6 +91,7 @@ public extension LightBLEManager {
         // Wait for any pending cleanup from stopSyncInline
         await syncCleanupTask?.value
         syncCleanupTask = nil
+        guard !Task.isCancelled else { return }
         effectModeActive = false
         guard mode == .off || connectionState == .connected else {
             syncMode = .off
@@ -108,6 +109,11 @@ public extension LightBLEManager {
             syncMode = .video  // set before start so warm-up frames pass isSyncingVideo guard
             do {
                 try await screenSampler.start()
+                if Task.isCancelled {
+                    screenSampler.onColor = nil
+                    await screenSampler.stop()
+                    return
+                }
             } catch {
                 screenSampler.onColor = nil
                 setSyncError(error)
@@ -130,6 +136,11 @@ public extension LightBLEManager {
                 syncMode = .audio  // set before start so warm-up frames pass isSyncingAudio guard
                 do {
                     if useMic { try await micAudio.start() } else { try await systemAudio.start() }
+                    if Task.isCancelled {
+                        if useMic { micAudio.onBands = nil } else { systemAudio.onBands = nil }
+                        if useMic { await micAudio.stop() } else { await systemAudio.stop() }
+                        return
+                    }
                 } catch {
                     if useMic { micAudio.onBands = nil } else { systemAudio.onBands = nil }
                     setSyncError(error)
@@ -146,6 +157,15 @@ public extension LightBLEManager {
             var audioErr:  Error? = nil
             async let screenStart: () = screenSampler.start()
             do { try await screenStart } catch { screenSampler.onColor = nil; screenErr = error }
+            if Task.isCancelled {
+                screenSampler.onColor = nil
+                micAudio.onBands = nil
+                systemAudio.onBands = nil
+                await screenSampler.stop()
+                await micAudio.stop()
+                await systemAudio.stop()
+                return
+            }
 
             if audioInputSource == .stripMic {
                 write(Cmd.stripMic(enabled: true))
@@ -160,6 +180,15 @@ public extension LightBLEManager {
                     if useMic { micAudio.onBands = nil } else { systemAudio.onBands = nil }
                     audioErr = error
                 }
+            }
+            if Task.isCancelled {
+                screenSampler.onColor = nil
+                micAudio.onBands = nil
+                systemAudio.onBands = nil
+                await screenSampler.stop()
+                await micAudio.stop()
+                await systemAudio.stop()
+                return
             }
             let screenOk = screenSampler.onColor != nil
             let audioOk: Bool

@@ -828,4 +828,28 @@ final class ConnectAndSchedulePolicyTests: XCTestCase {
         XCTAssertEqual(pointerDeltaToInt16(.infinity), 0)
         XCTAssertEqual(pointerDeltaToInt16(.nan), 0)
     }
+
+    func testHideKeyboardDoesNotEmitDeletesForLocalBufferReset() {
+        XCTAssertFalse(RemoteTypingDelta.shouldEmit(forLocalBufferReset: true))
+        XCTAssertTrue(RemoteTypingDelta.shouldEmit(forLocalBufferReset: false))
+        XCTAssertEqual(RemoteTypingDelta.from(oldValue: "hello", newValue: ""), .delete(5))
+        XCTAssertEqual(RemoteTypingDelta.from(oldValue: "hel", newValue: "hello"), .insert("lo"))
+        XCTAssertEqual(RemoteTypingDelta.from(oldValue: "abc", newValue: "xyz"), .replace(delete: 3, insert: "xyz"))
+        XCTAssertEqual(RemoteTypingDelta.from(oldValue: "a", newValue: "a"), .none)
+    }
+
+    func testClickDragKeepsPointerWhenExtraFingerLands() {
+        XCTAssertEqual(RemoteTrackpadMoveKind.kind(fingerCount: 1, isClickDrag: false), .pointer)
+        XCTAssertEqual(RemoteTrackpadMoveKind.kind(fingerCount: 2, isClickDrag: false), .scroll)
+        XCTAssertEqual(RemoteTrackpadMoveKind.kind(fingerCount: 2, isClickDrag: true), .pointer)
+        XCTAssertEqual(RemoteTrackpadMoveKind.kind(fingerCount: 3, isClickDrag: true), .pointer)
+        XCTAssertEqual(RemoteTrackpadMoveKind.kind(fingerCount: 3, isClickDrag: false), .threeFinger)
+    }
+
+    func testConnectStripDoesNotDisconnectWhenAlreadyIdle() {
+        XCTAssertFalse(StripReconnectPolicy.shouldDisconnectBeforeReconnect(.connected))
+        XCTAssertFalse(StripReconnectPolicy.shouldDisconnectBeforeReconnect(.disconnected))
+        XCTAssertTrue(StripReconnectPolicy.shouldDisconnectBeforeReconnect(.scanning))
+        XCTAssertTrue(StripReconnectPolicy.shouldDisconnectBeforeReconnect(.connecting))
+    }
 }

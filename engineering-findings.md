@@ -102,9 +102,47 @@ No silent product-behavior changes. Connect restore now matches the comments alr
 - **Fix:** `armHandshakeTimeout()` on TCP hello and on pairing challenge. `RemoteClientSessionPolicy` keeps `.error` across transport close. Failed `pairAck` uses `fail()`.
 - **Status:** Implemented on this branch
 
+### ENG-016 — Hiding the iPhone keyboard deletes text already typed on the Mac
+
+- **Severity:** High
+- **Feature:** iPhone remote keyboard
+- **Evidence:** Clearing `typeBuffer` on dismiss fires `sendTypingDelta("hello", "")`, which sends one delete per character. Those characters were already sent while typing.
+- **Fix:** Local buffer reset is suppressed (`RemoteTypingDelta.shouldEmit(forLocalBufferReset:)`). Real user backspaces still send deletes.
+- **Status:** Implemented on this branch
+
+### ENG-017 — Extra finger during click-drag scrolls with the mouse button down
+
+- **Severity:** High
+- **Feature:** iPhone trackpad
+- **Evidence:** Long-press / three-finger drag sets `isClickDrag` and `mouseDown`, but `touchesMoved` switched on `activeIDs.count` only, so a second finger sent scroll while the button stayed down.
+- **Fix:** `RemoteTrackpadMoveKind` keeps pointer moves for the rest of a click-drag.
+- **Status:** Implemented on this branch
+
+### ENG-018 — Remote Connect Strip wipes lastSyncMode
+
+- **Severity:** Medium
+- **Evidence:** `connectStrip` called `disconnect()` then `connect()` even when already disconnected. `disconnect()` sets `lastSyncMode = .off` and `userInitiatedDisconnect`.
+- **Fix:** `reconnectPreservingSync()` / `StripReconnectPolicy` — skip disconnect when idle; if aborting scan/connect, restore `lastSyncMode`.
+- **Status:** Implemented on this branch
+
+### ENG-019 — Cancelled sync transition still starts capture
+
+- **Severity:** Medium
+- **Evidence:** `setSyncMode` waited for teardown then called `buildSync` with one cancel check. `stopSyncInline` could set `.off` while `buildSync` was awaiting cleanup, then still set `.video` and start ScreenCaptureKit.
+- **Fix:** `buildSync` returns after cleanup if cancelled, and stops samplers if cancelled after `start()`.
+- **Status:** Implemented on this branch
+
 ## Test coverage (not product bugs)
 
-Mock Security/UserJourney suites still do not exercise live `RemoteControlServer` / `LightBLEManager` CoreBluetooth. Documented; not rewritten. Production policy helpers above are unit-tested.
+Independent review of `LightStarCore/Tests` vs production ([QA: Tests vs production mismatches](bc-bfe0d582-1826-55a3-9fc1-91eab1a6a22c)):
+
+- S004/S005/S014 and J5 session-token tests hit `MockSessionAuthenticator`, not `RemoteControlServer` (production auth is `connection.authenticated`).
+- S002/S006 rate-limit tests are per-mock-clientID; production is global lockout after 5 plus connection close on each failed pair.
+- S013 mock lighting clamp is not `LightBLEManager` (wire frames clamp; stored brightness does not). Left as designed.
+- S003 pairing expiry uses the mock’s 100ms timer, not the server’s 60s `Task.sleep`.
+- P001 `type: 255` is `.error`, not an unknown tag.
+
+These suites are not rewritten. Session-token validation, TLS, and `LightBLEManager` value clamping would be product changes (PD-001). Production policy helpers for the confirmed bugs above are unit-tested.
 
 ## Remaining risks
 

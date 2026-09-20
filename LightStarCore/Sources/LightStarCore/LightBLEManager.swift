@@ -346,6 +346,20 @@ public final class LightBLEManager: NSObject {
 #endif
     }
 
+    /// iPhone "Connect strip" must not run a user disconnect: that forgets
+    /// `lastSyncMode` and marks the drop as intentional.
+    public func reconnectPreservingSync() {
+        guard connectionState != .connected else { return }
+        if StripReconnectPolicy.shouldDisconnectBeforeReconnect(connectionState) {
+            let savedSync = lastSyncMode
+            disconnect()
+            lastSyncMode = savedSync
+            UserDefaults.standard.set(savedSync.rawValue, forKey: "lastSyncMode")
+            userInitiatedDisconnect = false
+        }
+        connect()
+    }
+
     public func sendRaw(_ bytes: [UInt8]) {
         print("[LightStar] sendRaw: \(bytes.map { String(format: "%02X", $0) }.joined(separator: " "))")
         write(bytes)
@@ -742,5 +756,18 @@ public enum BLEDiscoveryPolicy: Sendable {
     /// Hue/brightness after powerOff wakes the BC/55 (see `setPower`).
     public static func shouldRestoreAppearanceOnConnect(targetOn: Bool) -> Bool {
         targetOn
+    }
+}
+
+/// Remote "Connect strip" while scanning/connecting may abort the in-flight
+/// attempt, but a fully disconnected strip must not run `disconnect()`.
+public enum StripReconnectPolicy: Sendable {
+    public static func shouldDisconnectBeforeReconnect(_ state: LightBLEManager.ConnectionState) -> Bool {
+        switch state {
+        case .connected, .disconnected:
+            return false
+        case .scanning, .connecting:
+            return true
+        }
     }
 }

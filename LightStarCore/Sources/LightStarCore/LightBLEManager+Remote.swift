@@ -101,10 +101,7 @@ public extension LightBLEManager {
                 selectedDisplayID = cmd.displayID
             }
         case .connectStrip:
-            if connectionState != .connected {
-                disconnect()
-                connect()
-            }
+            reconnectPreservingSync()
         case .disconnectStrip:
             if connectionState != .disconnected {
                 disconnect()

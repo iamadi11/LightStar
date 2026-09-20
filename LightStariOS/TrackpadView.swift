@@ -10,6 +10,7 @@ struct TrackpadView: View {
     var macName: String = ""
     @FocusState private var keyboardOpen: Bool
     @State private var typeBuffer = ""
+    @State private var suppressTypingDelta = false
     @State private var commandHeld = false
     @State private var optionHeld = false
     @State private var controlHeld = false
@@ -79,6 +80,9 @@ struct TrackpadView: View {
                     .keyboardType(.default)
                     .submitLabel(.return)
                     .onChange(of: typeBuffer) { oldValue, newValue in
+                        let localReset = suppressTypingDelta
+                        if localReset { suppressTypingDelta = false }
+                        guard RemoteTypingDelta.shouldEmit(forLocalBufferReset: localReset) else { return }
                         sendTypingDelta(from: oldValue, to: newValue)
                     }
                     .onSubmit {
@@ -139,7 +143,7 @@ struct TrackpadView: View {
                 gyro.disengage()
                 RemoteHaptics.soft(enabled: settings.hapticClicks)
             } else {
-                typeBuffer = ""
+                clearTypeBufferLocally()
                 resetStickyModifiers()
             }
         }
@@ -383,6 +387,11 @@ struct TrackpadView: View {
     private func dismissKeyboard() {
         RemoteHaptics.soft(enabled: settings.hapticClicks)
         keyboardOpen = false
+    }
+
+    private func clearTypeBufferLocally() {
+        guard !typeBuffer.isEmpty else { return }
+        suppressTypingDelta = true
         typeBuffer = ""
     }
 
@@ -424,21 +433,22 @@ struct TrackpadView: View {
             return
         }
 
-        if newValue.count > oldValue.count, newValue.hasPrefix(oldValue) {
-            client.sendTextInput(String(newValue.dropFirst(oldValue.count)))
-            return
-        }
-        if newValue.count < oldValue.count, oldValue.hasPrefix(newValue) {
-            for _ in 0..<(oldValue.count - newValue.count) {
+        switch RemoteTypingDelta.from(oldValue: oldValue, newValue: newValue) {
+        case .none:
+            break
+        case .insert(let text):
+            client.sendTextInput(text)
+        case .delete(let count):
+            for _ in 0..<count {
                 client.sendHotkey(keyCode: 0x33)
             }
-            return
-        }
-        for _ in 0..<oldValue.count {
-            client.sendHotkey(keyCode: 0x33)
-        }
-        if !newValue.isEmpty {
-            client.sendTextInput(newValue)
+        case .replace(let deleteCount, let text):
+            for _ in 0..<deleteCount {
+                client.sendHotkey(keyCode: 0x33)
+            }
+            if !text.isEmpty {
+                client.sendTextInput(text)
+            }
         }
     }
 }
@@ -598,17 +608,15 @@ final class MacTrackpadUIView: UIView {
             if activeIDs.count == 1 { cancelLongPress() }
         }
 
-        switch activeIDs.count {
-        case 1:
+        switch RemoteTrackpadMoveKind.kind(fingerCount: activeIDs.count, isClickDrag: isClickDrag) {
+        case .pointer:
             sendPointer(dx: dx, dy: dy, dt: dt)
-        case 2:
+        case .scroll:
             lastScrollVX = dx / CGFloat(dt)
             lastScrollVY = dy / CGFloat(dt)
             sendScroll(dx: dx, dy: dy)
-        case 3...:
+        case .threeFinger:
             handleThreeFingerMove(dx: dx, dy: dy, dt: dt)
-        default:
-            break
         }
     }
 
