@@ -132,6 +132,13 @@ No silent product-behavior changes. Connect restore now matches the comments alr
 - **Fix:** `buildSync` returns after cleanup if cancelled, and stops samplers if cancelled after `start()`.
 - **Status:** Implemented on this branch
 
+### ENG-020 — iOS build fails: Task capture list isolation order
+
+- **Severity:** High (unsigned iOS archive)
+- **Evidence:** CI `1151ef0` — tests and macOS build passed; `xcodebuild` LightStariOS failed at `RemoteLevelHUD.swift:87` `expected ',' separator` for `Task { [weak self] @MainActor in }`
+- **Fix:** Use `Task { @MainActor [weak self] in }`, matching the rest of the codebase.
+- **Status:** Implemented on this branch
+
 ## Test coverage (not product bugs)
 
 Independent review of `LightStarCore/Tests` vs production ([QA: Tests vs production mismatches](bc-bfe0d582-1826-55a3-9fc1-91eab1a6a22c)):

@@ -40,6 +40,7 @@ Base: `origin/main` @ `26f9cd6`
 | ENG-017 | Click-drag + extra finger scrolls | High | Fixed on this branch |
 | ENG-018 | Connect strip wipes lastSyncMode | Medium | Fixed on this branch |
 | ENG-019 | Cancelled sync build still starts capture | Medium | Fixed on this branch |
+| ENG-020 | iOS Task capture list isolation order | High (CI) | Fixed on this branch |
 
 ## Product decisions
 
