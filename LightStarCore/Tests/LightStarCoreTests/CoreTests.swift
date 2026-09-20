@@ -687,9 +687,11 @@ final class PairingCodeFormatTests: XCTestCase {
         let unique = Set(kLightStarPairingCodeAlphabet)
         XCTAssertEqual(unique.count, kLightStarPairingCodeAlphabet.count)
     }
+}
 
-    #if os(macOS)
-    @MainActor
+#if os(macOS)
+@MainActor
+final class PairingCodeGenerationTests: XCTestCase {
     func testGeneratedPairingCodeMatchesProtocolAlphabet() {
         let server = RemoteControlServer()
         let allowed = CharacterSet(charactersIn: kLightStarPairingCodeAlphabet)
@@ -702,8 +704,8 @@ final class PairingCodeFormatTests: XCTestCase {
             XCTAssertNil(code.rangeOfCharacter(from: forbidden))
         }
     }
-    #endif
 }
+#endif
 
 final class ReceiveBufferOverflowTests: XCTestCase {
     func testEqualToMaxIsAllowed() {

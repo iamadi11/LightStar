@@ -10,7 +10,7 @@ final class ProtocolIntegrationTests: XCTestCase {
     // MARK: - Message Validation Tests
     
     /// TEST_ID: P001
-    /// Tests that invalid message types are handled gracefully.
+    /// Type 255 is the defined `.error` case, not an unknown tag.
     func testInvalidMessageTypeHandling() throws {
         let invalidJSON = """
         {"type":255,"payload":"","timestamp":0}

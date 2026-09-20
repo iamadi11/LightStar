@@ -55,7 +55,7 @@ final class UserJourneyTests: XCTestCase {
         let realCode = authenticator.generatePairingCode()
 
         // Produce a wrong code by rotating the first character — guaranteed != realCode.
-        let chars = Array("ABCDEFGHJKLMNPQRSTUVWXYZ23456789")
+        let chars = Array(kLightStarPairingCodeAlphabet)
         let firstChar = realCode.unicodeScalars.first.map(Character.init) ?? Character("A")
         let nextChar = chars[(chars.firstIndex(of: firstChar).map { ($0 + 1) % chars.count } ?? 1)]
         let wrongCode = String(nextChar) + realCode.dropFirst()
