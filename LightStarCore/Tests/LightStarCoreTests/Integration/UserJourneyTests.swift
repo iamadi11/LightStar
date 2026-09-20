@@ -178,11 +178,7 @@ final class UserJourneyTests: XCTestCase {
         // Start capture
         try await mockProvider.start()
         XCTAssertTrue(mockProvider.isRunning)
-        
-        // Wait for frames
-        try await Task.sleep(nanoseconds: 50_000_000)
-        
-        // Stop
+        await mockProvider.waitUntilFramesDelivered(3)
         await mockProvider.stop()
         XCTAssertFalse(mockProvider.isRunning)
         
@@ -207,7 +203,7 @@ final class UserJourneyTests: XCTestCase {
         }
         
         try await mockProvider.start()
-        try await Task.sleep(nanoseconds: 50_000_000)
+        await mockProvider.waitUntilFramesDelivered(3)
         await mockProvider.stop()
         
         XCTAssertTrue(detectedProtection)
