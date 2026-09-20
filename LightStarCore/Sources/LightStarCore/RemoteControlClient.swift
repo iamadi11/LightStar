@@ -174,6 +174,8 @@ public final class RemoteControlClient: ObservableObject {
     }
     
     private func cleanupConnection() {
+        connectionTimeoutTask?.cancel()
+        connectionTimeoutTask = nil
         pingTask?.cancel()
         pingTask = nil
         pointerChannel.reset()
@@ -193,6 +195,8 @@ public final class RemoteControlClient: ObservableObject {
             startReceiving()
             sendHello()
         case .failed(let error):
+            connectionTimeoutTask?.cancel()
+            connectionTimeoutTask = nil
             pingTask?.cancel()
             pingTask = nil
             connection?.cancel()

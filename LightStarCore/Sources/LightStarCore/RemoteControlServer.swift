@@ -110,8 +110,9 @@ public final class RemoteControlServer: ObservableObject {
         let id = UUID().uuidString
         let connection = ClientConnection(id: id, connection: nwConnection)
         let injector = pointerInjector
-        connection.onPointer = { dx, dy, isScroll in
-            injector?.applyPointer(deltaX: dx, deltaY: dy, isScroll: isScroll) == true
+        connection.onPointer = { [weak connection] dx, dy, isScroll in
+            guard connection?.authenticated == true else { return false }
+            return injector?.applyPointer(deltaX: dx, deltaY: dy, isScroll: isScroll) == true
         }
         connection.onMessage = { [weak self] message in
             if injector?.handle(message) == true { return }
@@ -129,6 +130,9 @@ public final class RemoteControlServer: ObservableObject {
     }
     
     private func handleDisconnect(id: String) {
+        if connections[id]?.authenticated == true {
+            pointerInjector?.cleanup()
+        }
         connections.removeValue(forKey: id)
         updateConnectedClientsList()
     }
@@ -185,7 +189,7 @@ public final class RemoteControlServer: ObservableObject {
             return
         }
         
-        connection.deviceName = hello.deviceName
+        connection.deviceName = String(hello.deviceName.prefix(64))
         connection.authenticated = !requirePairing
         
         let ack = HelloAckMessage(
@@ -219,6 +223,14 @@ public final class RemoteControlServer: ObservableObject {
     }
     
     private func handlePair(_ message: RemoteMessage, connection: ClientConnection) {
+        guard !connection.pairingLockedOut else {
+            let error = PairAckMessage(success: false, errorMessage: "Too many failed attempts")
+            if let response = try? RemoteMessage(type: .pairAck, content: error) {
+                connection.send(response)
+            }
+            return
+        }
+
         guard let pair = try? message.decode(PairMessage.self) else {
             let error = PairAckMessage(success: false, errorMessage: "Invalid pairing message")
             if let response = try? RemoteMessage(type: .pairAck, content: error) {
@@ -226,9 +238,13 @@ public final class RemoteControlServer: ObservableObject {
             }
             return
         }
-        
+
         guard let expectedCode = activePairingCode,
               pair.pairingCode == expectedCode else {
+            connection.failedPairingAttempts += 1
+            if connection.failedPairingAttempts >= 5 {
+                connection.pairingLockedOut = true
+            }
             let error = PairAckMessage(success: false, errorMessage: "Invalid pairing code")
             if let response = try? RemoteMessage(type: .pairAck, content: error) {
                 connection.send(response)
@@ -270,6 +286,9 @@ private final class ClientConnection: @unchecked Sendable {
     var onMessage: ((RemoteMessage) -> Void)?
     var onPointer: ((Double, Double, Bool) -> Bool)?
     var onDisconnect: (() -> Void)?
+
+    var failedPairingAttempts = 0
+    var pairingLockedOut = false
     
     private var receiveBuffer = Data()
     private let maxReceiveBufferSize = 2 * 1024 * 1024 // 2MB

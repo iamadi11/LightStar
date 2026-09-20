@@ -10,7 +10,9 @@ public extension LightBLEManager {
             abs($0.h - h) > 0.03 || abs($0.s - s) > 0.08
         }).prefix(12).map { $0 }
         let encoded = colorHistory.map { [$0.h, $0.s] }
-        UserDefaults.standard.set(try? JSONEncoder().encode(encoded), forKey: "colorHistory")
+        if let data = try? JSONEncoder().encode(encoded) {
+            UserDefaults.standard.set(data, forKey: "colorHistory")
+        }
     }
 
     // MARK: - Circadian auto color temperature

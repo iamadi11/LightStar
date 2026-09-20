@@ -11,7 +11,7 @@ public final class BLEWriteCoalescer {
     }
 
     private var items: [Item] = []
-    nonisolated(unsafe) private var timer: Timer?
+    private var timer: Timer?
     private let send: @MainActor (Data) -> Void
     private let isConnected: @MainActor () -> Bool
 
