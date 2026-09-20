@@ -26,7 +26,8 @@ Base: `origin/main` @ `db5c5d6`
 | ID | Title | Severity | Status |
 |----|-------|----------|--------|
 | ENG-001 | Swift 6 `deinit` isolation compile errors break CI | Critical | Fixing |
-| ENG-002 | iOS pairing field expects 4 numeric digits; server generates 6 alphanumeric | High | Fixing (align client with already-merged server) |
+| ENG-002 | iOS pairing field expects 4 numeric digits; server generates 6 alphanumeric | High | Fixed on branch |
+| ENG-003 | `MockMessageTransport` actor isolation vs `MessageTransport` | High (CI) | Fixing |
 
 ## Product decisions
 
