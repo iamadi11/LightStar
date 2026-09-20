@@ -656,6 +656,7 @@ final class MacTrackpadUIView: UIView {
     private func finishGesture(duration: TimeInterval) {
         if isClickDrag {
             client?.sendMouseUp()
+            isClickDrag = false
             return
         }
 

@@ -107,7 +107,10 @@ public final class ScheduleStore {
         return dir.appendingPathComponent("schedules.json")
     }
 
-    public init() { load() }
+    public init() {
+        load()
+        armNextTimer()
+    }
 
     public func save() {
         persist()

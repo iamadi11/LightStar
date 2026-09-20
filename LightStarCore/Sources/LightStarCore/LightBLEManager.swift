@@ -210,6 +210,7 @@ public final class LightBLEManager: NSObject {
     public let maxReconnectAttempts = 5
     public var userInitiatedDisconnect = false
     public var connectingTimeoutTask: Task<Void, Never>?
+    private var scanTimeoutTask: Task<Void, Never>?
     public let connectingTimeoutNanos: UInt64 = 10_000_000_000
     public let systemAudio = SystemAudioSampler()
     public let micAudio = MicAudioSampler()
@@ -316,6 +317,8 @@ public final class LightBLEManager: NSObject {
         connectSequenceTask = nil
         connectingTimeoutTask?.cancel()
         connectingTimeoutTask = nil
+        scanTimeoutTask?.cancel()
+        scanTimeoutTask = nil
         connectWhenReady = false
         shouldAutoReconnect = false
         userInitiatedDisconnect = true
@@ -364,8 +367,9 @@ public final class LightBLEManager: NSObject {
         guard central.state == .poweredOn else { return }
         connectionError = nil
         connectionState = .scanning
+        scanTimeoutTask?.cancel()
         central.scanForPeripherals(withServices: [Self.advertisedUUID], options: nil)
-        Task { @MainActor in
+        scanTimeoutTask = Task { @MainActor in
             do { try await Task.sleep(nanoseconds: 10_000_000_000) } catch { return }
             guard self.connectionState == .scanning else { return }
             self.central.stopScan()

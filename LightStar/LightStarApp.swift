@@ -174,6 +174,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             case (nil, nil): return true
             case (nil, _), (_, nil): return false
             case let (a?, b?):
+                guard let a = a.usingColorSpace(.sRGB),
+                      let b = b.usingColorSpace(.sRGB) else { return false }
                 var r1: CGFloat = 0, g1: CGFloat = 0, b1: CGFloat = 0
                 var r2: CGFloat = 0, g2: CGFloat = 0, b2: CGFloat = 0
                 a.getRed(&r1, green: &g1, blue: &b1, alpha: nil)

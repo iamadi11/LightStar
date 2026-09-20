@@ -28,6 +28,7 @@ public final class PresetStore {
         FileManager.default.ubiquityIdentityToken != nil ? .default : nil
     }
     private static let iCloudKey = "LightStarPresets"
+    private var iCloudObserver: NSObjectProtocol?
 
     private static var storeURL: URL {
         let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -79,7 +80,7 @@ public final class PresetStore {
     }
 
     private func observeiCloud() {
-        NotificationCenter.default.addObserver(
+        iCloudObserver = NotificationCenter.default.addObserver(
             forName: NSUbiquitousKeyValueStore.didChangeExternallyNotification,
             object: NSUbiquitousKeyValueStore.default,
             queue: .main) { [weak self] _ in
@@ -88,6 +89,12 @@ public final class PresetStore {
             }
         // Pull on launch if enabled
         if iCloudEnabled { pullFromiCloud() }
+    }
+    
+    deinit {
+        if let observer = iCloudObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
     }
 
     // MARK: - Export / Import

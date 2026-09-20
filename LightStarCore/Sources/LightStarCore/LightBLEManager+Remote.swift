@@ -124,6 +124,7 @@ public final class RemoteControlCoordinator: ObservableObject {
     
     private weak var ble: LightBLEManager?
     private var stateObservationTask: Task<Void, Never>?
+    private var shouldObserveState = false
     
     public init(ble: LightBLEManager) {
         self.ble = ble
@@ -246,11 +247,13 @@ public final class RemoteControlCoordinator: ObservableObject {
     public func start() {
         ble?.refreshAttachedDisplays()
         server.start()
+        shouldObserveState = true
         startStateObservation()
     }
     
     /// Stop the server.
     public func stop() {
+        shouldObserveState = false
         stateObservationTask?.cancel()
         server.stop()
     }
@@ -276,9 +279,9 @@ public final class RemoteControlCoordinator: ObservableObject {
                 
                 let state = ble.createStateSnapshot()
                 self.server.broadcastStateUpdate(state)
-            } onChange: {
+            } onChange: { [weak self] in
                 Task { @MainActor in
-                    guard !Task.isCancelled else { return }
+                    guard let self, self.shouldObserveState else { return }
                     self.startStateObservation()
                 }
             }

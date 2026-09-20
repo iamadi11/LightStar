@@ -272,6 +272,7 @@ private final class ClientConnection: @unchecked Sendable {
     var onDisconnect: (() -> Void)?
     
     private var receiveBuffer = Data()
+    private let maxReceiveBufferSize = 2 * 1024 * 1024 // 2MB
     
     init(id: String, connection: NWConnection) {
         self.id = id
@@ -319,6 +320,11 @@ private final class ClientConnection: @unchecked Sendable {
     }
     
     private func processBuffer() {
+        if receiveBuffer.count > maxReceiveBufferSize {
+            receiveBuffer.removeAll()
+            onDisconnect?()
+            return
+        }
         while receiveBuffer.count >= 4 {
             do {
                 if let pointer = try decodePointerFrame(from: receiveBuffer) {

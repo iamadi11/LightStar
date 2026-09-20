@@ -162,6 +162,7 @@ struct GradientSlider: View {
             .frame(height: thumbSize)
             .contentShape(Rectangle())
             .gesture(DragGesture(minimumDistance: 0).onChanged { drag in
+                guard trackWidth > 0 else { return }
                 value = max(0, min(1, (drag.location.x - thumbSize / 2) / trackWidth))
             })
         }
