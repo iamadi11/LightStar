@@ -96,7 +96,8 @@ public extension LightBLEManager {
                 selectedDisplayID = cmd.displayID
             }
         case .connectStrip:
-            if connectionState == .disconnected {
+            if connectionState != .connected {
+                disconnect()
                 connect()
             }
         case .disconnectStrip:
@@ -224,7 +225,7 @@ public final class RemoteControlCoordinator: ObservableObject {
         case .macAction:
             if let cmd = try? message.decode(MacActionMessage.self) {
                 switch cmd.action {
-                case .missionControl, .launchpad, .lockScreen:
+                case .missionControl, .launchpad, .lockScreen, .wakeDisplay:
                     break
                 default:
                     if !inputController.ensureAccessibility() {

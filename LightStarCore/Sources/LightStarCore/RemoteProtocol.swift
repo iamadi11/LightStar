@@ -366,6 +366,7 @@ public enum MacSystemAction: String, Codable, Sendable {
     case screenshot, screenshotSelection
     case spaceLeft, spaceRight
     case centerPointer
+    case wakeDisplay
 }
 
 public struct MacActionMessage: Codable, Sendable {

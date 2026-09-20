@@ -72,6 +72,12 @@ struct RemoteControlView: View {
                     client.startDiscovery()
                 }
                 .buttonStyle(.borderedProminent)
+                
+                Text("Make sure LightStar is running on your Mac. If the Mac is asleep or locked, wake it first.")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal)
             }
             .padding()
             .navigationTitle("LightStar")
@@ -232,6 +238,12 @@ struct RemoteControlView: View {
                     client.startDiscovery()
                 }
                 .buttonStyle(.borderedProminent)
+                
+                Text("Make sure LightStar is running on your Mac and both devices are on the same Wi-Fi network.")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal)
             }
             .padding()
             .navigationTitle("LightStar")
@@ -290,8 +302,8 @@ struct RemoteLightControlView: View {
                     .foregroundStyle(state.isConnected ? .green : .red)
                 Text(state.isConnected ? "Connected" : "Not Connected")
                 Spacer()
-                if !state.isConnected {
-                    Button("Connect") { client.connectStrip() }
+                Button(state.isConnected ? "Reconnect" : "Connect") {
+                    client.connectStrip()
                 }
             }
         }

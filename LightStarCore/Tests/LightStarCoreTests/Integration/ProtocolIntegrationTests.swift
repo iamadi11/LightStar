@@ -174,7 +174,7 @@ final class ProtocolIntegrationTests: XCTestCase {
         let actions: [MacSystemAction] = [
             .spotlight, .missionControl, .applicationWindows, .desktop, .launchpad, .lockScreen,
             .undo, .cut, .copy, .paste, .selectAll, .emoji,
-            .screenshot, .screenshotSelection, .spaceLeft, .spaceRight, .centerPointer
+            .screenshot, .screenshotSelection, .spaceLeft, .spaceRight, .centerPointer, .wakeDisplay
         ]
         for action in actions {
             let message = try RemoteMessage(type: .macAction, content: MacActionMessage(action: action))

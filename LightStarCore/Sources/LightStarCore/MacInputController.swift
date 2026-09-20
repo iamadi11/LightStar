@@ -177,6 +177,8 @@ public final class MacInputController: ObservableObject {
             pressHotkey(keyCode: 0x7C, modifiers: .maskControl)
         case .centerPointer:
             pointerInjector.centerOnCurrentDisplay()
+        case .wakeDisplay:
+            wakeDisplay()
         }
     }
 
@@ -341,6 +343,29 @@ public final class MacInputController: ObservableObject {
             return
         }
         pressHotkey(keyCode: 0x0C, modifiers: [.maskCommand, .maskControl])
+    }
+
+    private func wakeDisplay() {
+        typealias IOPMAssertionDeclareUserActivity = @convention(c) (
+            CFString, UInt32, UnsafeMutablePointer<UInt32>
+        ) -> Int32
+        if let handle = dlopen("/System/Library/Frameworks/IOKit.framework/IOKit", RTLD_LAZY),
+           let symbol = dlsym(handle, "IOPMAssertionDeclareUserActivity") {
+            let fn = unsafeBitCast(symbol, to: IOPMAssertionDeclareUserActivity.self)
+            var assertionID: UInt32 = 0
+            let reason = "LightStar remote wake" as CFString
+            let result = fn(reason, 0, &assertionID)
+            if result == 0 {
+                inputLog.info("wakeDisplay: IOPMAssertionDeclareUserActivity succeeded")
+                return
+            }
+            inputLog.error("wakeDisplay: IOPMAssertionDeclareUserActivity failed with \(result)")
+        }
+        if let event = CGEvent(source: nil) {
+            event.type = .mouseMoved
+            event.post(tap: .cghidEventTap)
+            inputLog.info("wakeDisplay: posted synthetic mouse event")
+        }
     }
 
     private func appleScriptTransport(_ action: String) {

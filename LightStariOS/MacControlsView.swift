@@ -19,6 +19,7 @@ struct MacControlsView: View {
                         .init("Desktop", "desktopcomputer") { client.sendMacAction(.desktop) },
                         .init("Launchpad", "square.grid.2x2") { client.sendMacAction(.launchpad) },
                         .init("Lock Screen", "lock.fill") { client.sendMacAction(.lockScreen) },
+                        .init("Wake Mac", "wake") { client.sendMacAction(.wakeDisplay) },
                     ])
 
                     controlGroup("Edit", tiles: [
