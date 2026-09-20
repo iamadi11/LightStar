@@ -58,7 +58,17 @@ Sources: GitHub Actions logs, repository inspection. Independent QA agents still
 - **Product behavior:** Valid clients unchanged
 - **Status:** Implementing
 
-## Not treated as confirmed product bugs
+### ENG-006 — Pointer encode could crash on huge finite deltas
+
+- **Severity:** High (trackpad/gyro path)
+- **Evidence:** [QA tests](bc-dea6386a-879b-53da-a2a9-2da63341edfa) — `encodePointerFrame` does `Int((delta * 10).rounded())` which traps when the scaled Double is infinite
+- **Fix:** Saturate to Int16 without going through unbounded `Int(...)`
+- **Tests:** S011 rewritten; no longer uses values that trap
+- **Status:** Implementing
+
+## Test coverage (not product bugs)
+
+Mock Security/UserJourney suites do not exercise `RemoteControlServer` / `LightBLEManager`. Documented; not rewritten. Added production tests for schedule `isDue` edges, BC05 brightness bytes, weekly timer payload, zero-length frames, pairing charset.
 
 | Item | Classification | Reason |
 |------|----------------|--------|
