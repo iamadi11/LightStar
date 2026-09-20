@@ -30,6 +30,27 @@ final class BLEProtocolTests: XCTestCase {
         ]
         for frame in allFrames { assertFrame(frame) }
     }
+
+    func testBrightnessPayloadClampsToProtocolRange() {
+        XCTAssertEqual(Cmd.brightness(0), [0xBC, 0x05, 0x06, 0x00, 0x64, 0x00, 0x00, 0x00, 0x00, 0x55])
+        XCTAssertEqual(Cmd.brightness(1)[3], 0x03)
+        XCTAssertEqual(Cmd.brightness(1)[4], 0xE8)
+        XCTAssertEqual(Cmd.brightness(-1), Cmd.brightness(0))
+        XCTAssertEqual(Cmd.brightness(2), Cmd.brightness(1))
+    }
+
+    func testWeeklyTimerPayload() {
+        XCTAssertEqual(
+            Cmd.weeklyTimer(slot: 1, powerOn: false, enabled: true, dayMask: 0x1F, hour: 23, minute: 30),
+            [0xBC, 0x0D, 0x06, 1, 0x00, 0x01, 0x1F, 23, 30, 0x55]
+        )
+    }
+
+    func testOEMWeekdayBits() {
+        XCTAssertEqual(UInt8(1 << ((2 + 5) % 7)), 0x01) // Monday
+        XCTAssertEqual(UInt8(1 << ((1 + 5) % 7)), 0x40) // Sunday
+        XCTAssertEqual(UInt8(1 << ((7 + 5) % 7)), 0x20) // Saturday
+    }
 }
 
 final class ColorMathTests: XCTestCase {
@@ -140,6 +161,68 @@ final class LightScheduleTests: XCTestCase {
         let next = schedule.nextFireDate(after: now, calendar: cal)
         XCTAssertNotNil(next)
         XCTAssertGreaterThan(next!, now)
+    }
+
+    func testDisabledScheduleIsNeverDue() {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(secondsFromGMT: 0)!
+        let now = monday0805()
+        let scheduled = eightAM(on: now, cal: cal)
+        let schedule = LightSchedule(
+            label: "Morning",
+            time: scheduled,
+            days: [2],
+            isEnabled: false,
+            action: .powerOn,
+            lastFiredAt: scheduled.addingTimeInterval(-3600)
+        )
+        XCTAssertFalse(schedule.isDue(at: now, calendar: cal))
+        XCTAssertNil(schedule.nextFireDate(after: now, calendar: cal))
+    }
+
+    func testEmptyDaysIsNeverDue() {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(secondsFromGMT: 0)!
+        let now = monday0805()
+        let schedule = LightSchedule(
+            label: "Morning",
+            time: eightAM(on: now, cal: cal),
+            days: [],
+            action: .powerOn,
+            lastFiredAt: now.addingTimeInterval(-3600)
+        )
+        XCTAssertFalse(schedule.isDue(at: now, calendar: cal))
+        XCTAssertNil(schedule.nextFireDate(after: now, calendar: cal))
+    }
+
+    func testCatchUpBoundaryIsInclusive() {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(secondsFromGMT: 0)!
+        let scheduled = eightAM(on: monday0805(), cal: cal)
+        let now = scheduled.addingTimeInterval(15 * 60)
+        let schedule = LightSchedule(
+            label: "Morning",
+            time: scheduled,
+            days: [2],
+            action: .powerOn,
+            lastFiredAt: scheduled.addingTimeInterval(-3600)
+        )
+        XCTAssertTrue(schedule.isDue(at: now, catchUp: 15 * 60, calendar: cal))
+        XCTAssertFalse(schedule.isDue(at: now.addingTimeInterval(1), catchUp: 15 * 60, calendar: cal))
+    }
+
+    func testAlreadyFiredForScheduledInstantIsNotDue() {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(secondsFromGMT: 0)!
+        let scheduled = eightAM(on: monday0805(), cal: cal)
+        let schedule = LightSchedule(
+            label: "Morning",
+            time: scheduled,
+            days: [2],
+            action: .powerOn,
+            lastFiredAt: scheduled
+        )
+        XCTAssertFalse(schedule.isDue(at: monday0805(), calendar: cal))
     }
 }
 
@@ -584,6 +667,16 @@ final class PairingCodeFormatTests: XCTestCase {
         XCTAssertEqual(server.activePairingCode, code)
         let allowed = CharacterSet(charactersIn: "ABCDEFGHJKLMNPQRSTUVWXYZ23456789")
         XCTAssertTrue(code.unicodeScalars.allSatisfy { allowed.contains($0) })
+    }
+
+    func testGeneratedPairingCodesExcludeAmbiguousCharacters() {
+        let server = RemoteControlServer()
+        let forbidden = CharacterSet(charactersIn: "01IO")
+        for _ in 0..<20 {
+            let code = server.generatePairingCode()
+            XCTAssertEqual(code.count, 6)
+            XCTAssertTrue(code.rangeOfCharacter(from: forbidden) == nil, "code \(code) contains ambiguous chars")
+        }
     }
 }
 #endif

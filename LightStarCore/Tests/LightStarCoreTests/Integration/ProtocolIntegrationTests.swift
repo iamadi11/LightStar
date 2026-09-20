@@ -317,6 +317,12 @@ final class ProtocolIntegrationTests: XCTestCase {
         XCTAssertEqual(consumed, encoded.count)
     }
 
+    func testDecodeMessageRejectsZeroLength() {
+        XCTAssertThrowsError(try decodeMessage(from: Data([0, 0, 0, 0]))) { error in
+            XCTAssertEqual(error as? RemoteProtocolError, .invalidLength)
+        }
+    }
+
     func testDecodeMessageRejectsInvalidLength() {
         let bogus = Data([0xFF, 0xFF, 0xFF, 0xFF, 0x00])
         XCTAssertThrowsError(try decodeMessage(from: bogus)) { error in

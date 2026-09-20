@@ -417,14 +417,23 @@ public func encodePointerFrame(deltaX: Double, deltaY: Double, isScroll: Bool) -
     var payload = Data(count: kPointerFramePayloadLength)
     payload[0] = kPointerFrameMagic
     payload[1] = isScroll ? 1 : 0
-    let clampedX = deltaX.isFinite ? deltaX : 0.0
-    let clampedY = deltaY.isFinite ? deltaY : 0.0
-    var x = Int16(clamping: Int((clampedX * 10).rounded())).littleEndian
-    var y = Int16(clamping: Int((clampedY * 10).rounded())).littleEndian
+    var x = pointerDeltaToInt16(deltaX).littleEndian
+    var y = pointerDeltaToInt16(deltaY).littleEndian
     payload.replaceSubrange(2..<4, with: Data(bytes: &x, count: 2))
     payload.replaceSubrange(4..<6, with: Data(bytes: &y, count: 2))
     data.append(payload)
     return data
+}
+
+/// Maps a pointer delta to the on-wire ×10 Int16 without trapping on huge finite values.
+func pointerDeltaToInt16(_ value: Double) -> Int16 {
+    guard value.isFinite else { return 0 }
+    let scaled = value * 10
+    guard scaled.isFinite else { return value > 0 ? .max : .min }
+    let rounded = scaled.rounded()
+    if rounded >= Double(Int16.max) { return .max }
+    if rounded <= Double(Int16.min) { return .min }
+    return Int16(rounded)
 }
 
 public func decodePointerFrame(from data: Data) throws -> (deltaX: Double, deltaY: Double, isScroll: Bool, consumed: Int)? {

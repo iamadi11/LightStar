@@ -177,25 +177,24 @@ final class SecurityTests: XCTestCase {
     func testExtremeMouseDeltas() throws {
         let clampMax = Double(Int16.max) / 10.0   // 3276.7
 
-        let cases: [(dx: Double, dy: Double, expectFinite: Bool)] = [
-            (.greatestFiniteMagnitude, 0,    true),
-            (0, .greatestFiniteMagnitude,    true),
-            (-.greatestFiniteMagnitude, 0,   true),
-            (.nan,      0,                   true),  // NaN → 0
-            (.infinity, 0,                   true),  // Infinity → clamped
+        let cases: [(dx: Double, dy: Double)] = [
+            (1_000_000, 0),
+            (0, 1_000_000),
+            (-1_000_000, 0),
+            (.greatestFiniteMagnitude, 0),
+            (0, -.greatestFiniteMagnitude),
+            (.nan, 0),
+            (.infinity, 0),
+            (-.infinity, 0),
         ]
 
-        for (dx, dy, expectFinite) in cases {
+        for (dx, dy) in cases {
             let frame = encodePointerFrame(deltaX: dx, deltaY: dy, isScroll: false)
-            XCTAssertEqual(frame.count, kPointerFrameLength,
-                           "Frame must be exactly \(kPointerFrameLength) bytes")
-            if expectFinite {
-                let decoded = try XCTUnwrap(try decodePointerFrame(from: frame))
-                XCTAssertTrue(decoded.deltaX.isFinite && decoded.deltaY.isFinite,
-                              "Decoded deltas must be finite, got (\(decoded.deltaX), \(decoded.deltaY))")
-                XCTAssertLessThanOrEqual(abs(decoded.deltaX), clampMax)
-                XCTAssertLessThanOrEqual(abs(decoded.deltaY), clampMax)
-            }
+            XCTAssertEqual(frame.count, kPointerFrameLength)
+            let decoded = try XCTUnwrap(try decodePointerFrame(from: frame))
+            XCTAssertTrue(decoded.deltaX.isFinite && decoded.deltaY.isFinite)
+            XCTAssertLessThanOrEqual(abs(decoded.deltaX), clampMax)
+            XCTAssertLessThanOrEqual(abs(decoded.deltaY), clampMax)
         }
     }
     
