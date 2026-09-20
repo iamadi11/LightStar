@@ -13,7 +13,7 @@ public final class ScreenCaptureKitProvider: NSObject, ScreenFrameProvider {
     public var selectedDisplayID: CGDirectDisplayID?
     
     /// Whether to use GPU-accelerated analysis (Metal). Defaults to true when available.
-    public var useMetalAnalysis: Bool = true
+    public nonisolated(unsafe) var useMetalAnalysis: Bool = true
     
     public private(set) var isRunning = false
     
@@ -96,7 +96,7 @@ public final class ScreenCaptureKitProvider: NSObject, ScreenFrameProvider {
         let avgBlackPercentage = recentBlackPercentages.isEmpty ? 0 : recentBlackPercentages.reduce(0, +) / Double(recentBlackPercentages.count)
         return CaptureProviderDiagnostics(
             providerName: usingMetal ? "ScreenCaptureKit (Metal GPU)" : "ScreenCaptureKit (CPU)",
-            frameRate: frameCount > 1 ? Double(frameCount) / max(0.001, CACurrentMediaTime() - lastFrameTime) : 0,
+            frameRate: frameCount > 1 ? Double(frameCount - 1) / max(0.001, CACurrentMediaTime() - lastFrameTime) : 0,
             resolution: (48, 27),
             captureLatencyMs: 0,
             protectedContentDetected: avgBlackPercentage > 0.6,
@@ -120,7 +120,7 @@ extension ScreenCaptureKitProvider: SCStreamOutput {
         // Use Metal GPU analysis when available and enabled
         let analysis: FrameAnalysis
         let usedMetal: Bool
-        if let metal = MetalColorAnalyzer.shared {
+        if useMetalAnalysis, let metal = MetalColorAnalyzer.shared {
             analysis = metal.analyze(pb)
             usedMetal = true
         } else {

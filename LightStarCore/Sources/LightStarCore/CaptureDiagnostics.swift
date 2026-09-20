@@ -156,6 +156,10 @@ public final class CaptureDiagnostics: ObservableObject {
     
     private var browserMonitorTimer: Timer?
     
+    deinit {
+        browserMonitorTimer?.invalidate()
+    }
+    
     private func startBrowserMonitoring() {
         browserMonitorTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
             Task { @MainActor in

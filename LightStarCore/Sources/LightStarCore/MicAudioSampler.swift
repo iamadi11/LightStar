@@ -50,6 +50,9 @@ public final class MicAudioSampler {
         let input = eng.inputNode
         let fmt = input.outputFormat(forBus: 0)
         guard fmt.sampleRate > 0 else {
+            #if os(iOS)
+            try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+            #endif
             throw NSError(domain: "MicAudio", code: 1,
                           userInfo: [NSLocalizedDescriptionKey: "No microphone available"])
         }

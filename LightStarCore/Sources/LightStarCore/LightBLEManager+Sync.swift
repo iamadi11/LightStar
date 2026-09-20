@@ -62,6 +62,8 @@ public extension LightBLEManager {
     }
 
     // Synchronously tears down all sync state — safe to call from non-async context.
+    private var syncCleanupTask: Task<Void, Never>?
+    
     public func stopSyncInline() {
         transitionTask?.cancel(); transitionTask = nil
         fadeTask?.cancel(); fadeTask = nil
@@ -77,10 +79,13 @@ public extension LightBLEManager {
         flashLevel = 0
         syncMode = .off
         syncColor = nil
-        Task { await self.systemAudio.stop(); await self.micAudio.stop(); await self.screenSampler.stop() }
+        syncCleanupTask = Task { await self.systemAudio.stop(); await self.micAudio.stop(); await self.screenSampler.stop() }
     }
 
     public func buildSync(_ mode: SyncMode, previousMode: SyncMode = .off) async {
+        // Wait for any pending cleanup from stopSyncInline
+        await syncCleanupTask?.value
+        syncCleanupTask = nil
         effectModeActive = false
         guard mode == .off || connectionState == .connected else {
             syncMode = .off
