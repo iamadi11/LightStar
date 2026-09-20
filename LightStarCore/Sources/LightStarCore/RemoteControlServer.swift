@@ -48,7 +48,12 @@ public final class RemoteControlServer: ObservableObject {
     }
     
     public func start(port: UInt16 = kLightStarDefaultPort) {
-        guard case .stopped = state else { return }
+        switch state {
+        case .stopped, .error:
+            closeListenerAndClients()
+        default:
+            return
+        }
         state = .starting
         
         do {
@@ -76,14 +81,7 @@ public final class RemoteControlServer: ObservableObject {
     }
     
     public func stop() {
-        listener?.cancel()
-        listener = nil
-        
-        for (_, connection) in connections {
-            connection.close()
-        }
-        connections.removeAll()
-        connectedClients = []
+        closeListenerAndClients()
         state = .stopped
     }
     
@@ -96,15 +94,27 @@ public final class RemoteControlServer: ObservableObject {
     }
     
     // MARK: - Private
+
+    private func closeListenerAndClients() {
+        listener?.cancel()
+        listener = nil
+        pointerInjector?.cleanup()
+        for (_, connection) in connections {
+            connection.close()
+        }
+        connections.removeAll()
+        connectedClients = []
+    }
     
     private func handleListenerStateChange(_ newState: NWListener.State, port: UInt16) {
         switch newState {
         case .ready:
             state = .running(port: port)
         case .failed(let error):
+            closeListenerAndClients()
             state = .error(lightStarNetworkErrorMessage(error))
-            stop()
         case .cancelled:
+            if case .error = state { break }
             state = .stopped
         default:
             break

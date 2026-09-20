@@ -95,11 +95,17 @@ public enum Cmd {
 
     // BC0D: weekly firmware timer. Slot is the leading 0x01 seen in the APK capture.
     // dayMask uses the same OEM bitmask as BC0B (bit0=Mon … bit6=Sun).
+    // Unused slots must be rewritten with enabled=false so a deleted Mac schedule
+    // cannot keep firing on the strip.
     public static func weeklyTimer(slot: UInt8, powerOn: Bool, enabled: Bool,
                             dayMask: UInt8, hour: UInt8, minute: UInt8) -> [UInt8] {
         [0xBC, 0x0D, 0x06, slot, powerOn ? 0x01 : 0x00, enabled ? 0x01 : 0x00,
          dayMask, hour, minute, 0x55]
     }
+
+    /// Conservative BC0D slot cap. OEM captures used slot 0x01; unused slots
+    /// are rewritten disabled so deleted firmware schedules cannot keep firing.
+    public static let weeklyTimerSlotCount: UInt8 = 8
 
     // BC13: firmware animation scene 0x00–0xFF minus 0x3D/0x5B/0x96
     public static func animation(id: UInt8) -> [UInt8] {

@@ -172,7 +172,7 @@ final class SecurityTests: XCTestCase {
     /// Tests that extreme mouse delta values are sanitised by encodePointerFrame.
     /// Non-finite inputs must be clamped to 0; finite overflow must be clamped to ±32767/10.
     func testExtremeMouseDeltas() throws {
-        let clampMax = Double(Int16.max) / 10.0   // 3276.7
+        let clampMax = Double(Int16.min).magnitude / 10.0   // 3276.8; Int16.min is one larger than max
 
         let cases: [(dx: Double, dy: Double)] = [
             (1_000_000, 0),

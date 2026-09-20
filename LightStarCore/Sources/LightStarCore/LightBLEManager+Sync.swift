@@ -77,6 +77,7 @@ public extension LightBLEManager {
             lastSyncMode = syncMode
             UserDefaults.standard.set(syncMode.rawValue, forKey: "lastSyncMode")
         }
+        if audioInputSource == .stripMic { write(Cmd.stripMic(enabled: false)) }
         systemAudio.onBands = nil
         micAudio.onBands = nil
         screenSampler.onColor = nil

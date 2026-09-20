@@ -371,6 +371,46 @@ public final class LightBLEManager: NSObject {
         extraLights.removeAll()
     }
 
+    private func extraLightIndex(of peripheral: CBPeripheral) -> Int? {
+        var foundIdx: Int? = nil
+        for (idx, light) in extraLights.enumerated() {
+            if light.peripheral === peripheral {
+                foundIdx = idx
+                break
+            }
+        }
+        return foundIdx
+    }
+
+    /// Power-cycle on connect (mirrors OEM app init). Hue/brightness after
+    /// powerOff wakes the BC/55, so appearance and sync restore only when on.
+    func startConnectSequence(targetOn: Bool) {
+        connectSequenceTask?.cancel()
+        connectSequenceTask = Task { @MainActor in
+            self.write(Cmd.powerOff)
+            do { try await Task.sleep(nanoseconds: 500_000_000) } catch { return }
+            if targetOn {
+                self.write(Cmd.powerOn)
+                do { try await Task.sleep(nanoseconds: 500_000_000) } catch { return }
+            }
+            guard !Task.isCancelled else { return }
+            self.isOn = targetOn
+            if BLEDiscoveryPolicy.shouldRestoreAppearanceOnConnect(targetOn: targetOn) {
+                let (h, s, _) = self.color.hsvComponents
+                self.write(Cmd.hue(h, saturation: s))
+                self.write(Cmd.brightness(self.brightness))
+                let modeToRestore = self.lastSyncMode
+                self.lastSyncMode = .off
+                if modeToRestore != .off {
+                    self.setSyncMode(modeToRestore)
+                } else if self.circadianEnabled {
+                    self.applyCircadianCCT()
+                }
+            }
+            self.onConnect?()
+        }
+    }
+
     private func startScan() {
         guard central.state == .poweredOn else { return }
         connectionError = nil
@@ -507,21 +547,17 @@ extension LightBLEManager: CBCentralManagerDelegate {
             if self.multiLightEnabled && self.peripheral != nil {
                 // Extra light — connect without stopping scan (more may appear)
                 guard discoveredPeripheral !== self.peripheral else { return }
-                // Manual loop instead of contains(where:) to avoid nested closure capture concurrency issues
-                var alreadyTracked = false
-                for light in self.extraLights {
-                    if light.peripheral === discoveredPeripheral {
-                        alreadyTracked = true
-                        break
-                    }
-                }
-                guard !alreadyTracked else { return }
+                guard self.extraLightIndex(of: discoveredPeripheral) == nil else { return }
                 discoveredPeripheral.delegate = self
                 self.extraLights.append((peripheral: discoveredPeripheral, writeChar: nil))
                 centralManager.connect(discoveredPeripheral, options: nil)
                 return
             }
-            centralManager.stopScan()
+            if BLEDiscoveryPolicy.shouldStopScanOnPrimaryDiscovery(multiLightEnabled: self.multiLightEnabled) {
+                centralManager.stopScan()
+                self.scanTimeoutTask?.cancel()
+                self.scanTimeoutTask = nil
+            }
             self.peripheral = discoveredPeripheral
             self.capturedAdvertisementStrings = advStrings
             self.capturedRSSI = rssi
@@ -547,7 +583,16 @@ extension LightBLEManager: CBCentralManagerDelegate {
     public nonisolated func centralManager(_ central: CBCentralManager,
                                     didFailToConnect peripheral: CBPeripheral,
                                     error: (any Error)?) {
-        Task { @MainActor in self.scheduleReconnect() }
+        nonisolated(unsafe) let failedPeripheral = peripheral
+        Task { @MainActor in
+            if let idx = self.extraLightIndex(of: failedPeripheral) {
+                self.extraLights.remove(at: idx)
+            }
+            let isPrimary = failedPeripheral === self.peripheral
+            if BLEDiscoveryPolicy.shouldReconnectPrimaryAfterConnectFailure(failedIsPrimary: isPrimary) {
+                self.scheduleReconnect()
+            }
+        }
     }
 
     public nonisolated func centralManager(_ central: CBCentralManager,
@@ -555,16 +600,7 @@ extension LightBLEManager: CBCentralManagerDelegate {
                                     error: (any Error)?) {
         nonisolated(unsafe) let disconnectedPeripheral = peripheral
         Task { @MainActor in
-            // Extra light drop — just remove it, don't affect primary connection state
-            // Manual loop instead of firstIndex(where:) to avoid nested closure capture concurrency issues
-            var foundIdx: Int? = nil
-            for (idx, light) in self.extraLights.enumerated() {
-                if light.peripheral === disconnectedPeripheral {
-                    foundIdx = idx
-                    break
-                }
-            }
-            if let idx = foundIdx {
+            if let idx = self.extraLightIndex(of: disconnectedPeripheral) {
                 self.extraLights.remove(at: idx)
                 return
             }
@@ -625,22 +661,14 @@ extension LightBLEManager: CBPeripheralDelegate {
         Task { @MainActor in self.deviceLog.append(line) }
         nonisolated(unsafe) let discoveredPeripheral = peripheral
         Task { @MainActor in
-            // Check if this is an extra light
-            // Manual loop instead of firstIndex(where:) to avoid nested closure capture concurrency issues
-            var extraLightIdx: Int? = nil
-            for (idx, light) in self.extraLights.enumerated() {
-                if light.peripheral === discoveredPeripheral {
-                    extraLightIdx = idx
-                    break
-                }
-            }
-            if let idx = extraLightIdx {
+            if let idx = self.extraLightIndex(of: discoveredPeripheral) {
                 if let ch = chars.first(where: { $0.uuid == Self.writeCharUUID }) {
                     self.extraLights[idx].writeChar = ch
                     print("[LightStar] extra light ready: \(discoveredPeripheral.name ?? "unknown")")
                 }
                 return
             }
+            let writeCharWasNil = self.writeChar == nil
             for char in chars {
                 if char.uuid == Self.writeCharUUID {
                     self.writeChar = char
@@ -654,37 +682,15 @@ extension LightBLEManager: CBPeripheralDelegate {
                     discoveredPeripheral.readValue(for: char)
                 }
             }
-            if self.writeChar != nil {
+            if BLEDiscoveryPolicy.shouldStartConnectSequence(writeCharAlreadyReady: !writeCharWasNil),
+               self.writeChar != nil {
                 self.connectingTimeoutTask?.cancel()
                 self.connectingTimeoutTask = nil
                 self.connectionState = .connected
                 self.connectionError = nil
                 self.sendTimeSync()
                 let targetOn = self.isOn  // respect persisted power state from before disconnect
-                // Power-cycle on connect (mirrors OEM app init), then clear animation
-                self.connectSequenceTask = Task { @MainActor in
-                    self.write(Cmd.powerOff)
-                    do { try await Task.sleep(nanoseconds: 500_000_000) } catch { return }
-                    if targetOn {
-                        self.write(Cmd.powerOn)
-                        do { try await Task.sleep(nanoseconds: 500_000_000) } catch { return }
-                    }
-                    // Guard: user may have tapped power while sequence was sleeping.
-                    guard !Task.isCancelled else { return }
-                    self.isOn = targetOn
-                    let (h, s, _) = self.color.hsvComponents
-                    self.write(Cmd.hue(h, saturation: s))
-                    self.write(Cmd.brightness(self.brightness))
-                    // Restore the sync mode that was active before disconnect (e.g. after sleep)
-                    let modeToRestore = self.lastSyncMode
-                    self.lastSyncMode = .off
-                    if modeToRestore != .off {
-                        self.setSyncMode(modeToRestore)
-                    } else if self.circadianEnabled {
-                        self.applyCircadianCCT()
-                    }
-                    self.onConnect?()
-                }
+                self.startConnectSequence(targetOn: targetOn)
             }
         }
     }
@@ -715,5 +721,26 @@ extension LightBLEManager: CBPeripheralDelegate {
             self.saveDeviceInfoIfComplete()
             self.notifyTapHandler?(data)
         }
+    }
+}
+
+/// BLE connect / scan decisions extracted so they can be regression-tested
+/// without a CoreBluetooth stack.
+public enum BLEDiscoveryPolicy: Sendable {
+    public static func shouldStopScanOnPrimaryDiscovery(multiLightEnabled: Bool) -> Bool {
+        !multiLightEnabled
+    }
+
+    public static func shouldReconnectPrimaryAfterConnectFailure(failedIsPrimary: Bool) -> Bool {
+        failedIsPrimary
+    }
+
+    public static func shouldStartConnectSequence(writeCharAlreadyReady: Bool) -> Bool {
+        !writeCharAlreadyReady
+    }
+
+    /// Hue/brightness after powerOff wakes the BC/55 (see `setPower`).
+    public static func shouldRestoreAppearanceOnConnect(targetOn: Bool) -> Bool {
+        targetOn
     }
 }

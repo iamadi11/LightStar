@@ -60,8 +60,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             guard let self else { return }
             // Drain first: a schedule that fired while disconnected is what asked
             // for this connection, so it should win over the default preset.
-            self.schedules.drainPendingActions()
-            guard self.ble.syncMode == .off,
+            let pendingCount = self.schedules.drainPendingActions()
+            self.schedules.pushFirmwareTimers()
+            guard ConnectAppearancePolicy.shouldApplyDefaultPreset(
+                isOn: self.ble.isOn,
+                isSyncing: self.ble.syncMode != .off,
+                pendingScheduleCount: pendingCount
+            ),
                   let id = self.presets.defaultPresetID,
                   let preset = self.presets.presets.first(where: { $0.id == id })
             else { return }

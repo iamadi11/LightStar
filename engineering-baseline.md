@@ -1,18 +1,17 @@
 # Engineering Baseline
 
 Recorded: 2026-09-20 (updated)
-HEAD: `26f9cd6` on `origin/main`
+HEAD at last baseline: `c37f751` on `cursor/sdlc-quality-pass-6022` (this pass continues from there)
 
 ## Latest CI evidence
 
 | Commit | Run | Result |
 |--------|-----|--------|
 | `26f9cd6` main push | 35534071590 | **cancelled** after 2s — tests not run |
-| PR `0754826` / later mock-lock commit | 35534072435 | **failure** — NSLock in async mock `send` |
-| Pre-merge `db5c5d6` | 35533715892 | **failure** — deinit isolation |
+| `c37f751` PR #11 | 35534500417 | **failure** — compile succeeded; 125 tests, 2 assertions in `testExtremeMouseDeltas` (`3276.8` > `3276.7`) |
+| Prior PR jobs | 35534454058 / 35534373197 / 35534249176 | cancelled or failed |
 
 Local `swift test` / `xcodebuild`: **not executed** (no Swift on this Linux agent).
-
 
 ## Product
 
@@ -45,38 +44,14 @@ xcodebuild -scheme LightStar -configuration Debug
 | Hardware / BLE | **Not executed** | Linux VM |
 | Manual device install | **Not executed** | No devices |
 
-## GitHub Actions baseline (`origin/main`)
-
-Latest run inspected: [35533715892](https://github.com/iamadi11/LightStar/actions/runs/35533715892)
-
-| Job | Result |
-|-----|--------|
-| `CI / Generate, test, build` on `macos-15` | **failure** (exit 1) |
-
-Compile errors that prevented tests from running:
-
-1. `PresetStore.swift:95` — MainActor `iCloudObserver` accessed from `deinit`
-2. `CaptureDiagnostics.swift:160` — MainActor `browserMonitorTimer` accessed from `deinit`
-3. `BLEWriteCoalescer.swift:24` — MainActor `timer` accessed from `deinit`
-4. `LightBLEManager.swift:262` — MainActor `circadianTimer` accessed from `deinit`
-
-Tests were **not executed** in that run because compilation failed.
-
-Recent CI history (all failed):
-
-- Merge reliability audit phase 2
-- Merge reliability audit
-- Fix bug #36
-- QA round 4 commits
-
 ## Existing test inventory (code present, not run here)
 
 `LightStarCore/Tests/LightStarCoreTests/`
 
-- `CoreTests.swift` — protocol frames, color math, schedules, coalescer, remote messages
-- `Integration/SecurityTests.swift` — mock authenticator (not live `RemoteControlServer`)
+- `CoreTests.swift` — protocol frames, color math, schedules, coalescer, remote messages, connect/firmware policies
+- `Integration/SecurityTests.swift` — mock authenticator + pointer encode clamp
 - `Integration/ProtocolIntegrationTests.swift` — encode/decode
-- `Integration/FrameAnalysisTests.swift` — mock frames
+- `Integration/FrameAnalysisTests.swift` — mock frames (wait on `framesDelivered`)
 - `Integration/UserJourneyTests.swift` — mock journeys
 - Mocks for transport, lighting, input, screen, authenticator
 
@@ -96,7 +71,7 @@ App targets (`LightStar`, `LightStariOS`) have **no** Xcode test targets (`proje
 - BLE connection state machine and scan timeouts
 - ScreenCaptureKit + Metal fallback
 - Swift 6 strict concurrency (`SWIFT_STRICT_CONCURRENCY: complete`)
-- Schedule timer arming and persistence
+- Schedule timer arming, pending drain vs default preset, BC0D firmware timers
 
 ## Known limitation of this baseline
 

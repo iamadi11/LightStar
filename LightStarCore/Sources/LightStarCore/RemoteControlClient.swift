@@ -138,17 +138,7 @@ public final class RemoteControlClient: ObservableObject {
         state = .connecting(server.name)
         connectedServerName = server.name
         
-        connectionTimeoutTask = Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 10_000_000_000)
-            guard !Task.isCancelled else { return }
-            if case .connecting = self.state {
-                self.disconnect()
-                self.state = .error("Connection timed out")
-            } else if case .authenticating = self.state {
-                self.disconnect()
-                self.state = .error("Authentication timed out")
-            }
-        }
+        armHandshakeTimeout()
         
         let params = makeLightStarTCPParameters()
         connection = NWConnection(to: server.endpoint, using: params)
@@ -170,6 +160,33 @@ public final class RemoteControlClient: ObservableObject {
     public func disconnect() {
         cleanupConnection()
         state = .disconnected
+    }
+
+    private func fail(_ message: String) {
+        cleanupConnection()
+        state = .error(message)
+    }
+
+    private func handleTransportClose() {
+        let next = RemoteClientSessionPolicy.stateAfterTransportClose(current: state)
+        cleanupConnection()
+        state = next
+    }
+
+    private func armHandshakeTimeout() {
+        connectionTimeoutTask?.cancel()
+        connectionTimeoutTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 10_000_000_000)
+            guard !Task.isCancelled else { return }
+            switch self.state {
+            case .connecting:
+                self.fail("Connection timed out")
+            case .authenticating:
+                self.fail("Authentication timed out")
+            default:
+                break
+            }
+        }
     }
     
     private func cleanupConnection() {
@@ -219,6 +236,7 @@ public final class RemoteControlClient: ObservableObject {
     
     private func sendHello() {
         state = .authenticating
+        armHandshakeTimeout()
         let hello = HelloMessage(deviceName: deviceName, deviceType: "iOS")
         if let message = try? RemoteMessage(type: .hello, content: hello) {
             send(message)
@@ -244,7 +262,7 @@ public final class RemoteControlClient: ObservableObject {
                 if let data = data, !data.isEmpty {
                     guard !receiveBufferWouldOverflow(currentCount: self.receiveBuffer.count, incomingCount: data.count) else {
                         self.receiveBuffer.removeAll()
-                        self.disconnect()
+                        self.handleTransportClose()
                         return
                     }
                     self.receiveBuffer.append(data)
@@ -252,7 +270,7 @@ public final class RemoteControlClient: ObservableObject {
                 }
 
                 if isComplete || error != nil {
-                    self.disconnect()
+                    self.handleTransportClose()
                 } else {
                     self.startReceiving()
                 }
@@ -273,7 +291,7 @@ public final class RemoteControlClient: ObservableObject {
                 break
             } catch {
                 receiveBuffer.removeAll()
-                disconnect()
+                handleTransportClose()
                 return
             }
         }
@@ -306,15 +324,14 @@ public final class RemoteControlClient: ObservableObject {
         guard let ack = try? message.decode(HelloAckMessage.self) else { return }
         
         if !ack.accepted {
-            connectionTimeoutTask?.cancel()
-            cleanupConnection()
-            state = .error(ack.errorMessage ?? "Connection rejected")
+            fail(ack.errorMessage ?? "Connection rejected")
             return
         }
         
         if ack.requiresPairing {
             requiresPairing = true
             state = .authenticating
+            armHandshakeTimeout()
         } else {
             connectionTimeoutTask?.cancel()
             requiresPairing = false
@@ -335,7 +352,7 @@ public final class RemoteControlClient: ObservableObject {
             startPingTimer()
             requestState()
         } else {
-            state = .error(ack.errorMessage ?? "Pairing failed")
+            fail(ack.errorMessage ?? "Pairing failed")
         }
     }
     
@@ -353,8 +370,7 @@ public final class RemoteControlClient: ObservableObject {
                 try? await Task.sleep(nanoseconds: 5_000_000_000)
                 guard !Task.isCancelled, case .connected = self.state else { break }
                 if let lastPong = self.lastPongTime, Date().timeIntervalSince(lastPong) > 15 {
-                    self.disconnect()
-                    self.state = .error("Connection timed out")
+                    self.fail("Connection timed out")
                     break
                 }
                 self.send(RemoteMessage(type: .ping))
@@ -512,6 +528,16 @@ public final class RemoteControlClient: ObservableObject {
         if let msg = try? RemoteMessage(type: .writeFrame, content: WriteFrameMessage(bytes: bytes)) {
             send(msg)
         }
+    }
+}
+
+/// Pairing/error state must survive a TCP close that arrives after `.error` is set.
+public enum RemoteClientSessionPolicy: Sendable {
+    public static func stateAfterTransportClose(
+        current: RemoteControlClient.ConnectionState
+    ) -> RemoteControlClient.ConnectionState {
+        if case .error = current { return current }
+        return .disconnected
     }
 }
 

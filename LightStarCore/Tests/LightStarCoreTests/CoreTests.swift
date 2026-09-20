@@ -295,9 +295,9 @@ final class ScheduleStorePendingTests: XCTestCase {
         let store = ScheduleStore()
         store.enqueuePendingForTesting(.powerOff)
         XCTAssertEqual(store.pendingActions.count, 1)
-        store.drainPendingActions()
+        XCTAssertEqual(store.drainPendingActions(), 1)
         XCTAssertTrue(store.pendingActions.isEmpty)
-        store.drainPendingActions()
+        XCTAssertEqual(store.drainPendingActions(), 0)
         XCTAssertTrue(store.pendingActions.isEmpty)
     }
 }
@@ -728,5 +728,104 @@ final class ReceiveBufferOverflowTests: XCTestCase {
             currentCount: kLightStarMaxReceiveBufferBytes - 10,
             incomingCount: 11
         ))
+    }
+}
+
+final class ConnectAndSchedulePolicyTests: XCTestCase {
+    func testDefaultPresetYieldsToPendingScheduleAndPowerOff() {
+        XCTAssertTrue(ConnectAppearancePolicy.shouldApplyDefaultPreset(
+            isOn: true, isSyncing: false, pendingScheduleCount: 0
+        ))
+        XCTAssertFalse(ConnectAppearancePolicy.shouldApplyDefaultPreset(
+            isOn: true, isSyncing: false, pendingScheduleCount: 1
+        ))
+        XCTAssertFalse(ConnectAppearancePolicy.shouldApplyDefaultPreset(
+            isOn: false, isSyncing: false, pendingScheduleCount: 0
+        ))
+        XCTAssertFalse(ConnectAppearancePolicy.shouldApplyDefaultPreset(
+            isOn: true, isSyncing: true, pendingScheduleCount: 0
+        ))
+    }
+
+    func testConnectInitDoesNotRestoreAppearanceWhenOff() {
+        XCTAssertTrue(BLEDiscoveryPolicy.shouldRestoreAppearanceOnConnect(targetOn: true))
+        XCTAssertFalse(BLEDiscoveryPolicy.shouldRestoreAppearanceOnConnect(targetOn: false))
+    }
+
+    func testMultiLightKeepsScanningAfterPrimary() {
+        XCTAssertTrue(BLEDiscoveryPolicy.shouldStopScanOnPrimaryDiscovery(multiLightEnabled: false))
+        XCTAssertFalse(BLEDiscoveryPolicy.shouldStopScanOnPrimaryDiscovery(multiLightEnabled: true))
+    }
+
+    func testExtraLightFailureDoesNotReconnectPrimary() {
+        XCTAssertTrue(BLEDiscoveryPolicy.shouldReconnectPrimaryAfterConnectFailure(failedIsPrimary: true))
+        XCTAssertFalse(BLEDiscoveryPolicy.shouldReconnectPrimaryAfterConnectFailure(failedIsPrimary: false))
+    }
+
+    func testConnectSequenceStartsOnlyWhenWriteCharIsFirstFound() {
+        XCTAssertTrue(BLEDiscoveryPolicy.shouldStartConnectSequence(writeCharAlreadyReady: false))
+        XCTAssertFalse(BLEDiscoveryPolicy.shouldStartConnectSequence(writeCharAlreadyReady: true))
+    }
+
+    func testFirmwareTimersDisableUnusedSlots() {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(secondsFromGMT: 0)!
+        var comps = DateComponents()
+        comps.year = 2026; comps.month = 1; comps.day = 5
+        comps.hour = 23; comps.minute = 30
+        let time = cal.date(from: comps)!
+        let bedtime = LightSchedule(
+            label: "Bed",
+            time: time,
+            days: [2],
+            action: .powerOff,
+            useFirmwareTimer: true
+        )
+        let ignored = LightSchedule(
+            label: "Mac only",
+            time: time,
+            days: [2],
+            action: .powerOn,
+            useFirmwareTimer: false
+        )
+        let frames = FirmwareTimerSync.frames(for: [bedtime, ignored], calendar: cal)
+        XCTAssertEqual(frames.count, Int(Cmd.weeklyTimerSlotCount))
+        XCTAssertEqual(frames[0][3], 1, "first firmware schedule occupies slot 1")
+        XCTAssertEqual(frames[0][4], 0, "powerOff")
+        XCTAssertEqual(frames[0][5], 1, "enabled")
+        XCTAssertEqual(frames[0][7], 23)
+        XCTAssertEqual(frames[0][8], 30)
+        XCTAssertEqual(frames[1][3], 2)
+        XCTAssertEqual(frames[1][5], 0, "unused slot must be disabled")
+        XCTAssertEqual(frames.last?[3], Cmd.weeklyTimerSlotCount)
+        XCTAssertEqual(frames.last?[5], 0)
+    }
+
+    func testFirmwareTimerCapClearsWhenNoneRemain() {
+        let frames = FirmwareTimerSync.frames(for: [])
+        XCTAssertEqual(frames.count, Int(Cmd.weeklyTimerSlotCount))
+        XCTAssertTrue(frames.allSatisfy { $0[5] == 0 })
+    }
+
+    func testTransportClosePreservesPairingError() {
+        let failed = RemoteClientSessionPolicy.stateAfterTransportClose(
+            current: .error("Pairing failed")
+        )
+        XCTAssertEqual(failed, .error("Pairing failed"))
+        XCTAssertEqual(
+            RemoteClientSessionPolicy.stateAfterTransportClose(current: .authenticating),
+            .disconnected
+        )
+        XCTAssertEqual(
+            RemoteClientSessionPolicy.stateAfterTransportClose(current: .connected("Mac")),
+            .disconnected
+        )
+    }
+
+    func testPointerDeltaSaturationUsesInt16Range() {
+        XCTAssertEqual(pointerDeltaToInt16(.greatestFiniteMagnitude), .max)
+        XCTAssertEqual(pointerDeltaToInt16(-.greatestFiniteMagnitude), .min)
+        XCTAssertEqual(pointerDeltaToInt16(.infinity), 0)
+        XCTAssertEqual(pointerDeltaToInt16(.nan), 0)
     }
 }

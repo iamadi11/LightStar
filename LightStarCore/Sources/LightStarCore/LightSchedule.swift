@@ -141,10 +141,14 @@ public final class ScheduleStore {
         armNextTimer()
     }
 
-    public func drainPendingActions() {
+    /// Returns how many queued actions were applied so connect-restore can
+    /// skip the default preset when a schedule already chose the post-connect state.
+    @discardableResult
+    public func drainPendingActions() -> Int {
         let queued = pendingActions
         pendingActions.removeAll()
         for action in queued { apply(action) }
+        return queued.count
     }
 
     /// Test seam: enqueue as if a schedule fired while disconnected.
@@ -194,32 +198,8 @@ public final class ScheduleStore {
 
     public func pushFirmwareTimers() {
         guard let ble, ble.connectionState == .connected else { return }
-        let cal = Calendar.current
-        var slot: UInt8 = 1
-        for schedule in schedules where schedule.firmwareTimerEnabled {
-            let hm = cal.dateComponents([.hour, .minute], from: schedule.time)
-            let hour = UInt8(hm.hour ?? 0)
-            let minute = UInt8(hm.minute ?? 0)
-            let powerOn: Bool
-            switch schedule.action {
-            case .powerOn, .preset: powerOn = true
-            case .powerOff: powerOn = false
-            }
-            // Day byte is an OEM bitmask: bit0=Mon … bit6=Sun.
-            var mask: UInt8 = 0
-            for weekday in schedule.days {
-                mask |= UInt8(1 << ((weekday + 5) % 7))
-            }
-            ble.write(Cmd.weeklyTimer(
-                slot: slot,
-                powerOn: powerOn,
-                enabled: schedule.isEnabled,
-                dayMask: mask,
-                hour: hour,
-                minute: minute
-            ))
-            slot &+= 1
-            if slot == 0 { break }
+        for frame in FirmwareTimerSync.frames(for: schedules) {
+            ble.write(frame)
         }
     }
 
@@ -235,5 +215,65 @@ public final class ScheduleStore {
             if copy.lastFiredAt == nil { copy.lastFiredAt = now }
             return copy
         }
+    }
+}
+
+/// Default-preset restore after BLE connect. A queued schedule that caused the
+/// reconnect, or a strip that should stay off, must win over the default look.
+public enum ConnectAppearancePolicy: Sendable {
+    public static func shouldApplyDefaultPreset(
+        isOn: Bool,
+        isSyncing: Bool,
+        pendingScheduleCount: Int
+    ) -> Bool {
+        isOn && !isSyncing && pendingScheduleCount == 0
+    }
+}
+
+/// Builds the full BC0D weekly-timer table, including disabled leftover slots.
+public enum FirmwareTimerSync: Sendable {
+    public static func frames(
+        for schedules: [LightSchedule],
+        calendar: Calendar = .current
+    ) -> [[UInt8]] {
+        var frames: [[UInt8]] = []
+        var slot: UInt8 = 1
+        for schedule in schedules where schedule.firmwareTimerEnabled {
+            let hm = calendar.dateComponents([.hour, .minute], from: schedule.time)
+            let hour = UInt8(hm.hour ?? 0)
+            let minute = UInt8(hm.minute ?? 0)
+            let powerOn: Bool
+            switch schedule.action {
+            case .powerOn, .preset: powerOn = true
+            case .powerOff: powerOn = false
+            }
+            // Day byte is an OEM bitmask: bit0=Mon … bit6=Sun.
+            var mask: UInt8 = 0
+            for weekday in schedule.days {
+                mask |= UInt8(1 << ((weekday + 5) % 7))
+            }
+            frames.append(Cmd.weeklyTimer(
+                slot: slot,
+                powerOn: powerOn,
+                enabled: schedule.isEnabled,
+                dayMask: mask,
+                hour: hour,
+                minute: minute
+            ))
+            slot &+= 1
+            if slot > Cmd.weeklyTimerSlotCount { break }
+        }
+        while slot <= Cmd.weeklyTimerSlotCount {
+            frames.append(Cmd.weeklyTimer(
+                slot: slot,
+                powerOn: false,
+                enabled: false,
+                dayMask: 0,
+                hour: 0,
+                minute: 0
+            ))
+            slot &+= 1
+        }
+        return frames
     }
 }
