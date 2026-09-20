@@ -179,6 +179,7 @@ struct RemoteControlView: View {
                 .disabled(pairingCode.count != 4)
                 
                 Button("Cancel") {
+                    pairingCode = ""
                     client.disconnect()
                 }
                 .buttonStyle(.bordered)

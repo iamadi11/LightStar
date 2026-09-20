@@ -159,9 +159,20 @@ public final class MacPointerInjector: @unchecked Sendable {
 
     public func drag(deltaX: Double, deltaY: Double) {
         lock.lock()
+        defer { lock.unlock() }
         leftDown = true
-        lock.unlock()
-        move(deltaX: deltaX, deltaY: deltaY)
+        let dx = deltaX * mouseSensitivity
+        let dy = deltaY * mouseSensitivity
+        refreshCursorIfNeededLocked()
+        location.x += CGFloat(dx)
+        location.y += CGFloat(dy)
+        location = Self.clampToDisplays(location)
+        let stepX = RemotePixelQueue.takeInteger(from: &fracX, adding: dx)
+        let stepY = RemotePixelQueue.takeInteger(from: &fracY, adding: dy)
+        guard stepX != 0 || stepY != 0 else { return }
+        posted = CGPoint(x: posted.x + CGFloat(stepX), y: posted.y + CGFloat(stepY))
+        posted = Self.clampToDisplays(posted)
+        postLocked(type: .leftMouseDragged, button: .left, deltaX: Double(stepX), deltaY: Double(stepY), clickState: 1)
     }
 
     public func scroll(deltaX: Double, deltaY: Double) {

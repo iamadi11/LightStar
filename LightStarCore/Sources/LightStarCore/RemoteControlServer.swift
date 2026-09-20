@@ -17,6 +17,10 @@ public final class RemoteControlServer: ObservableObject {
     @Published public private(set) var connectedClients: [String] = []
     @Published public var requirePairing: Bool = false
     
+    /// The current pairing code displayed to the user. Nil when no pairing is in progress.
+    @Published public private(set) var activePairingCode: String?
+    private var pairingCodeExpireTask: Task<Void, Never>?
+    
     /// Called when a client sends a control command.
     public var onCommand: ((RemoteMessage, @escaping (RemoteMessage?) -> Void) -> Void)?
     /// Pointer injection off the MainActor. Set by RemoteControlCoordinator.
@@ -199,6 +203,19 @@ public final class RemoteControlServer: ObservableObject {
         }
     }
     
+    /// Generate a new pairing code that expires after 60 seconds.
+    public func generatePairingCode() -> String {
+        pairingCodeExpireTask?.cancel()
+        let code = String(format: "%04d", Int.random(in: 0...9999))
+        activePairingCode = code
+        pairingCodeExpireTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 60_000_000_000)
+            guard !Task.isCancelled, self.activePairingCode == code else { return }
+            self.activePairingCode = nil
+        }
+        return code
+    }
+    
     private func handlePair(_ message: RemoteMessage, connection: ClientConnection) {
         guard let pair = try? message.decode(PairMessage.self) else {
             let error = PairAckMessage(success: false, errorMessage: "Invalid pairing message")
@@ -208,23 +225,25 @@ public final class RemoteControlServer: ObservableObject {
             return
         }
         
-        // Simple pairing: accept any 4-digit code for now
-        // In production, display code on Mac and require user to enter it on iPhone
-        if pair.pairingCode.count == 4, pair.pairingCode.allSatisfy({ $0.isNumber }) {
-            connection.authenticated = true
-            let ack = PairAckMessage(success: true, sessionToken: UUID().uuidString)
-            if let response = try? RemoteMessage(type: .pairAck, content: ack) {
-                connection.send(response)
-            }
-            updateConnectedClientsList()
-            if let state = getState?(), let stateMsg = try? RemoteMessage(type: .stateUpdate, content: state) {
-                connection.send(stateMsg)
-            }
-        } else {
+        guard let expectedCode = activePairingCode,
+              pair.pairingCode == expectedCode else {
             let error = PairAckMessage(success: false, errorMessage: "Invalid pairing code")
             if let response = try? RemoteMessage(type: .pairAck, content: error) {
                 connection.send(response)
             }
+            return
+        }
+        
+        activePairingCode = nil
+        pairingCodeExpireTask?.cancel()
+        connection.authenticated = true
+        let ack = PairAckMessage(success: true, sessionToken: UUID().uuidString)
+        if let response = try? RemoteMessage(type: .pairAck, content: ack) {
+            connection.send(response)
+        }
+        updateConnectedClientsList()
+        if let state = getState?(), let stateMsg = try? RemoteMessage(type: .stateUpdate, content: state) {
+            connection.send(stateMsg)
         }
     }
     

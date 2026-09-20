@@ -153,6 +153,11 @@ public final class RemoteControlClient: ObservableObject {
     }
     
     public func disconnect() {
+        cleanupConnection()
+        state = .disconnected
+    }
+    
+    private func cleanupConnection() {
         pingTask?.cancel()
         pingTask = nil
         pointerChannel.reset()
@@ -160,7 +165,6 @@ public final class RemoteControlClient: ObservableObject {
         connection?.cancel()
         connection = nil
         receiveBuffer = Data()
-        state = .disconnected
         currentState = nil
         requiresPairing = false
         connectedServerName = nil
@@ -278,8 +282,8 @@ public final class RemoteControlClient: ObservableObject {
         guard let ack = try? message.decode(HelloAckMessage.self) else { return }
         
         if !ack.accepted {
+            cleanupConnection()
             state = .error(ack.errorMessage ?? "Connection rejected")
-            disconnect()
             return
         }
         
