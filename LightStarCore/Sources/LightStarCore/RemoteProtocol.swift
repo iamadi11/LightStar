@@ -9,6 +9,9 @@ public let kLightStarServiceType = "_lightstar._tcp"
 /// Default port for the control server.
 public let kLightStarDefaultPort: UInt16 = 19384
 
+/// Length of generated pairing codes (alphanumeric, excluding ambiguous characters).
+public let kLightStarPairingCodeLength = 6
+
 // MARK: - Message Types
 
 /// Message type identifiers for the LightStar remote protocol.

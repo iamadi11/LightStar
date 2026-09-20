@@ -573,3 +573,17 @@ final class RemoteProtocolTests: XCTestCase {
         }
     }
 }
+
+#if os(macOS)
+@MainActor
+final class PairingCodeFormatTests: XCTestCase {
+    func testGeneratedPairingCodeMatchesProtocolLength() {
+        let server = RemoteControlServer()
+        let code = server.generatePairingCode()
+        XCTAssertEqual(code.count, kLightStarPairingCodeLength)
+        XCTAssertEqual(server.activePairingCode, code)
+        let allowed = CharacterSet(charactersIn: "ABCDEFGHJKLMNPQRSTUVWXYZ23456789")
+        XCTAssertTrue(code.unicodeScalars.allSatisfy { allowed.contains($0) })
+    }
+}
+#endif

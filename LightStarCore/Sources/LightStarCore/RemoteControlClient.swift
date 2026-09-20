@@ -575,7 +575,7 @@ private final class PointerChannel: @unchecked Sendable {
     }
 
     func send(_ message: RemoteMessage) {
-        let work = { [weak self] in
+        let work: @Sendable () -> Void = { [weak self] in
             self?.flushAccumulators()
             self?.writeJSON(message)
         }

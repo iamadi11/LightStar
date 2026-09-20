@@ -152,7 +152,9 @@ public final class LightBLEManager: NSObject {
             if circadianEnabled { startCircadianTimer() } else { stopCircadianTimer() }
         }
     }
-    public var circadianTimer: Timer?
+    // nonisolated(unsafe): Timer is only created/invalidated on the main actor;
+    // deinit must be able to invalidate it under Swift 6 isolation rules.
+    nonisolated(unsafe) public var circadianTimer: Timer?
 
     // MARK: - Protocol probe
     public var probeLog: [String] = []
