@@ -258,8 +258,10 @@ public final class MetalColorAnalyzer: @unchecked Sendable {
         var binCount = [Int](repeating: 0, count: histogramBins)
         var blackCount = 0
         var pixCount = 0
+        var darkRows = 0
         
         for row in 0..<h {
+            var rowBlackCount = 0
             for col in 0..<w {
                 let i = row * bpr + col * 4
                 let r = Double(ptr[i + 2]) / 255
@@ -268,7 +270,10 @@ public final class MetalColorAnalyzer: @unchecked Sendable {
                 let (hh, ss, vv) = Self.rgbToHSV(r, g, b)
                 
                 pixCount += 1
-                if vv < 0.05 { blackCount += 1 }
+                if vv < 0.05 {
+                    blackCount += 1
+                    rowBlackCount += 1
+                }
                 guard vv > 0.12, ss > 0.15 else { continue }
                 
                 let bin = min(histogramBins - 1, Int(hh * Double(histogramBins)))
@@ -277,9 +282,25 @@ public final class MetalColorAnalyzer: @unchecked Sendable {
                 binVal[bin] += vv
                 binCount[bin] += 1
             }
+            if rowBlackCount > w * 8 / 10 { darkRows += 1 }
+        }
+        
+        var darkCols = 0
+        for col in 0..<w {
+            var colBlackCount = 0
+            for row in 0..<h {
+                let i = row * bpr + col * 4
+                let r = Double(ptr[i + 2]) / 255
+                let g = Double(ptr[i + 1]) / 255
+                let b = Double(ptr[i]) / 255
+                let (_, _, vv) = Self.rgbToHSV(r, g, b)
+                if vv < 0.05 { colBlackCount += 1 }
+            }
+            if colBlackCount > h * 8 / 10 { darkCols += 1 }
         }
         
         let blackPercentage = pixCount > 0 ? Double(blackCount) / Double(pixCount) : 0
+        let hasRectangularBlackRegion = darkRows > h / 3 || darkCols > w / 3
         
         if let maxBin = histogram.indices.max(by: { histogram[$0] < histogram[$1] }),
            histogram[maxBin] > 0, binCount[maxBin] > 0 {
@@ -290,7 +311,7 @@ public final class MetalColorAnalyzer: @unchecked Sendable {
                 dominantSaturation: min(1, binSat[maxBin] / n),
                 dominantBrightness: min(1, binVal[maxBin] / n),
                 blackPixelPercentage: blackPercentage,
-                hasRectangularBlackRegion: false
+                hasRectangularBlackRegion: hasRectangularBlackRegion
             )
         }
         
@@ -299,7 +320,7 @@ public final class MetalColorAnalyzer: @unchecked Sendable {
             dominantSaturation: 0,
             dominantBrightness: 0,
             blackPixelPercentage: blackPercentage,
-            hasRectangularBlackRegion: false
+            hasRectangularBlackRegion: hasRectangularBlackRegion
         )
     }
     
