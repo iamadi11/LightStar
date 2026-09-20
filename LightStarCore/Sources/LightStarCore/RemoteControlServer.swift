@@ -223,7 +223,7 @@ public final class RemoteControlServer: ObservableObject {
         pairingCodeExpireTask?.cancel()
         let chars = Array("ABCDEFGHJKLMNPQRSTUVWXYZ23456789")
         var rng = SystemRandomNumberGenerator()
-        let code = String((0..<6).map { _ in chars.randomElement(using: &rng)! })
+        let code = String((0..<kLightStarPairingCodeLength).map { _ in chars.randomElement(using: &rng)! })
         activePairingCode = code
         pairingCodeExpireTask = Task { @MainActor in
             try? await Task.sleep(nanoseconds: 60_000_000_000)

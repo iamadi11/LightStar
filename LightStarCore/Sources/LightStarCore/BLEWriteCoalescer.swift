@@ -11,7 +11,9 @@ public final class BLEWriteCoalescer {
     }
 
     private var items: [Item] = []
-    private var timer: Timer?
+    // nonisolated(unsafe): Timer is only created/invalidated on the main actor;
+    // deinit must be able to invalidate it under Swift 6 isolation rules.
+    nonisolated(unsafe) private var timer: Timer?
     private let send: @MainActor (Data) -> Void
     private let isConnected: @MainActor () -> Bool
 

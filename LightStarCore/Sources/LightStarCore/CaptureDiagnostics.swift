@@ -154,7 +154,9 @@ public final class CaptureDiagnostics: ObservableObject {
     
     // MARK: - Browser Monitoring
     
-    private var browserMonitorTimer: Timer?
+    // nonisolated(unsafe): Timer is only created/invalidated on the main actor;
+    // deinit must be able to invalidate it under Swift 6 isolation rules.
+    nonisolated(unsafe) private var browserMonitorTimer: Timer?
     
     deinit {
         browserMonitorTimer?.invalidate()

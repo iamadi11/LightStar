@@ -28,7 +28,9 @@ public final class PresetStore {
         FileManager.default.ubiquityIdentityToken != nil ? .default : nil
     }
     private static let iCloudKey = "LightStarPresets"
-    private var iCloudObserver: NSObjectProtocol?
+    // nonisolated(unsafe): observer token is set on the main actor; deinit must
+    // be able to remove it under Swift 6 isolation rules.
+    nonisolated(unsafe) private var iCloudObserver: NSObjectProtocol?
 
     private static var storeURL: URL {
         let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -84,8 +86,10 @@ public final class PresetStore {
             forName: NSUbiquitousKeyValueStore.didChangeExternallyNotification,
             object: NSUbiquitousKeyValueStore.default,
             queue: .main) { [weak self] _ in
-                guard let self, self.iCloudEnabled else { return }
-                Task { @MainActor in self.pullFromiCloud() }
+                Task { @MainActor in
+                    guard let self, self.iCloudEnabled else { return }
+                    self.pullFromiCloud()
+                }
             }
         // Pull on launch if enabled
         if iCloudEnabled { pullFromiCloud() }

@@ -162,21 +162,31 @@ struct RemoteControlView: View {
                 Text("Pairing Required")
                     .font(.title2)
                 
-                Text("Enter the code shown on your Mac.")
+                Text("Enter the 6-character code shown on your Mac.")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                 
                 TextField("Code", text: $pairingCode)
                     .textFieldStyle(.roundedBorder)
-                    .keyboardType(.numberPad)
+                    .keyboardType(.asciiCapable)
+                    .textInputAutocapitalization(.characters)
+                    .autocorrectionDisabled()
                     .multilineTextAlignment(.center)
-                    .frame(width: 120)
+                    .frame(width: 160)
+                    .onChange(of: pairingCode) { _, newValue in
+                        let filtered = newValue.uppercased().filter { $0.isLetter || $0.isNumber }
+                        if filtered != newValue {
+                            pairingCode = String(filtered.prefix(kLightStarPairingCodeLength))
+                        } else if newValue.count > kLightStarPairingCodeLength {
+                            pairingCode = String(newValue.prefix(kLightStarPairingCodeLength))
+                        }
+                    }
                 
                 Button("Pair") {
                     client.sendPairingCode(pairingCode)
                 }
                 .buttonStyle(.borderedProminent)
-                .disabled(pairingCode.count != 4)
+                .disabled(pairingCode.count != kLightStarPairingCodeLength)
                 
                 Button("Cancel") {
                     pairingCode = ""
