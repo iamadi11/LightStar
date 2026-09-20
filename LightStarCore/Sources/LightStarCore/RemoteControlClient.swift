@@ -52,7 +52,6 @@ public final class RemoteControlClient: ObservableObject {
     private var pingTask: Task<Void, Never>?
     private var lastPongTime: Date?
     private var connectionTimeoutTask: Task<Void, Never>?
-    private let maxReceiveBufferSize = 2 * 1024 * 1024 // 2MB
     
     public init() {
         #if os(iOS)
@@ -243,7 +242,7 @@ public final class RemoteControlClient: ObservableObject {
                 guard let self = self else { return }
                 
                 if let data = data, !data.isEmpty {
-                    guard self.receiveBuffer.count + data.count <= self.maxReceiveBufferSize else {
+                    guard !receiveBufferWouldOverflow(currentCount: self.receiveBuffer.count, incomingCount: data.count) else {
                         self.receiveBuffer.removeAll()
                         self.disconnect()
                         return

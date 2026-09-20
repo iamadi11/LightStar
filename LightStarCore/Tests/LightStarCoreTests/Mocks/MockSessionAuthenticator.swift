@@ -55,7 +55,9 @@ public final class MockSessionAuthenticator: SessionAuthenticator, @unchecked Se
         defer { lock.unlock() }
         
         generateCodeCallCount += 1
-        let code = String(format: "%06d", Int.random(in: 0..<1_000_000))
+        let chars = Array(kLightStarPairingCodeAlphabet)
+        var rng = SystemRandomNumberGenerator()
+        let code = String((0..<kLightStarPairingCodeLength).map { _ in chars.randomElement(using: &rng)! })
         currentPairingCode = code
         codeExpiry = Date().addingTimeInterval(codeValidityDuration)
         return code

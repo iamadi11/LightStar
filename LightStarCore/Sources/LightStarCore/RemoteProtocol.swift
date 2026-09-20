@@ -12,6 +12,24 @@ public let kLightStarDefaultPort: UInt16 = 19384
 /// Length of generated pairing codes (alphanumeric, excluding ambiguous characters).
 public let kLightStarPairingCodeLength = 6
 
+/// Alphabet used by `RemoteControlServer.generatePairingCode()` (no 0/1/I/O).
+public let kLightStarPairingCodeAlphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+
+/// Maximum JSON payload length accepted by `decodeMessage` (1 MiB).
+public let kLightStarMaxMessagePayloadBytes: UInt32 = 1_048_576
+
+/// Maximum TCP reassembly buffer used by client and server receive loops (2 MiB).
+public let kLightStarMaxReceiveBufferBytes = 2 * 1024 * 1024
+
+/// Same overflow check as the TCP receive loops: equal-to-max is allowed.
+public func receiveBufferWouldOverflow(
+    currentCount: Int,
+    incomingCount: Int,
+    maxCount: Int = kLightStarMaxReceiveBufferBytes
+) -> Bool {
+    currentCount + incomingCount > maxCount
+}
+
 // MARK: - Message Types
 
 /// Message type identifiers for the LightStar remote protocol.
@@ -461,7 +479,7 @@ public func decodeMessage(from data: Data) throws -> (RemoteMessage, Int) {
     return try data.withUnsafeBytes { buf in
         guard buf.count >= 4 else { throw RemoteProtocolError.insufficientData }
         let length = UInt32(bigEndian: buf.loadUnaligned(fromByteOffset: 0, as: UInt32.self))
-        guard length > 0, length <= 1_048_576 else { throw RemoteProtocolError.invalidLength }
+        guard length > 0, length <= kLightStarMaxMessagePayloadBytes else { throw RemoteProtocolError.invalidLength }
         let totalLength = Int(length) + 4
         guard buf.count >= totalLength else { throw RemoteProtocolError.incompleteMessage }
         let messageData = Data(buf[4..<totalLength])

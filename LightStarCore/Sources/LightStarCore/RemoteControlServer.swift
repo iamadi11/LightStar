@@ -221,7 +221,7 @@ public final class RemoteControlServer: ObservableObject {
     /// Generate a new pairing code that expires after 60 seconds.
     public func generatePairingCode() -> String {
         pairingCodeExpireTask?.cancel()
-        let chars = Array("ABCDEFGHJKLMNPQRSTUVWXYZ23456789")
+        let chars = Array(kLightStarPairingCodeAlphabet)
         var rng = SystemRandomNumberGenerator()
         let code = String((0..<kLightStarPairingCodeLength).map { _ in chars.randomElement(using: &rng)! })
         activePairingCode = code
@@ -320,7 +320,6 @@ private final class ClientConnection: @unchecked Sendable {
     var pairingLockedOut = false
     
     private var receiveBuffer = Data()
-    private let maxReceiveBufferSize = 2 * 1024 * 1024 // 2MB
     
     init(id: String, connection: NWConnection) {
         self.id = id
@@ -361,7 +360,7 @@ private final class ClientConnection: @unchecked Sendable {
             guard let self = self else { return }
             
             if let data = data, !data.isEmpty {
-                guard self.receiveBuffer.count + data.count <= self.maxReceiveBufferSize else {
+                guard !receiveBufferWouldOverflow(currentCount: self.receiveBuffer.count, incomingCount: data.count) else {
                     self.failConnection()
                     return
                 }

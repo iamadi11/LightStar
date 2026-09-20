@@ -224,6 +224,25 @@ final class LightScheduleTests: XCTestCase {
         )
         XCTAssertFalse(schedule.isDue(at: monday0805(), calendar: cal))
     }
+
+    func testWrongWeekdayIsNotDueInsideCatchUpOfAnotherDay() {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(secondsFromGMT: 0)!
+        let monday = monday0805()
+        // Sunday 4 Jan 2026 08:05 GMT. Schedule is Monday-only at 08:00.
+        var c = DateComponents()
+        c.year = 2026; c.month = 1; c.day = 4
+        c.hour = 8; c.minute = 5
+        let sunday = cal.date(from: c)!
+        let schedule = LightSchedule(
+            label: "Morning",
+            time: eightAM(on: monday, cal: cal),
+            days: [2],
+            action: .powerOn,
+            lastFiredAt: sunday.addingTimeInterval(-3600)
+        )
+        XCTAssertFalse(schedule.isDue(at: sunday, catchUp: 15 * 60, calendar: cal))
+    }
 }
 
 @MainActor
@@ -657,26 +676,55 @@ final class RemoteProtocolTests: XCTestCase {
     }
 }
 
-#if os(macOS)
-@MainActor
 final class PairingCodeFormatTests: XCTestCase {
-    func testGeneratedPairingCodeMatchesProtocolLength() {
-        let server = RemoteControlServer()
-        let code = server.generatePairingCode()
-        XCTAssertEqual(code.count, kLightStarPairingCodeLength)
-        XCTAssertEqual(server.activePairingCode, code)
-        let allowed = CharacterSet(charactersIn: "ABCDEFGHJKLMNPQRSTUVWXYZ23456789")
-        XCTAssertTrue(code.unicodeScalars.allSatisfy { allowed.contains($0) })
+    func testPairingAlphabetMatchesGeneratedLengthAndExcludesAmbiguousChars() {
+        XCTAssertEqual(kLightStarPairingCodeLength, 6)
+        XCTAssertEqual(kLightStarPairingCodeAlphabet.count, 32)
+        XCTAssertFalse(kLightStarPairingCodeAlphabet.contains("0"))
+        XCTAssertFalse(kLightStarPairingCodeAlphabet.contains("1"))
+        XCTAssertFalse(kLightStarPairingCodeAlphabet.contains("I"))
+        XCTAssertFalse(kLightStarPairingCodeAlphabet.contains("O"))
+        let unique = Set(kLightStarPairingCodeAlphabet)
+        XCTAssertEqual(unique.count, kLightStarPairingCodeAlphabet.count)
     }
 
-    func testGeneratedPairingCodesExcludeAmbiguousCharacters() {
+    #if os(macOS)
+    @MainActor
+    func testGeneratedPairingCodeMatchesProtocolAlphabet() {
         let server = RemoteControlServer()
+        let allowed = CharacterSet(charactersIn: kLightStarPairingCodeAlphabet)
         let forbidden = CharacterSet(charactersIn: "01IO")
         for _ in 0..<20 {
             let code = server.generatePairingCode()
-            XCTAssertEqual(code.count, 6)
-            XCTAssertTrue(code.rangeOfCharacter(from: forbidden) == nil, "code \(code) contains ambiguous chars")
+            XCTAssertEqual(code.count, kLightStarPairingCodeLength)
+            XCTAssertEqual(server.activePairingCode, code)
+            XCTAssertTrue(code.unicodeScalars.allSatisfy { allowed.contains($0) })
+            XCTAssertNil(code.rangeOfCharacter(from: forbidden))
         }
     }
+    #endif
 }
-#endif
+
+final class ReceiveBufferOverflowTests: XCTestCase {
+    func testEqualToMaxIsAllowed() {
+        XCTAssertFalse(receiveBufferWouldOverflow(
+            currentCount: kLightStarMaxReceiveBufferBytes - 10,
+            incomingCount: 10
+        ))
+        XCTAssertFalse(receiveBufferWouldOverflow(
+            currentCount: 0,
+            incomingCount: kLightStarMaxReceiveBufferBytes
+        ))
+    }
+
+    func testOneBytePastMaxIsRejected() {
+        XCTAssertTrue(receiveBufferWouldOverflow(
+            currentCount: kLightStarMaxReceiveBufferBytes,
+            incomingCount: 1
+        ))
+        XCTAssertTrue(receiveBufferWouldOverflow(
+            currentCount: kLightStarMaxReceiveBufferBytes - 10,
+            incomingCount: 11
+        ))
+    }
+}

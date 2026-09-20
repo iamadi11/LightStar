@@ -329,6 +329,48 @@ final class ProtocolIntegrationTests: XCTestCase {
             XCTAssertEqual(error as? RemoteProtocolError, .invalidLength)
         }
     }
+
+    func testDecodeMessageRejectsOneByteOverPayloadCapWithoutAllocatingBody() {
+        var length = (kLightStarMaxMessagePayloadBytes + 1).bigEndian
+        let prefix = Data(bytes: &length, count: 4)
+        XCTAssertThrowsError(try decodeMessage(from: prefix)) { error in
+            XCTAssertEqual(error as? RemoteProtocolError, .invalidLength)
+        }
+    }
+
+    func testDecodeMessageWaitsForIncompletePayload() {
+        var length = UInt32(10).bigEndian
+        var frame = Data(bytes: &length, count: 4)
+        frame.append(Data(repeating: 0x7B, count: 3))
+        XCTAssertThrowsError(try decodeMessage(from: frame)) { error in
+            XCTAssertEqual(error as? RemoteProtocolError, .incompleteMessage)
+        }
+    }
+
+    func testDecodePointerFrameWaitsWhenLengthIsPointerButBytesAreShort() {
+        var length = UInt32(kPointerFramePayloadLength).bigEndian
+        var frame = Data(bytes: &length, count: 4)
+        frame.append(contentsOf: [kPointerFrameMagic, 0, 0, 0])
+        XCTAssertThrowsError(try decodeMessage(from: frame)) { error in
+            XCTAssertEqual(error as? RemoteProtocolError, .incompleteMessage)
+        }
+    }
+
+    func testLengthNineWithoutPointerMagicFallsThroughToJSON() {
+        var length = UInt32(kPointerFramePayloadLength).bigEndian
+        var frame = Data(bytes: &length, count: 4)
+        frame.append(Data(repeating: 0x7B, count: Int(kPointerFramePayloadLength)))
+        XCTAssertThrowsError(try decodeMessage(from: frame)) { error in
+            XCTAssertTrue(error is DecodingError)
+        }
+    }
+
+    func testUnknownMessageTypeFailsToDecode() {
+        let invalidJSON = """
+        {"type":153,"payload":"","timestamp":0}
+        """.data(using: .utf8)!
+        XCTAssertThrowsError(try JSONDecoder().decode(RemoteMessage.self, from: invalidJSON))
+    }
     
     // MARK: - Connection Message Tests
     
@@ -347,11 +389,13 @@ final class ProtocolIntegrationTests: XCTestCase {
     /// TEST_ID: P018
     /// Tests pairing message.
     func testPairingMessage() throws {
-        let pair = PairMessage(pairingCode: "1234")
+        // PairMessage does not validate format; generation does.
+        let pair = PairMessage(pairingCode: "A2B3C4")
         let message = try RemoteMessage(type: .pair, content: pair)
         let decoded = try message.decode(PairMessage.self)
-        
-        XCTAssertEqual(decoded.pairingCode, "1234")
+
+        XCTAssertEqual(decoded.pairingCode, "A2B3C4")
+        XCTAssertEqual(decoded.pairingCode.count, kLightStarPairingCodeLength)
     }
     
     /// TEST_ID: P019

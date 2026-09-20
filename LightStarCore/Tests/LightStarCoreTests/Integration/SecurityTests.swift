@@ -2,8 +2,10 @@ import XCTest
 @testable import LightStarCore
 
 /// Security tests for the remote control system.
-/// These tests verify security requirements. Some are EXPECTED TO FAIL
-/// against the current implementation due to known security weaknesses.
+///
+/// S001–S006, S009, S010, and S013–S015 exercise `MockSessionAuthenticator` /
+/// `MockLightingController`, not `RemoteControlServer` or `LightBLEManager`.
+/// S007, S008, S011, and S012 hit production encode/decode.
 ///
 /// EXECUTION_CATEGORY: MAC_REQUIRED (needs Swift runtime)
 final class SecurityTests: XCTestCase {
@@ -124,18 +126,13 @@ final class SecurityTests: XCTestCase {
     /// Tests oversized message handling.
     /// The protocol must reject frames larger than 1 MB to prevent memory exhaustion.
     func testOversizedMessageHandling() throws {
-        // Build a frame with length field claiming 2 MB (> the 1 MB protocol limit)
-        let oversizeLength = UInt32(2_000_000)
-        var lengthBE = oversizeLength.bigEndian
-        var frame = Data(bytes: &lengthBE, count: 4)
-        // Pad just enough bytes so the decoder has the full declared length
-        frame.append(Data(repeating: 0x41, count: Int(oversizeLength)))
+        // Length prefix only — decoder must reject before allocating a 2 MB body.
+        var lengthBE = UInt32(2_000_000).bigEndian
+        let frame = Data(bytes: &lengthBE, count: 4)
 
         XCTAssertThrowsError(try decodeMessage(from: frame)) { error in
-            if let protoError = error as? RemoteProtocolError {
-                XCTAssertEqual(protoError, .invalidLength,
-                               "Oversized frame must be rejected with invalidLength")
-            }
+            XCTAssertEqual(error as? RemoteProtocolError, .invalidLength,
+                           "Oversized frame must be rejected with invalidLength")
         }
     }
     
@@ -275,34 +272,8 @@ final class SecurityTests: XCTestCase {
 // MARK: - Documentation: Known Security Weaknesses
 
 /*
- KNOWN SECURITY ISSUES IN CURRENT IMPLEMENTATION
- (As documented in security-remediation-plan.md)
- 
- 1. Fake Pairing Authentication (CRITICAL)
-    - Server accepts ANY 4-digit code
-    - No verification against displayed code
-    - Tests S001-S003 document expected behavior
- 
- 2. No TLS/Transport Encryption (CRITICAL)
-    - All messages sent in plaintext
-    - Session tokens visible on network
-    - No certificate validation
- 
- 3. No Rate Limiting (HIGH)
-    - Unlimited pairing attempts allowed
-    - No connection throttling
-    - Tests S002, S006 document expected behavior
- 
- 4. No Replay Protection (MEDIUM)
-    - Message timestamps not validated
-    - No sequence numbers
-    - Test S007 documents expected behavior
- 
- 5. No Message Size Limits (MEDIUM)
-    - Large messages could exhaust memory
-    - Test S008 documents expected behavior
- 
- 6. Input Injection Without Validation (HIGH)
-    - Keyboard/mouse input not sanitized
-    - Could execute arbitrary key sequences
+ These mock tests do not cover production `RemoteControlServer.handlePair`:
+ production compares against `activePairingCode` (6-char alphabet), lockouts
+ per connection (3) plus a global backoff, and issues a session token that is
+ never checked again (`connection.authenticated` is the live gate).
 */

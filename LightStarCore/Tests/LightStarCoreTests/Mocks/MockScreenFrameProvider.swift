@@ -102,6 +102,15 @@ public final class MockScreenFrameProvider: ScreenFrameProvider {
         startError = nil
         loopFrames = false
     }
+
+    /// Wait until at least `count` frames have been delivered, or timeout.
+    public func waitUntilFramesDelivered(_ count: Int, timeoutNanoseconds: UInt64 = 2_000_000_000) async {
+        let deadline = DispatchTime.now().uptimeNanoseconds + timeoutNanoseconds
+        while framesDelivered < count {
+            if DispatchTime.now().uptimeNanoseconds >= deadline { return }
+            try? await Task.sleep(nanoseconds: 5_000_000)
+        }
+    }
 }
 
 // MARK: - Test Frame Fixtures

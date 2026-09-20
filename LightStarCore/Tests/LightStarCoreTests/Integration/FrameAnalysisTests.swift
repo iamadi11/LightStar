@@ -103,10 +103,7 @@ final class FrameAnalysisTests: XCTestCase {
         }
         
         try await mockProvider.start()
-        
-        // Wait for frames
-        try await Task.sleep(nanoseconds: 50_000_000) // 50ms
-        
+        await mockProvider.waitUntilFramesDelivered(3)
         await mockProvider.stop()
         
         XCTAssertGreaterThanOrEqual(receivedFrames.count, 3)
@@ -125,7 +122,7 @@ final class FrameAnalysisTests: XCTestCase {
         }
         
         try await mockProvider.start()
-        try await Task.sleep(nanoseconds: 100_000_000) // 100ms
+        await mockProvider.waitUntilFramesDelivered(6)
         await mockProvider.stop()
         
         XCTAssertGreaterThan(frameCount, 5, "Should deliver multiple frames when looping")
@@ -186,7 +183,7 @@ final class FrameAnalysisTests: XCTestCase {
         XCTAssertEqual(mockProvider.framesDelivered, 0)
         
         try await mockProvider.start()
-        try await Task.sleep(nanoseconds: 50_000_000)
+        await mockProvider.waitUntilFramesDelivered(3)
         await mockProvider.stop()
         
         XCTAssertGreaterThanOrEqual(mockProvider.framesDelivered, 3)
