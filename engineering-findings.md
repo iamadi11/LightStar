@@ -33,6 +33,15 @@ Sources: GitHub Actions logs, repository inspection. Independent QA agents still
 - **Product note:** Pairing is still **off by default** and Mac has no UI to show the code (`PD-001`). This fix only restores consistency if pairing is turned on.
 - **Status:** Implemented on this branch
 
+### ENG-003 — Test mock actor cannot conform to MessageTransport
+
+- **Severity:** High (CI only; production code compiled)
+- **Feature:** LightStarCore tests
+- **Evidence:** PR CI run `35533949524` — `MockMessageTransport.swift:6` `#ConformanceIsolation`
+- **Root cause:** `actor MockMessageTransport` isolated `isConnected` while `MessageTransport` requires a nonisolated `Sendable` getter
+- **Fix:** Same pattern as other mocks — `final class` + `NSLock` + `@unchecked Sendable`
+- **Status:** Implemented on this branch
+
 ## Not treated as confirmed product bugs
 
 | Item | Classification | Reason |
