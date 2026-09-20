@@ -190,8 +190,7 @@ struct SetSyncModeIntent: AppIntent {
     var mode: SyncModeOption
 
     @MainActor func perform() async throws -> some IntentResult {
-        guard let ble = LightStarRuntime.ble ?? appDelegate()?.ble else { throw LSIntentError.notConnected }
-        ble.setSyncMode(mode.syncMode)
+        try requireConnected().setSyncMode(mode.syncMode)
         return .result()
     }
 }
@@ -234,7 +233,7 @@ struct GetLightStateIntent: AppIntent {
     nonisolated(unsafe) static var openAppWhenRun: Bool = false
 
     @MainActor func perform() async throws -> some IntentResult & ReturnsValue<String> {
-        guard let ble = appDelegate()?.ble else { throw LSIntentError.notConnected }
+        let ble = try requireConnected()
         let state = ble.isOn ? "on" : "off"
         let brightness = Int(ble.brightness * 100)
         let sync = ble.syncMode == .off ? "sync off" : "\(ble.syncMode.displayName) sync"
@@ -260,7 +259,8 @@ struct LightStarFocusFilter: SetFocusFilterIntent {
     var colorTemperature: ColorTempOption
 
     @MainActor func perform() async throws -> some IntentResult {
-        guard let ble = appDelegate()?.ble else { return .result() }
+        guard let ble = appDelegate()?.ble,
+              ble.connectionState == .connected else { return .result() }
         ble.setBrightness(Double(brightness) / 100.0)
         ble.setColorTemperature((colorTemperature.kelvin - 2700) / 3800)
         return .result()

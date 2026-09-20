@@ -41,7 +41,6 @@ struct PresetsView: View {
 
     private func applyPreset(_ preset: Preset) {
         if !ble.isOn { ble.setPower(on: true) }
-        ble.setSyncMode(.off)
         ble.setColor(preset.color)
         ble.setBrightness(preset.brightness)
     }
