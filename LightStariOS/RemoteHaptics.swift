@@ -1,5 +1,6 @@
 import UIKit
 
+@MainActor
 enum RemoteHaptics {
     private static let lightImpact: UIImpactFeedbackGenerator = {
         let gen = UIImpactFeedbackGenerator(style: .light)

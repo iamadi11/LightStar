@@ -59,10 +59,10 @@ final class GyroPointerController: ObservableObject {
 
 /// All CMMotionManager access stays on `queue`. `start()` must not clear `onDelta`.
 private final class MotionPump: @unchecked Sendable {
-    private static let sharedProbe = CMMotionManager()
-    
+    private let availabilityProbe = CMMotionManager()
+
     var isAvailable: Bool {
-        Self.sharedProbe.isDeviceMotionAvailable || Self.sharedProbe.isGyroAvailable
+        availabilityProbe.isDeviceMotionAvailable || availabilityProbe.isGyroAvailable
     }
 
     private let queue: OperationQueue = {

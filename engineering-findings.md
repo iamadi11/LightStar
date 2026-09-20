@@ -139,6 +139,16 @@ No silent product-behavior changes. Connect restore now matches the comments alr
 - **Fix:** Use `Task { @MainActor [weak self] in }`, matching the rest of the codebase.
 - **Status:** Implemented on this branch
 
+### ENG-021 — iOS Swift 6 concurrency: haptics generators and gyro probe
+
+- **Severity:** High (unsigned iOS archive)
+- **Evidence:** CI `f2ba580` — tests and macOS build passed; iOS failed:
+  - `RemoteHaptics` static `UIImpactFeedbackGenerator` default values in a nonisolated enum
+  - `MotionPump.sharedProbe` static `CMMotionManager` is not Sendable
+- **Fix:** `@MainActor enum RemoteHaptics` (all call sites are UI). Per-instance availability probe instead of a shared static manager.
+- **Product behavior:** Same cached haptic generators and the same device-motion availability check.
+- **Status:** Implemented on this branch
+
 ## Test coverage (not product bugs)
 
 Independent review of `LightStarCore/Tests` vs production ([QA: Tests vs production mismatches](bc-bfe0d582-1826-55a3-9fc1-91eab1a6a22c)):
