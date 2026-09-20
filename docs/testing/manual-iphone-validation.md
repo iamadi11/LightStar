@@ -231,3 +231,32 @@ Before running manual validation:
 - [ ] LightStar Mac version: ________________
 - [ ] LightStar iOS version: ________________
 - [ ] Issues found: ________________
+
+---
+
+## Section 14: New Features (Bug Fixes Validation)
+
+| # | Test | Steps | Expected | Status |
+|---|------|-------|----------|--------|
+| I14.1 | Wake Mac Button | Mac locked, tap Wake Mac | Mac display wakes | ☐ |
+| I14.2 | Wake Mac Sleep | Mac sleeping, tap Wake Mac | Mac wakes (if app running) | ☐ |
+| I14.3 | Connect Strip | Strip disconnected, tap Connect | BLE connection initiated | ☐ |
+| I14.4 | Reconnect Strip | Strip connected, tap Reconnect | Force reconnection works | ☐ |
+| I14.5 | Volume HUD Reset | Disconnect/reconnect | Volume HUD starts at 50% | ☐ |
+| I14.6 | Brightness HUD Reset | Disconnect/reconnect | Brightness HUD starts at 50% | ☐ |
+| I14.7 | Pairing Cancel Clear | Cancel pairing, retry | Code field is empty | ☐ |
+| I14.8 | Error Message Visible | Connection rejected | Error message shown (not "Disconnected") | ☐ |
+| I14.9 | Gyro Pointer Smooth | Use Air pointer | No jitter, smooth movement | ☐ |
+| I14.10 | Hint Messages | Disconnected state | Helpful hint text visible | ☐ |
+
+---
+
+## Section 15: Security Validation
+
+| # | Test | Steps | Expected | Status |
+|---|------|-------|----------|--------|
+| I15.1 | Pairing Code Display | Initiate pairing | 4-digit code shown on Mac | ☐ |
+| I15.2 | Correct Code Required | Enter displayed code | Pairing succeeds | ☐ |
+| I15.3 | Wrong Code Rejected | Enter wrong code | "Invalid pairing code" error | ☐ |
+| I15.4 | Code Expires | Wait >60s, enter old code | Code expired/invalid | ☐ |
+| I15.5 | Brute Force Protected | Try random codes | Cannot guess code easily | ☐ |

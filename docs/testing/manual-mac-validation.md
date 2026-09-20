@@ -224,3 +224,34 @@ defaults read /Applications/LightStar.app/Contents/Info.plist CFBundleShortVersi
 - [ ] Xcode version: ________________
 - [ ] LED strip model: ________________
 - [ ] Issues found: ________________
+
+---
+
+## Section 10: New Features (Bug Fixes Validation)
+
+| # | Test | Steps | Expected | Status |
+|---|------|-------|----------|--------|
+| M10.1 | Pairing Code Generation | iPhone requests pairing | Code appears on Mac | ☐ |
+| M10.2 | Code Auto-Expire | Wait 60 seconds | Code disappears/invalid | ☐ |
+| M10.3 | Code Single Use | Pair successfully | Code consumed, can't reuse | ☐ |
+| M10.4 | Hot Key Cleanup | Quit app, check system | Hot keys unregistered | ☐ |
+| M10.5 | Preset No Flicker | Apply preset from Presets view | Smooth transition, no flicker | ☐ |
+| M10.6 | Intent State Check | Run GetLightStateIntent while disconnected | Error thrown (not stale data) | ☐ |
+| M10.7 | Intent Sync Mode | Run SetSyncModeIntent while disconnected | Error thrown | ☐ |
+| M10.8 | Focus Filter Check | Activate Focus, strip disconnected | Silent skip (no crash) | ☐ |
+| M10.9 | Wake from iPhone | Mac locked, iPhone sends wake | Display wakes | ☐ |
+| M10.10 | Drag Race Condition | Rapid drag gestures from iPhone | All drags register correctly | ☐ |
+
+---
+
+## Section 11: Siri/Shortcuts Validation
+
+| # | Test | Steps | Expected | Status |
+|---|------|-------|----------|--------|
+| M11.1 | Turn On Intent | "Turn on LightStar" | Light turns on | ☐ |
+| M11.2 | Turn Off Intent | "Turn off LightStar" | Light turns off | ☐ |
+| M11.3 | Set Brightness | "Set LightStar brightness to 50" | Brightness changes | ☐ |
+| M11.4 | Apply Preset | "Set LightStar to Reading" | Preset applied | ☐ |
+| M11.5 | Toggle Sync | "Toggle LightStar sync" | Sync toggles | ☐ |
+| M11.6 | Get State | "Is LightStar on" | Returns current state | ☐ |
+| M11.7 | Disconnected Error | Run intent while disconnected | "Not connected" error | ☐ |
