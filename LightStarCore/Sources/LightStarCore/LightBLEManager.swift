@@ -1030,8 +1030,8 @@ public enum CombinedSyncMixer: Sendable {
 }
 
 /// Combined must not tap audio on the screen SCStream. Music already works
-/// via a dedicated audio-only stream; Both reuses that sampler and keeps
-/// the screen stream video-only so hue can stay still on a static window.
+/// via a HAL process tap (not a display SCStream — that blacks DRM video);
+/// Both reuses that sampler and keeps the screen stream video-only.
 public enum CombinedCapturePolicy: Sendable {
     public static func shouldCaptureAudioOnScreenStream(mode: LightBLEManager.SyncMode) -> Bool {
         switch mode {

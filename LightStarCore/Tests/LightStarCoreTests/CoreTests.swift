@@ -1180,7 +1180,7 @@ final class ConnectAndSchedulePolicyTests: XCTestCase {
         XCTAssertFalse(CombinedCapturePolicy.shouldCaptureAudioOnScreenStream(mode: .video))
         XCTAssertTrue(CombinedCapturePolicy.shouldStartStandaloneSystemAudio(mode: .audio))
         XCTAssertTrue(CombinedCapturePolicy.shouldStartStandaloneSystemAudio(mode: .combined),
-                      "Both reuses the Music audio-only SCStream")
+                      "Both reuses the Music process-tap sampler")
         XCTAssertFalse(SilenceAutoOffPolicy.shouldTurnAudioSyncOff(silentFor: 2))
         XCTAssertFalse(SilenceAutoOffPolicy.shouldTurnAudioSyncOff(silentFor: 120))
     }

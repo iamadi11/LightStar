@@ -1,9 +1,9 @@
 import Accelerate
+import AVFoundation
 import CoreMedia
 import Foundation
 
-/// Shared FFT + spectral-flux analyzer for the audio-only SCStream used by
-/// Music and Combined.
+/// Shared FFT + spectral-flux analyzer for Music and Combined.
 final class AudioFFTEngine: @unchecked Sendable {
     private let fftN = 512
     private var fftSetup: vDSP_DFT_Setup?
@@ -46,12 +46,31 @@ final class AudioFFTEngine: @unchecked Sendable {
             }
         }
 
+        ingest(mono: mono, sampleRate: 44100, deliver: deliver)
+    }
+
+    func ingest(_ buffer: AVAudioPCMBuffer, deliver: (FrequencyBands) -> Void) {
+        let n = Int(buffer.frameLength)
+        guard n > 0, let channels = buffer.floatChannelData else { return }
+        let ch = Int(buffer.format.channelCount)
+        var mono = [Float](repeating: 0, count: n)
+        if ch >= 2 {
+            let left = channels[0]
+            let right = channels[1]
+            for i in 0..<n { mono[i] = (left[i] + right[i]) * 0.5 }
+        } else {
+            mono = Array(UnsafeBufferPointer(start: channels[0], count: n))
+        }
+        ingest(mono: mono, sampleRate: buffer.format.sampleRate, deliver: deliver)
+    }
+
+    func ingest(mono: [Float], sampleRate: Double, deliver: (FrequencyBands) -> Void) {
         accumulator.append(contentsOf: mono)
         var offset = 0
         while accumulator.count - offset >= fftN {
             let window = Array(accumulator[offset ..< offset + fftN])
             offset += fftN
-            deliver(analyze(window, sampleRate: 44100))
+            deliver(analyze(window, sampleRate: sampleRate))
         }
         if offset > 0 { accumulator = Array(accumulator[offset...]) }
     }

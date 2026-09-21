@@ -393,6 +393,12 @@ public extension LightBLEManager {
             pendingSyncMode = syncMode == .off ? pendingSyncMode : syncMode
             return
         }
+        if nsErr.domain == "SystemAudio" && nsErr.code == -5002 {
+            syncNeedsPermission = true
+            syncError = "System Audio Recording access required. Open Privacy & Security → Screen & System Audio Recording and enable LightStar."
+            pendingSyncMode = syncMode == .off ? pendingSyncMode : syncMode
+            return
+        }
         let isPermission = nsErr.code == -3801 || nsErr.code == -3827
             || nsErr.domain.contains("ScreenCaptureKit")
         syncNeedsPermission = isPermission

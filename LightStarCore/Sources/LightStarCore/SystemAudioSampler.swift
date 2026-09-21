@@ -2,9 +2,9 @@
 import ScreenCaptureKit
 import CoreMedia
 
-// Captures system audio mix via SCStream (requires Screen Recording permission).
-// Music and Combined both use this audio-only stream. Combined's screen sampler
-// stays video-only — tapping audio on the video stream was silent.
+// Music and Combined both use this sampler. Combined's screen sampler stays
+// video-only. On 14.2+ this is a HAL process tap so Chrome is not in a
+// display capture set (that blacks Netflix/Prime for the user).
 @MainActor
 public final class SystemAudioSampler: NSObject {
 
@@ -12,6 +12,7 @@ public final class SystemAudioSampler: NSObject {
     private(set) var isRunning = false
 
     private var stream: SCStream?
+    private var processTapBox: AnyObject?
     private let queue = DispatchQueue(label: "audio.system", qos: .userInteractive)
     private let engine = AudioFFTEngine()
     private var generation = 0
@@ -21,6 +22,44 @@ public final class SystemAudioSampler: NSObject {
         generation &+= 1
         let gen = generation
 
+        if #available(macOS 14.2, *) {
+            try startProcessTap(generation: gen)
+            return
+        }
+        try await startDisplayStream(generation: gen)
+    }
+
+    public func stop() async {
+        generation &+= 1
+        guard isRunning else { return }
+        isRunning = false
+        if #available(macOS 14.2, *) {
+            (processTapBox as? SystemAudioProcessTap)?.stop()
+            processTapBox = nil
+        }
+        try? await stream?.stopCapture()
+        stream = nil
+        onBands = nil
+        await cleanupEngineOnQueue()
+    }
+
+    @available(macOS 14.2, *)
+    private func startProcessTap(generation gen: Int) throws {
+        let tap = SystemAudioProcessTap()
+        tap.onBands = { [weak self] bands in
+            DispatchQueue.main.async { [weak self] in self?.onBands?(bands) }
+        }
+        try tap.start()
+        guard !CaptureSessionPolicy.isSuperseded(startGeneration: gen, currentGeneration: generation) else {
+            tap.stop()
+            throw CancellationError()
+        }
+        processTapBox = tap
+        isRunning = true
+    }
+
+    /// macOS 14.0–14.1 only. Display capture includes Chrome and can black DRM video.
+    private func startDisplayStream(generation gen: Int) async throws {
         let content = try await SCShareableContent.excludingDesktopWindows(
             false, onScreenWindowsOnly: true)
         guard let display = content.displays.first else {
@@ -48,16 +87,6 @@ public final class SystemAudioSampler: NSObject {
         engine.prepare()
         stream = s
         isRunning = true
-    }
-
-    public func stop() async {
-        generation &+= 1
-        guard isRunning else { return }
-        isRunning = false
-        try? await stream?.stopCapture()
-        stream = nil
-        onBands = nil
-        await cleanupEngineOnQueue()
     }
 
     private func cleanupEngineOnQueue() async {
