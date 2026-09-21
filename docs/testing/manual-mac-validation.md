@@ -255,3 +255,18 @@ defaults read /Applications/LightStar.app/Contents/Info.plist CFBundleShortVersi
 | M11.5 | Toggle Sync | "Toggle LightStar sync" | Sync toggles | ☐ |
 | M11.6 | Get State | "Is LightStar on" | Returns current state | ☐ |
 | M11.7 | Disconnected Error | Run intent while disconnected | "Not connected" error | ☐ |
+
+---
+
+## Section 12: Alexa Hue Bridge
+
+| # | Test | Steps | Expected | Status |
+|---|------|-------|----------|--------|
+| M12.1 | Enable bridge | Settings → Echo Hue bridge ON | Status shows Running on port 9123 | ☐ |
+| M12.2 | Local Network | First enable after install | macOS prompts Local Network; allow | ☐ |
+| M12.3 | Discover | Alexa app → Add Device → Philips Hue | LightStar / LightStar light appears | ☐ |
+| M12.4 | Power | “Alexa, turn on LightStar” | BC/55 strip powers on via Mac BLE | ☐ |
+| M12.5 | Brightness | “Alexa, set LightStar to 50%” | Brightness changes | ☐ |
+| M12.6 | Colour | “Alexa, set LightStar to blue” | Hue changes | ☐ |
+| M12.7 | Disable | Toggle bridge OFF | Echo commands stop; SSDP/HTTP stop | ☐ |
+

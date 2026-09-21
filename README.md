@@ -5,6 +5,7 @@ Native Swift controller for a reverse-engineered **BC/55** BLE RGB LED bar (the 
 - **macOS 14+** menu-bar app (no Dock icon) with ScreenCaptureKit ambilight and system-audio sync
 - **iOS 17+** sideload remote (same `LightStarCore` package)
 - App Intents / Shortcuts, widgets, Focus Filter
+- Optional **Alexa Echo** control via a local Hue-bridge emulator (Mac stays the BLE brain)
 
 This is the product. Do not reintroduce Tauri or Next.js.
 
