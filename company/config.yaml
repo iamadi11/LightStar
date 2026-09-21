@@ -1,0 +1,45 @@
+# config.yaml — Autonomous Company runtime policy
+# Edit carefully. Safety keys default to conservative values.
+
+version: 1
+product_id: lightstar
+single_command: ./scripts/autonomous-company
+
+execution:
+  max_iterations: 3
+  max_tasks_per_cycle: 3
+  max_retries_per_task: 2
+  stop_when_no_high_value_work: true
+  resume_from_durable_state: true
+
+policy:
+  allow_high_impact: false
+  require_evidence_for_tasks: true
+  allow_invented_customer_demand: false
+  lock_product_decisions:
+    - PD-001  # pairing off by default; no TLS
+    - PD-002  # 6-char alphanumeric pairing codes
+  forbid_claiming_unrun_validation: true
+
+validation:
+  # Commands the company may recommend / require. Linux agents mark macOS-only as deferred_to_ci.
+  unit_tests: "swift test --package-path LightStarCore"
+  generate_xcode: "xcodegen generate"
+  build_macos: "xcodebuild build -project LightStar.xcodeproj -scheme LightStar -configuration Debug CODE_SIGNING_ALLOWED=NO"
+  build_ios: "xcodebuild build -project LightStar.xcodeproj -scheme LightStariOS -destination 'generic/platform=iOS' -configuration Debug CODE_SIGNING_ALLOWED=NO"
+  company_self_tests: "python3 -m unittest discover -s company/tests -v"
+  ci_url_hint: "GitHub Actions workflow CI on macos-15"
+
+paths:
+  state_dir: company/state
+  memory_dir: company/memory
+  agents_dir: company/agents
+  reports_dir: company/reports
+  improvements_dir: company/improvements
+  research_dir: company/research
+
+discovery:
+  scan_engineering_docs: true
+  scan_todo_fixme: true
+  scan_agents_md: true
+  include_hypotheses: false  # hypotheses must be explicit if enabled later

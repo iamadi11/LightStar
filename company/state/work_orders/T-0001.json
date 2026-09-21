@@ -1,0 +1,20 @@
+{
+  "acceptance": [
+    "CI job for main includes LightStarCore tests + macOS build",
+    "Manual M12 Alexa checks remain documented until hardware available"
+  ],
+  "created_at": "2026-09-21T19:32:13+00:00",
+  "instructions": [
+    "Read company/memory/CONTEXT.md and agents.md before changing product code.",
+    "Answer anti-slop questions before coding.",
+    "Record commands run and outcomes in completion_evidence.",
+    "Do not claim Swift validation on Linux."
+  ],
+  "owner_role": "qa",
+  "task_id": "T-0001",
+  "title": "Confirm Alexa Hue bridge via macOS CI (cannot validate Swift on Linux agent)",
+  "validation_plan": [
+    "CI job for main includes LightStarCore tests + macOS build",
+    "Manual M12 Alexa checks remain documented until hardware available"
+  ]
+}

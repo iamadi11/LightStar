@@ -6,8 +6,7 @@ Native Swift controller for a reverse-engineered **BC/55** BLE RGB LED bar (the 
 - **iOS 17+** sideload remote (same `LightStarCore` package)
 - App Intents / Shortcuts, widgets, Focus Filter
 - Optional **Alexa Echo** control via a local Hue-bridge emulator (Mac stays the BLE brain)
-
-This is the product. Do not reintroduce Tauri or Next.js.
+- Optional **autonomous company** loop for repo engineering: `./scripts/autonomous-company` or Cursor `/autonomous-company`
 
 ## Develop
 
@@ -24,6 +23,16 @@ Open `LightStar.xcodeproj` after generating it (`LightStar.xcodeproj` is gitigno
 
 Grant **Bluetooth** on first connect, **Screen Recording** for video sync, **Microphone** for mic sync. TCC follows bundle id `com.adityaraj.LightStar` and the signing identity.
 
+## Autonomous company
+
+```bash
+./scripts/autonomous-company          # discover → prioritize → durable state
+./scripts/autonomous-company status
+./scripts/autonomous-company self-test
+```
+
+Design, safety policy, and audit: `company/adr/0001-autonomous-company-architecture.md`, `company/reports/FOUNDATION_AUDIT.md`.
+
 ## Layout
 
 | Path | Role |
@@ -32,6 +41,7 @@ Grant **Bluetooth** on first connect, **Screen Recording** for video sync, **Mic
 | `LightStar/` | macOS app (menu bar + control window) |
 | `LightStariOS/` | iOS remote |
 | `LightStarWidget/` | WidgetKit source for macOS and iOS extensions |
+| `company/` | Autonomous company state, agents, memory, reports |
 | `project.yml` | XcodeGen source of truth |
 
 ## Protocol

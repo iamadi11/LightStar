@@ -87,6 +87,12 @@ LightStarWidget/        WidgetKit source shared by both widget extensions
 
 Views get state via `@Environment(LightBLEManager.self)`. AppIntents use `LightStarRuntime`.
 
+## Autonomous company
+
+Single command: `./scripts/autonomous-company` (Cursor skill `/autonomous-company`).
+
+Durable state lives under `company/`. Architecture: `company/adr/0001-autonomous-company-architecture.md`. Do not invent Swift validation on Linux agents; use CI.
+
 ---
 
 ## iPhone <-> Mac Remote Control

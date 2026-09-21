@@ -1,0 +1,9 @@
+{
+  "active_task_id": null,
+  "cycle": 1,
+  "last_conclusion": "T-0001 blocked: deferred_to_ci | T-0002 done: company self-tests passed",
+  "phase": "idle",
+  "swift_toolchain_available": false,
+  "updated_at": "2026-09-21T19:32:13+00:00",
+  "version": 1
+}
