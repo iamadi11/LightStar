@@ -61,8 +61,8 @@
 | Server connection | CODE_EXISTS | COMPILES_CI | NOT_RUNTIME_TESTED | iPhone + Mac | SECURITY_CONCERN | No TLS |
 | UI state machine | CODE_EXISTS | COMPILES_CI | NOT_RUNTIME_TESTED | iPhone | N/A | Requires device |
 | **Pairing** |
-| Code request | CODE_EXISTS | COMPILES_CI | NOT_RUNTIME_TESTED | iPhone + Mac | SECURITY_CONCERN | Accepts any 4-digit |
-| Code verification | CODE_EXISTS | COMPILES_CI | NOT_RUNTIME_TESTED | iPhone + Mac | SECURITY_CONCERN | NO REAL VERIFICATION |
+| Code request | CODE_EXISTS | COMPILES_CI | NOT_RUNTIME_TESTED | iPhone + Mac | PD-002 | 6-char alphanumeric generatePairingCode |
+| Code verification | CODE_EXISTS | COMPILES_CI | NOT_RUNTIME_TESTED | iPhone + Mac | FIXED_IN_CODE | Exact match + lockouts |
 | Session establishment | CODE_EXISTS | COMPILES_CI | NOT_RUNTIME_TESTED | iPhone + Mac | SECURITY_CONCERN | Token unused |
 | **Remote Input** |
 | Trackpad gestures | CODE_EXISTS | COMPILES_CI | NOT_RUNTIME_TESTED | iPhone | N/A | UI only, no Mac test |
@@ -100,9 +100,10 @@
 | Status | Count | Features |
 |--------|-------|----------|
 | SECURITY_CONCERN | 16 | All remote control features |
-| Critical issues | 2 | Fake pairing, no TLS |
-| High issues | 4 | No auth, no rate limiting, no validation, input injection |
-| Requires remediation | 16 | Before any production use |
+| Critical issues | 0 | Fake pairing fixed (2026-09-21 revalidation) |
+| High issues | 1+ | Plaintext TCP remains (PD-001 / ADR for TLS) |
+| Product locks | PD-001/PD-002 | Pairing off by default; 6-char codes — do not flip without ADR |
+| Requires remediation | residual LAN risks | Not the obsolete “any 4-digit” finding |
 
 ---
 
@@ -121,7 +122,9 @@
 
 - [ ] All unit tests executed on Mac
 - [ ] All features manually tested
-- [ ] Security remediations 1-3 implemented (pairing, TLS, session)
+- [x] Security remediation 1 (real pairing) — code present; Mac UI/hardware still to verify
+- [ ] TLS / session hardening only with ADR (PD-001)
+- [ ] Security remediations for residual LAN risks as product accepts
 - [ ] Basic BLE functionality verified with hardware
 
 ### Before Beta Release

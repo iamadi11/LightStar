@@ -227,15 +227,15 @@ The Chrome hardware-acceleration workaround **may** work because:
 
 | Item | Type | Notes |
 |------|------|-------|
-| Implement real pairing | Security | Currently accepts any 4-digit code |
-| Add TLS transport | Security | All traffic currently plaintext |
+| ~~Implement real pairing~~ | Security | **Done 2026-09-21** — PD-002 codes + exact match + lockouts |
+| Add TLS transport | Security | Still plaintext; **PD-001** — needs ADR, not silent flip |
 | Test Chrome workaround | Verification | Core DRM claim unverified |
 
 ### Priority 2: Security
 
 | Item | Type | Notes |
 |------|------|-------|
-| Rate limit pairing attempts | Security | Prevent brute force |
+| ~~Rate limit pairing attempts~~ | Security | **Partial** — pairing lockouts already present |
 | Add connection limits | Security | Prevent DoS |
 | Input activity indicator | UX/Security | Show when remote input active |
 | Session token validation | Security | Currently generated but unused |
@@ -332,18 +332,19 @@ xcodebuild build -scheme LightStar -configuration Debug CODE_SIGNING_ALLOWED=NO
 
 ---
 
-## Known Security Vulnerabilities (NOT FIXED)
+## Known Security Vulnerabilities (revalidated 2026-09-21)
 
-| Vulnerability | File | Line | Severity | Status |
-|---------------|------|------|----------|--------|
-| Fake pairing | RemoteControlServer.swift | 205-207 | CRITICAL | NOT_FIXED |
-| Plaintext transport | RemoteControlServer.swift | 42 | CRITICAL | NOT_FIXED |
-| No rate limiting | RemoteControlServer.swift | multiple | HIGH | NOT_FIXED |
-| Session token unused | RemoteControlServer.swift | 207 | HIGH | NOT_FIXED |
-| No input validation | MacInputController.swift | multiple | MEDIUM | NOT_FIXED |
-| Unauthenticated input control | MacInputController.swift | multiple | HIGH | NOT_FIXED |
+| Vulnerability | File | Severity | Status |
+|---------------|------|----------|--------|
+| Fake pairing (any 4-digit) | RemoteControlServer.swift | — | **FIXED** (PD-002 exact match) |
+| Plaintext transport | RemoteControlServer.swift | HIGH | OPEN — PD-001 until ADR |
+| Pairing rate limiting | RemoteControlServer.swift | LOW | **PARTIAL** (lockouts) |
+| Session token unused | RemoteControlServer.swift | LOW | OPEN |
+| No input validation | MacInputController.swift | MEDIUM | OPEN |
+| Unauthenticated access when pairing off | RemoteControlServer.swift | MEDIUM | BY DESIGN (PD-001) |
+| Unauthenticated pointer when pairing on | RemoteControlServer.swift | — | **FIXED** (EE-001) |
 
-See `security-remediation-plan.md` for implementation requirements.
+See `security-remediation-plan.md` and `security-review.md` (2026-09-21 revalidation).
 
 ---
 

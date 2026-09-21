@@ -72,46 +72,37 @@
 | Feature | Implementation | Assessment |
 |---------|---------------|------------|
 | Pairing requirement | `requirePairing: Bool` flag | ✅ Configurable |
-| Code format | 4-digit numeric | ⚠️ Weak |
-| Code validation | `allSatisfy({ $0.isNumber })` | ⚠️ No actual verification |
-| Session token | UUID generated server-side | ⚠️ Not persisted |
+| Code format | 6-char alphanumeric (PD-002) | ✅ Implemented |
+| Code validation | Exact match vs `activePairingCode` | ✅ Implemented |
+| Session token | UUID in PairAck | ⚠️ Not re-checked on later frames |
 
-### Critical Issue: Fake Pairing
+### Pairing status (revalidated 2026-09-21)
 
-**Location**: `RemoteControlServer.swift:205-219`
+**Historical “fake pairing” finding is obsolete.** Production `generatePairingCode` / `handlePair` use `kLightStarPairingCodeAlphabet`, 60s expiry, and lockouts. Pairing **off by default** remains **PD-001**.
 
 ```swift
-// Simple pairing: accept any 4-digit code for now
-if pair.pairingCode.count == 4, pair.pairingCode.allSatisfy({ $0.isNumber }) {
-    connection.authenticated = true
-    let ack = PairAckMessage(success: true, sessionToken: UUID().uuidString)
+// Current shape (illustrative)
+guard let expectedCode = activePairingCode,
+      pair.pairingCode == expectedCode else { /* lockout path */ }
 ```
 
-**Problem**: The server accepts ANY 4-digit numeric code. There is no:
-- Code generation/display on Mac
-- Code verification
-- Rate limiting
-- Failed attempt tracking
-
-**Risk Level**: HIGH — This is effectively no authentication.
+**Residual risk**: With pairing off, any LAN client is trusted after hello — intentional product decision, not a missing 4-digit check.
 
 ### Security Analysis
 
 | Attack Vector | Protected? | Notes |
 |---------------|------------|-------|
-| LAN sniffing | ❌ NO | Plaintext TCP |
+| LAN sniffing | ❌ NO | Plaintext TCP (PD-001) |
 | Replay attacks | ❌ NO | No nonces or timestamps |
-| Brute force | ❌ NO | 10,000 possible codes, no rate limit |
-| Session hijacking | ❌ NO | Token transmitted in plain |
-| Man-in-the-middle | ❌ NO | No TLS |
+| Brute force (pairing on) | ⚠️ Partial | 32^6 space + lockouts |
+| Session hijacking | ❌ NO | Token not enforced post-PairAck |
+| Man-in-the-middle | ❌ NO | No TLS without ADR |
 
 ### Recommendation
 
-Implement proper pairing:
-
-1. Mac generates random 4-6 digit code
-2. Mac displays code in UI
-3. User enters exact code on iPhone
+1. Keep PD-001/PD-002 unless Strategy writes an ADR
+2. Ensure Mac UI displays `generatePairingCode()` when pairing is enabled
+3. Optional later: session token enforcement / TLS via ADR
 4. Mac validates code matches
 5. On success, store paired device identity in Keychain
 
@@ -402,8 +393,8 @@ public func broadcastStateUpdate(_ state: LightStarState) {
 
 ## Blocking Issues for Production
 
-1. **Security**: No transport encryption — any LAN device can intercept
-2. **Security**: Fake pairing accepts any code — effectively no authentication
-3. **Security**: Remote keyboard/mouse without real auth — high risk
+1. **Security**: No transport encryption — any LAN device can intercept (PD-001 / ADR for TLS)
+2. ~~**Security**: Fake pairing accepts any code~~ — **obsolete 2026-09-21** (real PD-002 pairing)
+3. **Security**: With pairing off (PD-001), remote keyboard/mouse trusts the LAN
 4. **Reliability**: No connection retry or auto-reconnect
-5. **UX**: No Mac-side pairing code display
+5. **UX**: Confirm Mac-side pairing code display when pairing is enabled

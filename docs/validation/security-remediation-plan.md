@@ -1,40 +1,43 @@
 # LightStar Security Remediation Plan
 
-> Generated: September 2026
-> Status: PLAN ONLY — No code changes implemented
-> Verification: NONE — Requires Mac execution to verify fixes
+> Generated: September 2026  
+> **Revalidated: 2026-09-21**  
+> Status: PARTIALLY SUPERSEDED — fake pairing (item 1) is **implemented** in production  
+> Verification: Pairing/lockout unit tests exist; Mac hardware not run on Linux agents
 
 ---
 
 ## Issue Ranking by Severity
 
-| Rank | Issue | Severity | CVSS-like | Current State | Fix Complexity |
-|------|-------|----------|-----------|---------------|----------------|
-| 1 | Fake pairing (any 4-digit code accepted) | CRITICAL | 9.0 | Code accepts any code | Medium |
-| 2 | No transport encryption | CRITICAL | 8.5 | Plaintext TCP | Medium |
-| 3 | No authentication after pairing | HIGH | 7.5 | Session token unused | Low |
-| 4 | No rate limiting | HIGH | 7.0 | Unlimited attempts | Low |
-| 5 | No replay protection | HIGH | 6.5 | No timestamps validated | Medium |
-| 6 | No input validation | MEDIUM | 5.5 | Unbounded values accepted | Low |
-| 7 | No message size limits | MEDIUM | 5.0 | Can send large payloads | Low |
-| 8 | Remote input without confirmation | MEDIUM | 5.0 | Immediate upon connect | Medium |
+| Rank | Issue | Severity | CVSS-like | Current State (2026-09-21) | Fix Complexity |
+|------|-------|----------|-----------|----------------------------|----------------|
+| 1 | Fake pairing (any 4-digit code accepted) | — | — | **FIXED** — exact `activePairingCode` match, PD-002 6-char alphabet, expiry + lockouts | Done |
+| 2 | No transport encryption | HIGH | 8.5 | Still plaintext TCP; **PD-001** forbids TLS-by-default without ADR | Medium |
+| 3 | No authentication after pairing | MEDIUM | 6.0 | In-memory `authenticated`; `sessionToken` unused on later frames | Low |
+| 4 | No rate limiting | LOW | 3.0 | **Partial** — pairing lockouts present | Done/monitor |
+| 5 | No replay protection | MEDIUM | 6.5 | No timestamps validated | Medium |
+| 6 | No input validation | MEDIUM | 5.5 | Bounded in places; not exhaustive | Low |
+| 7 | No message size limits | LOW | 3.0 | Payload / receive buffer caps exist | Mostly done |
+| 8 | Remote input without confirmation | MEDIUM | 5.0 | Immediate upon authenticated connect | Medium |
 | 9 | No secure credential storage | LOW | 4.0 | Not implemented | Medium |
-| 10 | Bonjour service exposure | LOW | 3.5 | Always advertised | Low |
-| 11 | No session expiration | LOW | 3.0 | Sessions never expire | Low |
+| 10 | Bonjour service exposure | LOW | 3.5 | Always advertised when remote on | Low |
+| 11 | No session expiration | LOW | 3.0 | In-memory until disconnect | Low |
 
 ---
 
-## Remediation 1: Real Pairing
+## Remediation 1: Real Pairing — COMPLETE
 
 ### Current State
 
+Production compares against `activePairingCode` (6-char PD-002 alphabet) with lockouts. The historical accept-any snippet is **removed**:
+
 ```swift
-// RemoteControlServer.swift:205-207
+// REMOVED — obsolete; do not restore
 if pair.pairingCode.count == 4, pair.pairingCode.allSatisfy({ $0.isNumber }) {
     connection.authenticated = true
 ```
 
-**Problem**: Accepts ANY 4-digit numeric code without verification.
+**Historical problem**: Accepted ANY 4-digit numeric code without verification. **No longer true.**
 
 ### Required Implementation
 
@@ -451,15 +454,15 @@ private func handleInputCommand(_ message: RemoteMessage) {
 
 ### Phase 1: Critical (Before Any External Use)
 
-1. Real pairing with displayed code
-2. TLS transport encryption
-3. Session token validation
+1. Real pairing with displayed code — **DONE** (code); confirm Mac UI shows code when pairing enabled
+2. TLS transport encryption — **blocked on PD-001** until ADR
+3. Session token validation — still open (low urgency while LAN-trusted)
 
 ### Phase 2: High (Before Public Release)
 
-4. Rate limiting
+4. Rate limiting — **partially done** (pairing lockouts)
 5. Input validation
-6. Message size limits
+6. Message size limits — **mostly done** (`kLightStarMaxMessagePayloadBytes`)
 
 ### Phase 3: Medium (Before v1.0)
 

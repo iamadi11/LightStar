@@ -1,21 +1,25 @@
 # LightStar Security Review
 
-> Generated: September 2026
-> Environment: Cloud Agent (code inspection only)
-> Status: SECURITY AUDIT — Findings require attention before production use
+> Generated: September 2026  
+> **Revalidated: 2026-09-21** (code inspection vs `RemoteControlServer` / `RemoteProtocol`)  
+> Environment: Cloud Agent (code inspection only)  
+> Status: PARTIALLY SUPERSEDED — fake pairing finding is **obsolete**; residual LAN risks remain
 
 ---
 
 ## Executive Summary
 
-**Risk Level: HIGH**
+**Risk Level: MEDIUM (LAN trust model) — was overstated as CRITICAL for pairing**
 
-The remote control system has significant security vulnerabilities that could allow any device on the local network to:
-- Control the Mac's cursor and keyboard
-- Access lighting controls
-- Potentially disrupt user activity
+As of 2026-09-21 production code:
 
-These issues must be addressed before recommending the remote control feature for general use.
+- **Real pairing exists** when `requirePairing` is on: Mac generates a **6-character alphanumeric** code (`kLightStarPairingCodeAlphabet`, PD-002), verifies exact match against `activePairingCode`, expires after 60s, and applies per-connection + global lockouts after failed attempts.
+- **Pairing remains off by default** (`requirePairing = false`). That is **PD-001**, not an accidental omission — do not flip the default or mandate TLS without ADR + Strategy approval.
+- **Plaintext TCP** on the LAN is still true; treat the network as the trust boundary when pairing is off.
+- **Session token** is still returned in `PairAck` but not re-checked on later frames (connection stays authenticated in-memory).
+- **Pointer frames** are gated by `RemotePointerAuthPolicy` when unauthenticated (EE-001).
+
+Historical sections below that quote “accept any 4-digit code” describe a **removed** implementation.
 
 ---
 
@@ -59,47 +63,29 @@ connection.authenticated = !requirePairing
 
 ---
 
-## 2. Fake Pairing Implementation
+## 2. Pairing Implementation (FIXED — was “fake pairing”)
 
-### Vulnerability
+### Historical vulnerability (removed)
 
-**Location**: `RemoteControlServer.swift:205-219`
+Older audits quoted accept-any-4-digit logic. That code is **gone**.
 
-```swift
-// Simple pairing: accept any 4-digit code for now
-if pair.pairingCode.count == 4, pair.pairingCode.allSatisfy({ $0.isNumber }) {
-    connection.authenticated = true
-```
+### Current behavior (2026-09-21)
 
-The server accepts ANY 4-digit numeric code. There is no:
-- Actual code generation
-- Code verification against a displayed value
-- Rate limiting
+**Location**: `RemoteControlServer.generatePairingCode` / `handlePair`, `RemoteProtocol` pairing constants
 
-### Risk Assessment
+- Alphabet: `kLightStarPairingCodeAlphabet` (32 chars, no 0/1/I/O); length **6** (PD-002)
+- Exact match against `activePairingCode`; mismatch increments lockouts and closes the connection
+- Code cleared on success; 60s expiry task clears unused codes
+- Global lockout after repeated failures (exponential backoff capped at 300s)
+
+### Residual risks
 
 | Factor | Assessment |
 |--------|------------|
-| Brute Force Space | 10,000 codes (0000-9999) |
-| Time to Enumerate | ~10 seconds with parallel connections |
-| Rate Limiting | None |
-| User Notification | None during brute force |
-
-### Mitigation Required
-
-1. **Real pairing flow**:
-   ```swift
-   // Server generates code
-   let pairingCode = String(format: "%04d", Int.random(in: 0..<10000))
-   // Display to user
-   showPairingCode(pairingCode)
-   // Verify incoming code matches exactly
-   if incomingCode == expectedPairingCode { ... }
-   ```
-
-2. **Rate limiting**: Block IP after 3 failed attempts for 60 seconds
-
-3. **User notification**: Show "Pairing attempt from [device]" dialog
+| Default | Pairing **off** (PD-001) — any LAN client is authenticated on hello |
+| Brute force when pairing on | Mitigated by lockouts; space is 32^6 |
+| Session token | Generated but not enforced on subsequent messages |
+| TLS | Still absent (PD-001 lock until ADR) |
 
 ---
 
@@ -319,14 +305,14 @@ Granting Accessibility permission to enable trackpad also enables remote keyboar
 
 | Issue | Severity | Status | Fix Priority |
 |-------|----------|--------|--------------|
-| Fake pairing | CRITICAL | ❌ Vulnerable | P0 |
-| Plaintext transport | HIGH | ❌ Vulnerable | P0 |
-| Unauthenticated access | HIGH | ⚠️ Configurable | P1 |
-| Remote keyboard injection | HIGH | ⚠️ By design | P1 |
-| Remote mouse injection | MEDIUM | ⚠️ By design | P2 |
-| No rate limiting | MEDIUM | ❌ Missing | P2 |
+| Fake pairing (any 4-digit) | — | ✅ Fixed (PD-002 real codes) | — |
+| Plaintext transport | HIGH | ❌ Open (PD-001: no TLS without ADR) | ADR required |
+| Unauthenticated access | MEDIUM | ⚠️ By design when pairing off (PD-001) | Optional opt-in |
+| Remote keyboard injection | HIGH | ⚠️ By design once authenticated | P1 UX/confirm |
+| Remote mouse injection | MEDIUM | ⚠️ By design; pointer gated if unauthenticated | P2 |
+| Pairing rate limiting | LOW | ✅ Partial (lockouts present) | Monitor |
 | Bonjour spoofing | LOW | ⚠️ Partial | P3 |
-| Session token unused | LOW | ⚠️ Dead code | P3 |
+| Session token unused | LOW | ⚠️ Still unused after PairAck | P3 |
 
 ---
 
@@ -334,15 +320,17 @@ Granting Accessibility permission to enable trackpad also enables remote keyboar
 
 ### Phase 1: Immediate Fixes
 
-```swift
-// 1. Default pairing on
-@Published public var requirePairing: Bool = true  // Changed from false
+> **Update 2026-09-21:** Real pairing + lockouts already shipped. Do **not** change `requirePairing` default to `true` without ADR (violates PD-001). Historical sketch below is obsolete.
 
-// 2. Real pairing flow
+```swift
+// OBSOLETE sketch — production uses kLightStarPairingCodeAlphabet / length 6
+@Published public var requirePairing: Bool = false  // PD-001
+
+// Real pairing already: generatePairingCode() + exact match
 private var currentPairingCode: String?
 
 func generatePairingCode() -> String {
-    let code = String(format: "%06d", Int.random(in: 0..<1000000))
+    let code = String(format: "%06d", Int.random(in: 0..<1000000)) // obsolete numeric sketch
     currentPairingCode = code
     // Clear after 2 minutes
     DispatchQueue.main.asyncAfter(deadline: .now() + 120) {

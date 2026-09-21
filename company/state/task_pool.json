@@ -139,8 +139,67 @@
       "validation_plan": [
         "python3 -m unittest discover -s company/tests -v exits 0"
       ]
+    },
+    {
+      "id": "T-0005",
+      "title": "Correct stale security docs that still claim fake 4-digit pairing",
+      "status": "done",
+      "owner_role": "engineering",
+      "category": "docs",
+      "created_at": "2026-09-21T19:51:00+00:00",
+      "updated_at": "2026-09-21T19:52:45+00:00",
+      "evidence": [
+        {
+          "kind": "repo",
+          "ref": "LightStarCore/Sources/LightStarCore/RemoteControlServer.swift",
+          "note": "generatePairingCode + exact match vs activePairingCode; lockouts"
+        },
+        {
+          "kind": "repo",
+          "ref": "LightStarCore/Sources/LightStarCore/RemoteProtocol.swift",
+          "note": "PD-002: kLightStarPairingCodeLength=6 alphanumeric alphabet"
+        },
+        {
+          "kind": "doc",
+          "ref": "docs/validation/security-review.md",
+          "note": "Still quotes obsolete accept-any-4-digit snippet as CRITICAL"
+        }
+      ],
+      "priority_rationale": "Stale CRITICAL findings invent false demand and push PD-001 violations (TLS / pairing-on-by-default). Honesty of validation docs is required for the autonomous company.",
+      "rank_score": 70,
+      "acceptance": [
+        "Docs no longer claim fake pairing / any-4-digit as current CRITICAL NOT_FIXED",
+        "Docs state real pairing matches PD-002; pairing-off default is PD-001",
+        "TLS and unused sessionToken remain accurately listed as open / PD-locked where applicable",
+        "company self-tests still pass"
+      ],
+      "validation_plan": [
+        "rg confirms obsolete 'any 4-digit' claim removed or marked superseded",
+        "python3 -m unittest discover -s company/tests -v"
+      ],
+      "non_goals": [
+        "Do not flip PD-001/PD-002",
+        "Do not implement TLS in this task",
+        "Do not invent new remote-auth product scope"
+      ],
+      "risks": [
+        "Over-claiming security as production-ready; keep residual risks honest"
+      ],
+      "anti_slop": {
+        "problem": "Validation docs contradict production pairing code",
+        "evidence": "Code exact-match + 6-char alphabet vs docs quoting accept-any-4-digit",
+        "why_this": "Doc correction restores evidence discipline without product churn",
+        "could_break": "Readers might think LAN remote is fully hardened \u2014 residual plaintext/PD-001 must stay visible",
+        "verify": "rg + self-tests",
+        "reject_if": "Would require flipping PD-001 or claiming unverified Mac/Echo proof"
+      },
+      "completion_evidence": [
+        "docs/validation/* revalidated 2026-09-21 against RemoteControlServer/RemoteProtocol",
+        "rg: no remaining current NOT_FIXED fake-pairing claims",
+        "command: python3 -m unittest discover -s company/tests -v exit_ok=True"
+      ]
     }
   ],
-  "updated_at": "2026-09-21T19:48:56+00:00",
+  "updated_at": "2026-09-21T19:52:45+00:00",
   "version": 1
 }

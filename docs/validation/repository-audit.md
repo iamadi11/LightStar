@@ -117,7 +117,7 @@
 | Issue | Location | Severity | Description |
 |-------|----------|----------|-------------|
 | No message authentication | `RemoteProtocol.swift` | HIGH | Any LAN device can send commands |
-| Pairing accepts any 4-digit code | `RemoteControlServer.swift:205` | HIGH | No actual code verification |
+| ~~Pairing accepts any 4-digit code~~ | `RemoteControlServer.swift` | — | **Obsolete 2026-09-21** — exact `activePairingCode` match (PD-002) |
 | No session invalidation | `RemoteControlServer.swift` | MEDIUM | Paired sessions never expire |
 
 ### 3.3 Input Validation Issues
