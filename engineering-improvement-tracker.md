@@ -25,6 +25,8 @@ Base: `origin/main` @ `a7de2c9`
 | EE-004 Client failed connection cleanup | Implemented |
 | EE-005 syncColor observation fan-out | Implemented |
 | EE-006 Mic Sendable captures | Implemented |
+| EE-007 Sync restore only if active at drop | Implemented |
+| EE-008 Do not adopt extras as primary | Implemented |
 
 ## Product decisions
 

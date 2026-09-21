@@ -66,7 +66,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 isOn: self.ble.isOn,
                 isSyncing: self.ble.syncMode != .off,
                 pendingScheduleCount: pendingCount,
-                hasSyncToRestore: self.ble.lastSyncMode != .off
+                hasSyncToRestore: self.ble.restoreSyncOnReconnect
             ),
                   let id = self.presets.defaultPresetID,
                   let preset = self.presets.presets.first(where: { $0.id == id })

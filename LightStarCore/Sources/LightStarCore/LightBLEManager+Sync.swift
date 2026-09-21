@@ -21,6 +21,7 @@ public extension LightBLEManager {
         if let persist = SyncModePersistence.lastSyncModeToPersist(previous: syncMode, next: mode) {
             lastSyncMode = persist
             UserDefaults.standard.set(persist.rawValue, forKey: "lastSyncMode")
+            restoreSyncOnReconnect = SyncReconnectPolicy.restoreFlagAfterUserTurnsSyncOff()
         }
         let prevMode = syncMode
         transitionTask?.cancel()
@@ -83,6 +84,7 @@ public extension LightBLEManager {
         if syncMode != .off {
             lastSyncMode = syncMode
             UserDefaults.standard.set(syncMode.rawValue, forKey: "lastSyncMode")
+            restoreSyncOnReconnect = SyncReconnectPolicy.restoreFlagAfterSyncInterrupted(wasSyncing: true)
         }
         if audioInputSource == .stripMic { write(Cmd.stripMic(enabled: false)) }
         systemAudio.onBands = nil

@@ -38,6 +38,7 @@ extension LightBLEManager {
         userInitiatedDisconnect = true
         stopSyncInline()
         lastSyncMode = .off
+        restoreSyncOnReconnect = false
         UserDefaults.standard.set(SyncMode.off.rawValue, forKey: "lastSyncMode")
         coalescer.flush()
         switch remoteClient.state {

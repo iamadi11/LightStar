@@ -880,6 +880,8 @@ final class ConnectAndSchedulePolicyTests: XCTestCase {
         XCTAssertFalse(BLEDiscoveryPolicy.shouldTreatAdvertisementAsExtraLight(
             multiLightEnabled: false, primaryConnectionState: .connected
         ))
+        XCTAssertTrue(BLEDiscoveryPolicy.shouldAdoptAdvertisementAsPrimary(isAlreadyExtra: false))
+        XCTAssertFalse(BLEDiscoveryPolicy.shouldAdoptAdvertisementAsPrimary(isAlreadyExtra: true))
     }
 
     func testStalePrimaryPeripheralDoesNotSwallowRediscoveryWhileDisconnected() {
@@ -933,6 +935,21 @@ final class ConnectAndSchedulePolicyTests: XCTestCase {
         )
         XCTAssertNil(SyncModePersistence.lastSyncModeToPersist(previous: .off, next: .off))
         XCTAssertNil(SyncModePersistence.lastSyncModeToPersist(previous: .video, next: .audio))
+        XCTAssertFalse(SyncReconnectPolicy.restoreFlagAfterUserTurnsSyncOff())
+        XCTAssertTrue(SyncReconnectPolicy.restoreFlagAfterSyncInterrupted(wasSyncing: true))
+        XCTAssertFalse(SyncReconnectPolicy.restoreFlagAfterSyncInterrupted(wasSyncing: false))
+        XCTAssertFalse(SyncReconnectPolicy.shouldRestoreSync(
+            wasActiveAtDisconnect: false, lastSyncMode: .video
+        ))
+        XCTAssertTrue(SyncReconnectPolicy.shouldRestoreSync(
+            wasActiveAtDisconnect: true, lastSyncMode: .video
+        ))
+        XCTAssertFalse(SyncReconnectPolicy.shouldRestoreSync(
+            wasActiveAtDisconnect: true, lastSyncMode: .off
+        ))
+        XCTAssertFalse(ConnectAppearancePolicy.shouldApplyDefaultPreset(
+            isOn: true, isSyncing: false, pendingScheduleCount: 0, hasSyncToRestore: true
+        ))
     }
 
     func testStaleRemoteCallbacksAreIgnored() {

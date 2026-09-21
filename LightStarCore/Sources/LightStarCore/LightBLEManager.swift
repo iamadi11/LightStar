@@ -221,6 +221,14 @@ public final class LightBLEManager: NSObject {
               let v = SyncMode(rawValue: raw) else { return .off }
         return v
     }()
+    /// True when sync was actually running at the last unexpected drop (or is
+    /// still the launch restore target). User turning sync off clears this so
+    /// reconnect does not start capture again.
+    public var restoreSyncOnReconnect: Bool = {
+        guard let raw = UserDefaults.standard.string(forKey: "lastSyncMode"),
+              let v = SyncMode(rawValue: raw), v != .off else { return false }
+        return true
+    }()
     public var colorDebounce: Task<Void, Never>?
     public var reconnectAttempts = 0
     public let maxReconnectAttempts = 5
@@ -348,6 +356,7 @@ public final class LightBLEManager: NSObject {
         connectionError = nil
         stopSyncInline()
         lastSyncMode = .off
+        restoreSyncOnReconnect = false
         UserDefaults.standard.set(SyncMode.off.rawValue, forKey: "lastSyncMode")
         coalescer.flush()
         if probeRunning {
@@ -429,7 +438,10 @@ public final class LightBLEManager: NSObject {
                 self.write(Cmd.brightness(self.brightness))
                 // Keep lastSyncMode until restore succeeds or the user turns sync
                 // off. Clearing it here races onConnect's default preset.
-                if self.lastSyncMode != .off {
+                if SyncReconnectPolicy.shouldRestoreSync(
+                    wasActiveAtDisconnect: self.restoreSyncOnReconnect,
+                    lastSyncMode: self.lastSyncMode
+                ) {
                     self.setSyncMode(self.lastSyncMode)
                 } else if self.circadianEnabled {
                     self.applyCircadianCCT()
@@ -587,6 +599,11 @@ extension LightBLEManager: CBCentralManagerDelegate {
             if BLEDiscoveryPolicy.shouldIgnoreNonPrimaryAdvertisement(
                 hasPrimaryPeripheral: self.peripheral != nil,
                 primaryConnectionState: self.connectionState
+            ) {
+                return
+            }
+            if !BLEDiscoveryPolicy.shouldAdoptAdvertisementAsPrimary(
+                isAlreadyExtra: self.extraLightIndex(of: discoveredPeripheral) != nil
             ) {
                 return
             }
@@ -790,6 +807,13 @@ public enum BLEDiscoveryPolicy: Sendable {
             && (primaryConnectionState == .connecting || primaryConnectionState == .connected)
     }
 
+    /// After a primary drop, extras stay in `extraLights`. Their advertisements
+    /// must not replace `self.peripheral` or GATT discovery treats them as extras
+    /// and never starts the connect sequence.
+    public static func shouldAdoptAdvertisementAsPrimary(isAlreadyExtra: Bool) -> Bool {
+        !isAlreadyExtra
+    }
+
     public static func shouldStopScanWhenDisablingMultiLight(
         connectionState: LightBLEManager.ConnectionState
     ) -> Bool {
@@ -840,8 +864,8 @@ public enum WakeReconnectPolicy: Sendable {
     }
 }
 
-/// lastSyncMode is the restore target after reconnect. Turning sync off must
-/// remember the mode; restoring must not wipe it first.
+/// lastSyncMode is the toggle restore target. Connect resume is separate:
+/// only restore capture if it was actually running when the link dropped.
 public enum SyncModePersistence: Sendable {
     public static func lastSyncModeToPersist(
         previous: LightBLEManager.SyncMode,
@@ -850,4 +874,17 @@ public enum SyncModePersistence: Sendable {
         guard next == .off, previous != .off else { return nil }
         return previous
     }
+}
+
+public enum SyncReconnectPolicy: Sendable {
+    public static func shouldRestoreSync(
+        wasActiveAtDisconnect: Bool,
+        lastSyncMode: LightBLEManager.SyncMode
+    ) -> Bool {
+        wasActiveAtDisconnect && lastSyncMode != .off
+    }
+
+    public static func restoreFlagAfterUserTurnsSyncOff() -> Bool { false }
+
+    public static func restoreFlagAfterSyncInterrupted(wasSyncing: Bool) -> Bool { wasSyncing }
 }
