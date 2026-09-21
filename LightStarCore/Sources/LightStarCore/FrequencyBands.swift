@@ -56,3 +56,9 @@ public enum CaptureSessionPolicy: Sendable {
         callbackInstalled || startWasSuperseded
     }
 }
+
+/// Display sleep/wake must not race `stop()` (async) against `start()` (no-op if still running).
+public enum SleepWakeCapturePolicy: Sendable {
+    /// Resume always drains stop before start so `guard !isRunning else { return }` cannot no-op.
+    public static func shouldDrainStopBeforeResumeStart() -> Bool { true }
+}

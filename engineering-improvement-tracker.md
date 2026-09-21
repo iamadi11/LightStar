@@ -28,6 +28,9 @@ Base: `origin/main` @ `04527b6`
 | EE-007 Sync restore only if active at drop | Implemented |
 | EE-008 Do not adopt extras as primary | Implemented |
 | EE-009 Combined/resume CancellationError | Implemented |
+| EE-010 Serialize screen pause/resume | Implemented |
+| EE-011 Screen frame interval ↔ 20 Hz writes | Implemented |
+| EE-012 FFT prepare before display-stream audio | Implemented |
 
 ## Product decisions
 

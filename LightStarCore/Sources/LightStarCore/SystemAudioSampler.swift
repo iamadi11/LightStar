@@ -78,13 +78,14 @@ public final class SystemAudioSampler: NSObject {
         let filter = SCContentFilter(display: display, excludingWindows: [])
         let s = SCStream(filter: filter, configuration: cfg, delegate: nil)
         try s.addStreamOutput(self, type: .audio, sampleHandlerQueue: queue)
+        // EE-012: prepare FFT before startCapture so early buffers are not zero-band.
+        engine.prepare()
         try await s.startCapture()
 
         guard !CaptureSessionPolicy.isSuperseded(startGeneration: gen, currentGeneration: generation) else {
             try? await s.stopCapture()
             throw CancellationError()
         }
-        engine.prepare()
         stream = s
         isRunning = true
     }

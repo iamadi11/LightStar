@@ -85,4 +85,22 @@ Base: `a7de2c9` (ENG-001–034 already on main)
 - **Evidence:** Combined screen `CancellationError` returned immediately with `.combined` on, audio never started, and no sibling `stop()`. `resumeScreenSync` called `setSyncError` + `stopSyncInline()` on any throw, so a pause/start race on wake killed the session.
 - **Fix:** `CaptureSessionPolicy.disposition` continues combined (and keeps `.combined` when screen start was superseded) unless the transition task is cancelled. Resume ignores `CancellationError`. Samplers call `isSuperseded`.
 
-See `engineering-roadmap.md`. Metal GPU blocking, schedule persist off-main, TLS, and LightBLEManager splits were not implemented.
+### EE-010 — Sleep/wake pause/resume race leaves capture dead
+
+- **Classification:** Bug fix (Screen + Both)
+- **Evidence:** `pauseScreenSync` fire-and-forget `Task { await stop() }` while `resumeScreenSync` calls `start()` which no-ops when `isRunning` — wake can show sync on with no frames.
+- **Fix:** `sleepWakeTask` serializes pause→resume; resume always drains `stop()` before `start()` (`SleepWakeCapturePolicy`).
+
+### EE-011 — Screen capture analyzed at 60 Hz for 20 Hz BLE writes
+
+- **Classification:** Perf (Screen + Both)
+- **Evidence:** `minimumFrameInterval` timescale 60 vs hue write throttle `1/20` in `LightBLEManager+Sync`.
+- **Fix:** SCStream interval timescale 20.
+
+### EE-012 — Legacy system-audio FFT prepared after capture start
+
+- **Classification:** Bug fix (Music/Both on macOS &lt; 14.2 display-stream path)
+- **Evidence:** `engine.prepare()` ran after `startCapture()`; early buffers hit nil FFT setup → zero bands.
+- **Fix:** Prepare before `startCapture()`.
+
+See `engineering-roadmap.md`. Metal GPU blocking (EE-014), mic/system RMS unify (EE-013), and Combined sat punch (EE-016) remain follow-up/deferred.

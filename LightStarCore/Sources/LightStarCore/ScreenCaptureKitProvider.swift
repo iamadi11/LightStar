@@ -68,7 +68,8 @@ public final class ScreenCaptureKitProvider: NSObject, ScreenFrameProvider {
         cfg.width = 48
         cfg.height = 27
         cfg.pixelFormat = kCVPixelFormatType_32BGRA
-        cfg.minimumFrameInterval = CMTime(value: 1, timescale: 60)
+        // EE-011: match SCStream cadence to ≤20 Hz BLE hue writes (was 60 Hz analyze waste).
+        cfg.minimumFrameInterval = CMTime(value: 1, timescale: 20)
         cfg.capturesAudio = capturesAudio
         cfg.showsCursor = false
         if capturesAudio {
