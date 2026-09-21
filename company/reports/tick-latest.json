@@ -1,41 +1,33 @@
 {
   "company": {
-    "cycle": 16,
+    "cycle": 17,
     "idle_streak": 1,
     "last_tick_summary": {
       "completed": [],
-      "cycle": 16,
-      "discovered": [
-        "W-0015"
-      ],
+      "cycle": 17,
+      "discovered": [],
       "followups": [],
       "idle": true,
       "value_class": "ONLY_SPECULATIVE_OR_DEFERRED"
     },
     "mode": "IDLE_MONITORING",
     "stop_reason": "ONLY_SPECULATIVE_OR_DEFERRED",
-    "updated_at": "2026-09-21T20:45:28+00:00",
+    "updated_at": "2026-09-21T20:47:09+00:00",
     "version": 1
   },
-  "generated_at": "2026-09-21T20:45:28+00:00",
+  "generated_at": "2026-09-21T20:47:09+00:00",
   "summary": {
-    "blocked": [
-      "W-0015"
-    ],
+    "blocked": [],
     "completed": [],
-    "cycle": 16,
+    "cycle": 17,
     "deliberations": [],
-    "discovered": [
-      "W-0015"
-    ],
+    "discovered": [],
     "feedback": [],
     "followups": [],
     "idle": true,
     "recovered": [],
     "triaged_deferred": [],
-    "triaged_ready": [
-      "W-0015"
-    ],
+    "triaged_ready": [],
     "triaged_rejected": [],
     "value_class": "ONLY_SPECULATIVE_OR_DEFERRED"
   }

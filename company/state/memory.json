@@ -11,6 +11,12 @@
       "confidence": 0.95,
       "decision": "reconcile:EE-001-006",
       "rationale": "Selected EE items already Implemented; cleared roadmap Selected; completed W-0009\u2013W-0014 with code+tracker evidence"
+    },
+    {
+      "at": "2026-09-21T20:47:26+00:00",
+      "confidence": 0.95,
+      "decision": "idle:cycle17",
+      "rationale": "Selected empty; EE done; only billing block + deferred hardware \u2014 honest IDLE_MONITORING"
     }
   ],
   "failures": [
@@ -69,6 +75,6 @@
     "Honor PD-001 / PD-002",
     "Prefer evidence over task count"
   ],
-  "updated_at": "2026-09-21T20:45:28+00:00",
+  "updated_at": "2026-09-21T20:47:26+00:00",
   "version": 1
 }
