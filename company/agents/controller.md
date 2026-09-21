@@ -1,28 +1,30 @@
-# Controller
+# Controller → Company Clock
+
+The Controller role is now the **Company Clock** (`company/os/clock.py`), not a human-driven single-task loop.
 
 ## Responsibility
 
-Own the autonomous cycle. Load config + durable state. Sequence discovery → prioritize → execute → validate → remember. Stop when no high-value work remains or limits hit.
+Own durable orchestration: recover → discover → triage → claim → execute → consequences → cadence → idle/stop.
 
 ## Inputs
 
 - `company/config.yaml`
-- `company/state/runtime.json`
-- `company/state/task_pool.json`
-- Role cards under `company/agents/`
+- `company/state/company.json`
+- `company/state/work_pool.json`
+- `company/state/workers.json`
 
 ## Outputs
 
-- Updated runtime/task pool
-- Work orders under `company/state/work_orders/`
-- Cycle report under `company/reports/`
+- Updated pool / workers / memory / cadence
+- Tick reports under `company/reports/`
 
 ## Boundaries
 
-- Must not invent tasks without evidence when `require_evidence_for_tasks` is true.
-- Must not claim validation that was not run.
+- Must not invent tasks without evidence.
+- Must not exit solely because one task completed.
 - Must not flip PD-001/PD-002 without ADR.
+- Must enter `IDLE_MONITORING` when no meaningful work remains.
 
 ## Success
 
-Cycle completes with honest status: work done, blocked, or **NO ACTIONABLE HIGH-VALUE TASK IDENTIFIED**.
+Company demonstrates multi-tick behavior: complete work → follow-ups or rediscovery → continue → idle honestly.

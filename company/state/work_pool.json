@@ -1,0 +1,415 @@
+{
+  "items": [
+    {
+      "acceptance": [
+        "CI job for main includes LightStarCore tests + macOS build",
+        "Manual M12 Alexa checks remain documented until hardware available"
+      ],
+      "blocked_reason": null,
+      "claim": null,
+      "completion_evidence": [
+        "ci: https://github.com/iamadi11/LightStar/actions/runs/35643367190 conclusion=success (Alexa bridge docs commit b5bbcb9 \u2014 Generate, test, build)",
+        "ci: https://github.com/iamadi11/LightStar/actions/runs/35645506718 conclusion=success (HEAD e6d21d9 \u2014 Generate, test, build)",
+        "manual Echo M12: deferred \u2014 no Echo/hardware on this agent; matrix remains in docs/testing/manual-mac-validation.md \u00a712"
+      ],
+      "confidence": 0.6,
+      "created_at": "2026-09-21T19:32:13+00:00",
+      "decision_history": [],
+      "department": "qa",
+      "dependencies": [],
+      "desired_outcome": "CI job for main includes LightStarCore tests + macOS build; Manual M12 Alexa checks remain documented until hardware available",
+      "estimated_effort": "S",
+      "evidence": [
+        {
+          "kind": "repo",
+          "ref": "LightStarCore/Sources/LightStarCore/AlexaHueBridge.swift"
+        },
+        {
+          "kind": "ci",
+          "note": "macos-15 required",
+          "ref": ".github/workflows/ci.yml"
+        }
+      ],
+      "fingerprint": "83e41ba800f99600",
+      "id": "T-0001",
+      "owner_worker": null,
+      "priority_rationale": "New network-facing bridge shipped; Linux agents must not claim build success. CI green + manual Echo discovery remain the proof. (rank_score=55, non-authoritative)",
+      "problem": "Confirm Alexa Hue bridge via macOS CI (cannot validate Swift on Linux agent)",
+      "related_work": [],
+      "reviewer_worker": null,
+      "risks": [
+        "Acting without Mac/CI proof where required"
+      ],
+      "status": "COMPLETED",
+      "title": "Confirm Alexa Hue bridge via macOS CI (cannot validate Swift on Linux agent)",
+      "type": "test",
+      "updated_at": "2026-09-21T19:39:10+00:00",
+      "validation_requirements": [
+        "CI job for main includes LightStarCore tests + macOS build",
+        "Manual M12 Alexa checks remain documented until hardware available"
+      ]
+    },
+    {
+      "acceptance": [
+        "python3 -m unittest discover -s company/tests -v exits 0"
+      ],
+      "blocked_reason": null,
+      "claim": null,
+      "completion_evidence": [
+        "command: python3 -m unittest discover -s company/tests -v",
+        "exit_ok=True",
+        "test_challenge_defers_debt_without_capacity_claim (test_autonomous_company.AutonomousCompanyTests.test_challenge_defers_debt_without_capacity_claim) ... ok\ntest_challenge_rejects_missing_evidence (test_autonomous_company.AutonomousCompanyTests.test_challenge_rejects_missing_evidence) ... ok\ntest_config_exists (test_autonomous_company.AutonomousCompanyTests.test_config_exists) ... ok\ntest_discover_returns_list (test_autonomous_company.AutonomousCompanyTests.test_discover_returns_list) ... ok\ntest_next_task_id_increments (test_autonomous_company.AutonomousCompanyTests.test_next_task_id_increments) ... ok\ntest_prioritize_skips_duplicate_titles (test_autonomous_company.AutonomousCompanyTests.test_prioritize_skips_duplicate_titles) ... ok\n\n----------------------------------------------------------------------\nRan 6 tests in 0.017s\n\nOK\n"
+      ],
+      "confidence": 0.6,
+      "created_at": "2026-09-21T19:32:13+00:00",
+      "decision_history": [],
+      "department": "ops",
+      "dependencies": [],
+      "desired_outcome": "python3 -m unittest discover -s company/tests -v exits 0",
+      "estimated_effort": "S",
+      "evidence": [
+        {
+          "kind": "repo",
+          "ref": "company/tests"
+        }
+      ],
+      "fingerprint": "91f6908fc926faa1",
+      "id": "T-0002",
+      "owner_worker": null,
+      "priority_rationale": "The company tooling itself must stay honest and tested. (rank_score=55, non-authoritative)",
+      "problem": "Run autonomous-company self-tests",
+      "related_work": [],
+      "reviewer_worker": null,
+      "risks": [
+        "Acting without Mac/CI proof where required"
+      ],
+      "status": "COMPLETED",
+      "title": "Run autonomous-company self-tests",
+      "type": "process",
+      "updated_at": "2026-09-21T19:32:13+00:00",
+      "validation_requirements": [
+        "python3 -m unittest discover -s company/tests -v exits 0"
+      ]
+    },
+    {
+      "acceptance": [
+        "Either promote one deferred item with new evidence, or record NO ACTION"
+      ],
+      "blocked_reason": "NO ACTIONABLE HIGH-VALUE TASK without new measurements; keeping deferred list as memory only",
+      "claim": null,
+      "completion_evidence": [],
+      "confidence": 0.6,
+      "created_at": "2026-09-21T19:32:13+00:00",
+      "decision_history": [],
+      "department": "ops",
+      "dependencies": [],
+      "desired_outcome": "Either promote one deferred item with new evidence, or record NO ACTION",
+      "estimated_effort": "S",
+      "evidence": [
+        {
+          "kind": "doc",
+          "note": "Deferred/follow-up sections exist; promote only with new evidence",
+          "ref": "engineering-roadmap.md"
+        }
+      ],
+      "fingerprint": "c57cfb3fef8013e8",
+      "id": "T-0003",
+      "owner_worker": null,
+      "priority_rationale": "Existing engineering process already parked items. Revisit only if new measurements or failures appear; otherwise leave deferred. (rank_score=30, non-authoritative)",
+      "problem": "Review deferred engineering items for newly available evidence",
+      "related_work": [],
+      "reviewer_worker": null,
+      "risks": [
+        "Acting without Mac/CI proof where required"
+      ],
+      "status": "DEFERRED",
+      "title": "Review deferred engineering items for newly available evidence",
+      "type": "process",
+      "updated_at": "2026-09-21T19:32:13+00:00",
+      "validation_requirements": [
+        "Either promote one deferred item with new evidence, or record NO ACTION"
+      ]
+    },
+    {
+      "acceptance": [
+        "python3 -m unittest discover -s company/tests -v exits 0"
+      ],
+      "blocked_reason": "Duplicate of T-0002 (done self-tests rediscovered because done titles were skipped incorrectly)",
+      "claim": null,
+      "completion_evidence": [
+        "superseded_by=T-0002",
+        "fix=prioritize skips all existing titles"
+      ],
+      "confidence": 0.6,
+      "created_at": "2026-09-21T19:38:19+00:00",
+      "decision_history": [],
+      "department": "ops",
+      "dependencies": [],
+      "desired_outcome": "python3 -m unittest discover -s company/tests -v exits 0",
+      "estimated_effort": "S",
+      "evidence": [
+        {
+          "kind": "repo",
+          "ref": "company/tests"
+        }
+      ],
+      "fingerprint": "91f6908fc926faa1",
+      "id": "T-0004",
+      "owner_worker": null,
+      "priority_rationale": "The company tooling itself must stay honest and tested. (rank_score=55, non-authoritative)",
+      "problem": "Run autonomous-company self-tests",
+      "related_work": [],
+      "reviewer_worker": null,
+      "risks": [
+        "Acting without Mac/CI proof where required"
+      ],
+      "status": "REJECTED",
+      "title": "Run autonomous-company self-tests",
+      "type": "process",
+      "updated_at": "2026-09-21T19:39:10+00:00",
+      "validation_requirements": [
+        "python3 -m unittest discover -s company/tests -v exits 0"
+      ]
+    },
+    {
+      "acceptance": [
+        "Docs no longer claim fake pairing / any-4-digit as current CRITICAL NOT_FIXED",
+        "Docs state real pairing matches PD-002; pairing-off default is PD-001",
+        "TLS and unused sessionToken remain accurately listed as open / PD-locked where applicable",
+        "company self-tests still pass"
+      ],
+      "blocked_reason": null,
+      "claim": null,
+      "completion_evidence": [
+        "docs/validation/* revalidated 2026-09-21 against RemoteControlServer/RemoteProtocol",
+        "rg: no remaining current NOT_FIXED fake-pairing claims",
+        "command: python3 -m unittest discover -s company/tests -v exit_ok=True"
+      ],
+      "confidence": 0.6,
+      "created_at": "2026-09-21T19:51:00+00:00",
+      "decision_history": [],
+      "department": "engineering",
+      "dependencies": [],
+      "desired_outcome": "Docs no longer claim fake pairing / any-4-digit as current CRITICAL NOT_FIXED; Docs state real pairing matches PD-002; pairing-off default is PD-001; TLS and unused sessionToken remain accurately listed as open / PD-locked where applicable; company self-tests still pass",
+      "estimated_effort": "S",
+      "evidence": [
+        {
+          "kind": "repo",
+          "note": "generatePairingCode + exact match vs activePairingCode; lockouts",
+          "ref": "LightStarCore/Sources/LightStarCore/RemoteControlServer.swift"
+        },
+        {
+          "kind": "repo",
+          "note": "PD-002: kLightStarPairingCodeLength=6 alphanumeric alphabet",
+          "ref": "LightStarCore/Sources/LightStarCore/RemoteProtocol.swift"
+        },
+        {
+          "kind": "doc",
+          "note": "Still quotes obsolete accept-any-4-digit snippet as CRITICAL",
+          "ref": "docs/validation/security-review.md"
+        }
+      ],
+      "fingerprint": "c1b25f8da5de38b4",
+      "id": "T-0005",
+      "owner_worker": null,
+      "priority_rationale": "Stale CRITICAL findings invent false demand and push PD-001 violations (TLS / pairing-on-by-default). Honesty of validation docs is required for the autonomous company.",
+      "problem": "Correct stale security docs that still claim fake 4-digit pairing",
+      "related_work": [],
+      "reviewer_worker": null,
+      "risks": [
+        "Over-claiming security as production-ready; keep residual risks honest"
+      ],
+      "status": "COMPLETED",
+      "title": "Correct stale security docs that still claim fake 4-digit pairing",
+      "type": "docs",
+      "updated_at": "2026-09-21T19:52:45+00:00",
+      "validation_requirements": [
+        "rg confirms obsolete 'any 4-digit' claim removed or marked superseded",
+        "python3 -m unittest discover -s company/tests -v"
+      ]
+    },
+    {
+      "acceptance": [
+        "unittest suite exits 0"
+      ],
+      "blocked_reason": "self-tests failed",
+      "claim": null,
+      "completion_evidence": [
+        "command: python3 -m unittest discover -s company/tests -v",
+        "exit_ok=False",
+        "self-tests timed out"
+      ],
+      "confidence": 0.9,
+      "created_at": "2026-09-21T20:11:21+00:00",
+      "decision_history": [
+        {
+          "at": "2026-09-21T20:11:21+00:00",
+          "by": "ops",
+          "event": "created",
+          "note": "discovered"
+        },
+        {
+          "at": "2026-09-21T20:11:21+00:00",
+          "by": "triage",
+          "event": "triage_ready",
+          "note": "passed quality gate"
+        },
+        {
+          "at": "2026-09-21T20:11:21+00:00",
+          "by": "ops-1",
+          "event": "claimed",
+          "note": "lease acquired"
+        },
+        {
+          "at": "2026-09-21T20:11:21+00:00",
+          "by": "ops-1",
+          "event": "execute_start",
+          "note": "begin"
+        },
+        {
+          "at": "2026-09-21T20:14:21+00:00",
+          "by": "executor",
+          "event": "blocked",
+          "note": "self-tests failed"
+        }
+      ],
+      "department": "ops",
+      "dependencies": [],
+      "desired_outcome": "python3 -m unittest discover -s company/tests -v exits 0",
+      "estimated_effort": "S",
+      "evidence": [
+        {
+          "kind": "repo",
+          "ref": "company/tests"
+        },
+        {
+          "kind": "repo",
+          "ref": "company/os"
+        }
+      ],
+      "fingerprint": "89b38dcfd2eae0cd",
+      "id": "W-0006",
+      "owner_worker": "ops-1",
+      "priority_rationale": "Tooling integrity gates all other autonomy",
+      "problem": "Company OS must stay honest; regressions in pool/claims break autonomy",
+      "related_work": [],
+      "reviewer_worker": null,
+      "risks": [],
+      "status": "BLOCKED",
+      "title": "Run company OS self-tests (orchestration)",
+      "type": "process",
+      "updated_at": "2026-09-21T20:14:21+00:00",
+      "validation_requirements": [
+        "unittest suite exits 0"
+      ]
+    },
+    {
+      "acceptance": [
+        "CI green or explicitly deferred_to_ci with link",
+        "M12 matrix remains documented"
+      ],
+      "blocked_reason": null,
+      "claim": null,
+      "completion_evidence": [],
+      "confidence": 0.75,
+      "created_at": "2026-09-21T20:11:21+00:00",
+      "decision_history": [
+        {
+          "at": "2026-09-21T20:11:21+00:00",
+          "by": "qa",
+          "event": "created",
+          "note": "discovered"
+        },
+        {
+          "at": "2026-09-21T20:11:21+00:00",
+          "by": "triage",
+          "event": "triage_ready",
+          "note": "passed quality gate"
+        }
+      ],
+      "department": "qa",
+      "dependencies": [],
+      "desired_outcome": "CI includes LightStarCore tests + macOS build; manual M12 documented",
+      "estimated_effort": "S",
+      "evidence": [
+        {
+          "kind": "repo",
+          "ref": "LightStarCore/Sources/LightStarCore/AlexaHueBridge.swift"
+        },
+        {
+          "kind": "ci",
+          "ref": ".github/workflows/ci.yml"
+        }
+      ],
+      "fingerprint": "de5c25d0d909e8af",
+      "id": "W-0006",
+      "owner_worker": null,
+      "priority_rationale": "Honesty gate for Alexa surface",
+      "problem": "Network-facing Alexa bridge needs macOS CI evidence, not Linux claims",
+      "related_work": [],
+      "reviewer_worker": null,
+      "risks": [],
+      "status": "DEFERRED",
+      "title": "Confirm Alexa Hue bridge via macOS CI (Linux cannot compile Swift)",
+      "type": "test",
+      "updated_at": "2026-09-21T20:11:21+00:00",
+      "validation_requirements": [
+        "CI green or explicitly deferred_to_ci with link",
+        "M12 matrix remains documented"
+      ]
+    },
+    {
+      "acceptance": [
+        "Document deferral with hardware dependency"
+      ],
+      "blocked_reason": null,
+      "claim": null,
+      "completion_evidence": [],
+      "confidence": 0.45,
+      "created_at": "2026-09-21T20:11:21+00:00",
+      "decision_history": [
+        {
+          "at": "2026-09-21T20:11:21+00:00",
+          "by": "product",
+          "event": "created",
+          "note": "discovered"
+        },
+        {
+          "at": "2026-09-21T20:11:21+00:00",
+          "by": "triage",
+          "event": "triage_ready",
+          "note": "passed quality gate"
+        }
+      ],
+      "department": "product",
+      "dependencies": [],
+      "desired_outcome": "Keep deferred until Echo hardware; do not invent pass/fail",
+      "estimated_effort": "S",
+      "evidence": [
+        {
+          "kind": "doc",
+          "note": "M12 unchecked",
+          "ref": "docs/testing/manual-mac-validation.md"
+        }
+      ],
+      "fingerprint": "2059bc143d063e4f",
+      "id": "W-0006",
+      "owner_worker": null,
+      "priority_rationale": "Honest customer journey debt \u2014 hardware gated",
+      "problem": "Manual Alexa validation matrix exists but remains unchecked (no Echo on Linux agents)",
+      "related_work": [],
+      "reviewer_worker": null,
+      "risks": [],
+      "status": "DEFERRED",
+      "title": "Customer journey: Alexa M12 manual checks still unchecked",
+      "type": "ux",
+      "updated_at": "2026-09-21T20:11:21+00:00",
+      "validation_requirements": [
+        "Document deferral with hardware dependency"
+      ]
+    }
+  ],
+  "migrated_from": "task_pool.json",
+  "updated_at": "2026-09-21T20:18:02+00:00",
+  "version": 2
+}

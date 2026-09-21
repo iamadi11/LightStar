@@ -91,7 +91,10 @@ Views get state via `@Environment(LightBLEManager.self)`. AppIntents use `LightS
 
 Single command: `./scripts/autonomous-company` (Cursor skill `/autonomous-company`).
 
-Durable state lives under `company/`. Architecture: `company/adr/0001-autonomous-company-architecture.md`. Do not invent Swift validation on Linux agents; use CI.
+This is a **Company Operating System** (work pool + workers + clock), not a one-task runner.
+Architecture: `company/adr/0002-company-operating-system.md` (safety locks still in ADR 0001).
+Durable state: `company/state/{company,work_pool,workers,memory,cadence}.json`.
+Do not invent Swift validation on Linux agents; use CI.
 
 ---
 

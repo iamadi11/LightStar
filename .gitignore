@@ -33,6 +33,7 @@ build/
 # Autonomous company transient files
 company/state/*.tmp
 company/state/**/*.tmp
+company/reports/tick-20*.json
 **/__pycache__/
 *.pyc
 

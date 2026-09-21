@@ -1,0 +1,24 @@
+{
+  "decisions": [],
+  "failures": [
+    {
+      "at": "2026-09-21T20:14:21+00:00",
+      "detail": "self-tests failed",
+      "work_id": "W-0006"
+    }
+  ],
+  "learnings": [
+    {
+      "at": "2026-09-21T20:06:38+00:00",
+      "learning": "Retro cycle 1: completed=0 rejected=0 deferred=0"
+    }
+  ],
+  "rejects": [],
+  "strategy_focus": [
+    "Keep BC/55 BLE controller reliable",
+    "Honor PD-001 / PD-002",
+    "Prefer evidence over task count"
+  ],
+  "updated_at": "2026-09-21T20:18:02+00:00",
+  "version": 1
+}

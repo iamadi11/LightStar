@@ -1,0 +1,120 @@
+{
+  "updated_at": "2026-09-21T20:18:02+00:00",
+  "version": 1,
+  "workers": [
+    {
+      "completed_count": 0,
+      "current_work_id": null,
+      "id": "ops-1",
+      "last_heartbeat": "2026-09-21T20:14:21+00:00",
+      "lease_expires_at": null,
+      "role": "ops",
+      "skills": [
+        "process",
+        "self-test"
+      ],
+      "status": "IDLE"
+    },
+    {
+      "completed_count": 0,
+      "current_work_id": null,
+      "id": "qa-1",
+      "last_heartbeat": "2026-09-21T20:06:38+00:00",
+      "lease_expires_at": null,
+      "role": "qa",
+      "skills": [
+        "test",
+        "validation"
+      ],
+      "status": "IDLE"
+    },
+    {
+      "completed_count": 0,
+      "current_work_id": null,
+      "id": "eng-1",
+      "last_heartbeat": "2026-09-21T20:06:38+00:00",
+      "lease_expires_at": null,
+      "role": "engineering",
+      "skills": [
+        "implementation",
+        "docs"
+      ],
+      "status": "IDLE"
+    },
+    {
+      "completed_count": 0,
+      "current_work_id": null,
+      "id": "sec-1",
+      "last_heartbeat": "2026-09-21T20:06:38+00:00",
+      "lease_expires_at": null,
+      "role": "security",
+      "skills": [
+        "security",
+        "docs"
+      ],
+      "status": "IDLE"
+    },
+    {
+      "completed_count": 0,
+      "current_work_id": null,
+      "id": "product-1",
+      "last_heartbeat": "2026-09-21T20:06:38+00:00",
+      "lease_expires_at": null,
+      "role": "product",
+      "skills": [
+        "product",
+        "ux"
+      ],
+      "status": "IDLE"
+    },
+    {
+      "completed_count": 0,
+      "current_work_id": null,
+      "id": "debt-1",
+      "last_heartbeat": "2026-09-21T20:06:38+00:00",
+      "lease_expires_at": null,
+      "role": "debt",
+      "skills": [
+        "debt",
+        "triage"
+      ],
+      "status": "IDLE"
+    },
+    {
+      "completed_count": 0,
+      "current_work_id": null,
+      "id": "research-1",
+      "last_heartbeat": "2026-09-21T20:06:38+00:00",
+      "lease_expires_at": null,
+      "role": "research",
+      "skills": [
+        "research"
+      ],
+      "status": "IDLE"
+    },
+    {
+      "completed_count": 0,
+      "current_work_id": null,
+      "id": "arch-1",
+      "last_heartbeat": "2026-09-21T20:06:38+00:00",
+      "lease_expires_at": null,
+      "role": "architecture",
+      "skills": [
+        "architecture"
+      ],
+      "status": "IDLE"
+    },
+    {
+      "completed_count": 0,
+      "current_work_id": null,
+      "id": "review-1",
+      "last_heartbeat": "2026-09-21T20:06:38+00:00",
+      "lease_expires_at": null,
+      "role": "review",
+      "skills": [
+        "review"
+      ],
+      "status": "IDLE"
+    }
+  ]
+}

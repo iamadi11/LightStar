@@ -1,71 +1,72 @@
 ---
 name: autonomous-company
-description: Run the LightStar autonomous software company loop — discover, prioritize, execute, validate, and remember engineering work via durable company/ state. Use when the user invokes /autonomous-company or asks to run the autonomous company.
+description: Start the LightStar autonomous software company OS — durable work pool, workers, continuous discovery, and multi-tick operation. Use when the user invokes /autonomous-company or asks to run the autonomous company.
 ---
-# Autonomous Company
+# Autonomous Company (Company OS)
 
-This skill is the **Cursor entry point** for LightStar’s autonomous engineering company.
+This skill is the **Cursor entry point** for LightStar’s **Company Operating System** — a living engineering organization, **not** a one-task coding loop.
 
-Prefer the shell command when available:
+## One command
 
 ```bash
-./scripts/autonomous-company          # one cycle (default)
-./scripts/autonomous-company status
-./scripts/autonomous-company init
+./scripts/autonomous-company          # start / resume the company (default)
+./scripts/autonomous-company status   # dashboard
+./scripts/autonomous-company tick     # single clock tick
+./scripts/autonomous-company stop     # pause; state persists
 ./scripts/autonomous-company self-test
 ```
 
-## Mission
+Default `start` runs multiple company-clock ticks until **IDLE_MONITORING** or tick budget.
 
-Operate like a disciplined product engineering company for **this repository only**.
+## Mental model
 
-Value > task count. Evidence > assumptions. Honesty > greenwashing.
+```
+ONE COMMAND → Company Clock → Work Pool + Workers + Memory
+     → discover / triage / claim / execute / consequences / reprioritize
+     → continue until idle (not until one task finishes)
+```
 
-## Before any product code change
+Architecture: `company/adr/0002-company-operating-system.md`
+
+## Before product code changes
 
 1. Read `company/memory/CONTEXT.md` and `agents.md`.
-2. Read `company/adr/0001-autonomous-company-architecture.md`.
-3. Run `./scripts/autonomous-company status` (or `init` then `cycle`).
-4. Load the active work order from `company/state/work_orders/` if present.
+2. Read ADR 0001 (safety) + ADR 0002 (OS).
+3. Run `./scripts/autonomous-company status`.
+4. Pull READY work from the pool (do not invent a side quest).
 
-## Cycle (when acting as Controller)
+## When the OS blocks for LLM work
 
-1. **Discover** — use CLI discovery + your inspection; do not invent demand.
-2. **Prioritize** — explain rationale; challenge weak tasks.
-3. **Decide** — accept, defer, reject, or conclude **NO ACTIONABLE HIGH-VALUE TASK IDENTIFIED**.
-4. **Execute** — only accepted tasks; follow the matching role card in `company/agents/`.
-5. **Validate** — run real commands; on Linux mark Swift gates `deferred_to_ci`.
-6. **Review** — independent pass on the diff (Review role).
-7. **Remember** — update `company/state/*`, write a short report under `company/reports/`.
-8. **Stop** — when limits hit, blocked on permissions, or no valuable work remains.
+If status shows `BLOCKED` with “Requires Cursor agent”:
 
-## Anti-slop gate (required before implementation)
+1. Claim context from `company/state/work_pool.json`.
+2. Execute per role card under `company/agents/`.
+3. Record `completion_evidence` (commands, diffs, CI links).
+4. Mark work COMPLETED (or leave evidence for `tick` to reconcile).
+5. Run `./scripts/autonomous-company tick` so consequences + rediscovery continue.
 
-Answer explicitly in the work order or report:
+**Do not stop after one implementation.** Return to the company clock.
 
-- What problem are we solving?
-- What evidence supports it?
-- Why this implementation?
-- What could break?
-- How will we verify?
-- What would make us reject this approach?
+## Anti-slop gate
+
+Before implementing: problem, evidence, why this, what breaks, verify how, reject if.
 
 ## Safety
 
-- Do not weaken tests to increase completion.
+- Do not weaken tests to raise completion.
 - Do not flip PD-001 / PD-002 without ADR.
 - Do not claim Swift/Xcode results without running them (or CI evidence).
-- Do not modify company safety policy merely to go faster.
-- High-impact actions require `policy.allow_high_impact: true` **and** a human confirmation note in `company/state/`.
+- Do not invent customers, metrics, or research.
+- High-impact actions need `policy.allow_high_impact: true` **and** human confirmation in `company/state/`.
 
-## Optional companions
+## Matt Pocock skills
 
-If Matt Pocock skills are installed in the environment, you may invoke `/tdd`, `/code-review`, or `/diagnosing-bugs` for discipline — they are **not** required for this skill to function. See `company/memory/tooling.md`.
+Optional **worker capabilities** (`/tdd`, `/code-review`, `/diagnosing-bugs`) — never the orchestrator. See `company/memory/tooling.md`.
 
-## Outputs
+## Durable state
 
-Always leave durable artifacts:
-
-- `company/state/runtime.json`
-- `company/state/task_pool.json`
-- `company/reports/cycle-*.json` (CLI) and/or a Markdown audit note when you performed agent execution
+- `company/state/company.json` — mode, cycle
+- `company/state/work_pool.json` — work universe
+- `company/state/workers.json` — claims / leases
+- `company/state/memory.json` — decisions / rejects / learnings
+- `company/reports/tick-*.json` — tick audits
