@@ -96,6 +96,9 @@ Architecture: `company/adr/0002-company-operating-system.md` (safety locks still
 Durable state: `company/state/{company,work_pool,workers,memory,cadence}.json`.
 Do not invent Swift validation on Linux agents; use CI.
 
+If the company idles without shipping product work, see skill  
+`.cursor/skills/autonomous-company-product-gap/` — Selected rows in `engineering-roadmap.md` must enter the work pool.
+
 ---
 
 ## iPhone <-> Mac Remote Control

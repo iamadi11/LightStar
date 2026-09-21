@@ -105,6 +105,33 @@ def discover_debt(cfg: dict[str, Any], pool: dict[str, Any]) -> list[dict[str, A
     ]
 
 
+def _parse_roadmap_selected(text: str) -> list[dict[str, str]]:
+    """Extract EE rows from the Selected table in engineering-roadmap.md."""
+    # Slice from Selected heading through the next ## heading
+    m = re.search(
+        r"##\s+Selected[^\n]*\n(.*?)(?=\n##\s|\Z)",
+        text,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    if not m:
+        return []
+    section = m.group(1)
+    rows: list[dict[str, str]] = []
+    for line in section.splitlines():
+        line = line.strip()
+        if not line.startswith("|"):
+            continue
+        parts = [p.strip() for p in line.strip("|").split("|")]
+        if len(parts) < 2:
+            continue
+        ee_id, title = parts[0], parts[1]
+        if not re.fullmatch(r"EE-\d+", ee_id):
+            continue
+        why = parts[2] if len(parts) > 2 else ""
+        rows.append({"id": ee_id, "title": title, "why": why})
+    return rows
+
+
 def discover_engineering(cfg: dict[str, Any], pool: dict[str, Any]) -> list[dict[str, Any]]:
     if not cfg.get("discovery", {}).get("scan_engineering_docs", True):
         return []
@@ -112,24 +139,59 @@ def discover_engineering(cfg: dict[str, Any], pool: dict[str, Any]) -> list[dict
     if not roadmap.exists():
         return []
     text = roadmap.read_text(encoding="utf-8", errors="replace")
-    if "Deferred" not in text and "Follow-up" not in text:
-        return []
-    return [
-        work_pool.new_work_item(
-            title="Review deferred engineering items for newly available evidence",
-            department="engineering",
-            type_="process",
-            problem="Deferred roadmap items must not be promoted without measurements",
-            evidence=[{"kind": "doc", "ref": "engineering-roadmap.md"}],
-            desired_outcome="Promote one item with evidence OR record no action",
-            priority_rationale="Prevents silent bitrot of deferred list",
-            acceptance=["Promotion with evidence or explicit no-action"],
-            confidence=0.5,
-            estimated_effort="S",
-            status="DISCOVERED",
-            pool_items=pool.get("items", []),
+    items: list[dict[str, Any]] = []
+
+    # Product delivery: Selected EE rows are evidence-backed implementables
+    for row in _parse_roadmap_selected(text):
+        ee_id = row["id"]
+        title = f"{ee_id}: {row['title']}"
+        typ = "fix" if re.search(r"\b(fix|gate|throttle|do not)\b", row["title"], re.I) else "feature"
+        items.append(
+            work_pool.new_work_item(
+                title=title,
+                department="engineering",
+                type_=typ,
+                problem=row["why"] or f"Selected roadmap item {ee_id} awaiting implementation",
+                evidence=[
+                    {
+                        "kind": "doc",
+                        "ref": "engineering-roadmap.md",
+                        "note": f"{ee_id} in Selected (implement this pass)",
+                    }
+                ],
+                desired_outcome=f"Implement {ee_id} with tests; Swift proof via macOS CI",
+                priority_rationale="Roadmap Selected = impact × evidence × small blast radius",
+                acceptance=[
+                    f"{ee_id} behavior matches roadmap intent",
+                    "Unit tests or focused assertions where applicable",
+                    "CI macos-15 evidence for Swift (never fake local xcodebuild on Linux)",
+                ],
+                confidence=0.85,
+                estimated_effort="S",
+                status="DISCOVERED",
+                pool_items=pool.get("items", []),
+            )
         )
-    ]
+
+    # Deferred review stays memory-only unless new measurements (triage defers this title)
+    if "Deferred" in text or "Follow-up" in text:
+        items.append(
+            work_pool.new_work_item(
+                title="Review deferred engineering items for newly available evidence",
+                department="engineering",
+                type_="process",
+                problem="Deferred roadmap items must not be promoted without measurements",
+                evidence=[{"kind": "doc", "ref": "engineering-roadmap.md"}],
+                desired_outcome="Promote one item with evidence OR record no action",
+                priority_rationale="Prevents silent bitrot of deferred list",
+                acceptance=["Promotion with evidence or explicit no-action"],
+                confidence=0.5,
+                estimated_effort="S",
+                status="DISCOVERED",
+                pool_items=pool.get("items", []),
+            )
+        )
+    return items
 
 
 def discover_security(cfg: dict[str, Any], pool: dict[str, Any]) -> list[dict[str, Any]]:

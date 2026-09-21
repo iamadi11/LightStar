@@ -35,12 +35,21 @@ Architecture: `company/adr/0002-company-operating-system.md`
 3. Run `./scripts/autonomous-company status`.
 4. Pull READY work from the pool (do not invent a side quest).
 
+## When idle without product READY work
+
+If status is `IDLE_MONITORING` / `ONLY_SPECULATIVE_OR_DEFERRED` and the pool has **no** READY engineering/feature items:
+
+1. Read and follow `.cursor/skills/autonomous-company-product-gap/SKILL.md`.
+2. Check `engineering-roadmap.md` **Selected** — those rows are evidence-backed product work, not side quests.
+3. Fix discovery/triage if Selected work never enters the pool; then `tick` / `start` again.
+4. Only treat idle as success when Selected is empty or every Selected EE is completed/rejected with evidence.
+
 ## When the OS blocks for LLM work
 
-If status shows `BLOCKED` with “Requires Cursor agent”:
+If status shows `BLOCKED` with “Requires Cursor agent”, **or** READY work is `department=engineering` / `EE-*`:
 
 1. Claim context from `company/state/work_pool.json`.
-2. Execute per role card under `company/agents/`.
+2. Execute per role card under `company/agents/` (engineering for EE/Swift).
 3. Record `completion_evidence` (commands, diffs, CI links).
 4. Mark work COMPLETED (or leave evidence for `tick` to reconcile).
 5. Run `./scripts/autonomous-company tick` so consequences + rediscovery continue.

@@ -72,6 +72,18 @@ def execute_item(item: dict[str, Any], workers: dict[str, Any]) -> dict[str, Any
         _release(item, workers)
         return item
 
+    # Selected roadmap / engineering product work — Cursor implements Swift
+    if item.get("department") == "engineering" and (
+        title.startswith("ee-") or typ in {"feature", "fix"}
+    ):
+        item["status"] = "BLOCKED"
+        item["blocked_reason"] = (
+            "Requires Cursor agent / engineering worker (LLM) — implement Selected roadmap item"
+        )
+        work_pool.append_decision(item, "blocked", "executor", item["blocked_reason"])
+        _release(item, workers)
+        return item
+
     # Default: needs human/Cursor agent — leave CLAIMED? Better: BLOCKED with clear reason, release worker
     item["status"] = "BLOCKED"
     item["blocked_reason"] = (

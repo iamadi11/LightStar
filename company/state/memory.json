@@ -12,6 +12,26 @@
       "at": "2026-09-21T20:14:21+00:00",
       "detail": "self-tests failed",
       "work_id": "W-0006"
+    },
+    {
+      "at": "2026-09-21T20:37:37+00:00",
+      "detail": "Requires Cursor agent / engineering worker (LLM) \u2014 implement Selected roadmap item",
+      "work_id": "W-0009"
+    },
+    {
+      "at": "2026-09-21T20:37:37+00:00",
+      "detail": "Requires Cursor agent / engineering worker (LLM) \u2014 implement Selected roadmap item",
+      "work_id": "W-0010"
+    },
+    {
+      "at": "2026-09-21T20:37:37+00:00",
+      "detail": "Requires Cursor agent / engineering worker (LLM) \u2014 implement Selected roadmap item",
+      "work_id": "W-0011"
+    },
+    {
+      "at": "2026-09-21T20:37:37+00:00",
+      "detail": "Requires Cursor agent / engineering worker (LLM) \u2014 implement Selected roadmap item",
+      "work_id": "W-0012"
     }
   ],
   "learnings": [
@@ -30,6 +50,6 @@
     "Honor PD-001 / PD-002",
     "Prefer evidence over task count"
   ],
-  "updated_at": "2026-09-21T20:27:42+00:00",
+  "updated_at": "2026-09-21T20:37:37+00:00",
   "version": 1
 }

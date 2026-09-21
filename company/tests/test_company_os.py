@@ -260,6 +260,40 @@ class DiscoveryTests(unittest.TestCase):
         ids = [i["id"] for i in found]
         self.assertEqual(len(ids), len(set(ids)), f"duplicate ids: {ids}")
 
+    def test_engineering_discovers_selected_ee_rows(self):
+        from company.os import discovery as discovery_mod
+
+        found = discovery_mod.discover_engineering(
+            {"discovery": {"scan_engineering_docs": True}},
+            {"items": []},
+        )
+        ee = [i for i in found if (i.get("title") or "").startswith("EE-")]
+        self.assertGreaterEqual(len(ee), 1, "Selected roadmap EE rows must become work items")
+        self.assertTrue(all(i["department"] == "engineering" for i in ee))
+        self.assertTrue(all(float(i["confidence"]) >= 0.8 for i in ee))
+        # Deferred review may still exist but must not be the only engineering output
+        self.assertTrue(any("EE-001" in (i.get("title") or "") for i in ee))
+
+    def test_parse_roadmap_selected_ignores_header(self):
+        from company.os import discovery as discovery_mod
+
+        sample = """
+## Selected (implement this pass)
+
+| ID | Title | Why |
+|----|-------|-----|
+| EE-001 | Gate pointer injection on authentication | Auth bypass |
+| EE-002 | Gyro deltas go straight to PointerChannel | Hot path |
+
+## Deferred
+
+| Item | Reason |
+|------|--------|
+| Split manager | Rewrite would not pay |
+"""
+        rows = discovery_mod._parse_roadmap_selected(sample)
+        self.assertEqual([r["id"] for r in rows], ["EE-001", "EE-002"])
+
 
 class ConfigTests(unittest.TestCase):
     def test_config_and_adr2_exist(self):
