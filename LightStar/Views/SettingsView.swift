@@ -9,6 +9,17 @@ struct SettingsView: View {
     @Environment(PresetStore.self) private var presets
     @AppStorage("launchAtLogin") private var launchAtLogin = false
     @AppStorage("autoConnectOnLaunch") private var autoConnectOnLaunch = true
+    @AppStorage(AlexaHueBridge.enabledDefaultsKey) private var alexaBridgeEnabled = false
+
+    private var alexaBridgeStatusText: String? {
+        guard let bridge = (NSApp.delegate as? AppDelegate)?.alexaBridge else { return nil }
+        switch bridge.state {
+        case .stopped: return "Stopped"
+        case .starting: return "Starting…"
+        case .running(let port): return "Running on port \(port)"
+        case .error(let message): return "Error: \(message)"
+        }
+    }
 
     var body: some View {
         Form {
@@ -75,6 +86,22 @@ struct SettingsView: View {
                             NSWorkspace.shared.open(url)
                         }
                     }
+                }
+            }
+
+            Section("Alexa") {
+                Toggle("Echo Hue bridge", isOn: $alexaBridgeEnabled)
+                    .onChange(of: alexaBridgeEnabled) { _, enabled in
+                        (NSApp.delegate as? AppDelegate)?.setAlexaBridgeEnabled(enabled)
+                    }
+                Text("LightStar pretends to be a Philips Hue bridge on your LAN. Mac stays the BLE brain; Alexa only sends on/off, brightness, colour, and temperature.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text("Setup: enable this toggle → allow Local Network for LightStar → open the Alexa app → Add Device → Philips Hue → Discover. Then: “Alexa, turn on LightStar”.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                if let status = alexaBridgeStatusText {
+                    LabeledContent("Bridge", value: status)
                 }
             }
 

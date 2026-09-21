@@ -76,6 +76,10 @@ LightStarCore/          Swift package, macOS + iOS
   MacInputController.swift      Keyboard/media CGEvent + pointerInjector (macOS only)
   LightBLEManager+Remote.swift  State snapshot + command handling
 
+  # Alexa (Echo) via Hue emulation — macOS only
+  AlexaHueBridge.swift          SSDP + Hue HTTP API; Mac remains BLE brain
+  HueColorMapping.swift         Hue bri/hue/sat/ct ↔ LightStar 0…1 values
+
 LightStar/              macOS app (menu bar + control window)
 LightStariOS/           iOS remote (sideload)
 LightStarWidget/        WidgetKit source shared by both widget extensions
@@ -127,6 +131,19 @@ Messages are length-prefixed (4-byte big-endian) JSON:
 Two-finger scroll sends raw UIKit finger deltas. `MacInputController` maps them with `RemoteScrollMapping`: Natural scrolling ON (Mac default) posts the same polarity as the physical trackpad; Natural OFF inverts once. Do not invert again on iOS.
 
 Air pointer (iPhone gyro) reuses `mouseMove` deltas. Math lives in `GyroPointerMath.swift`. Add `NSMotionUsageDescription` on iOS.
+
+### Alexa Echo (Hue bridge emulation)
+
+macOS can expose a local Philips Hue API (`AlexaHueBridge`) so an Echo Dot discovers **LightStar** and sends on/off, brightness, HS colour, and CCT. LightStar stays the only BLE writer to the strip.
+
+```
+Echo Dot ──SSDP + Hue HTTP──► LightStar (port 9123)
+                                   │
+                                   ▼
+                            LightBLEManager ──BLE──► BC/55 strip
+```
+
+Enable in Settings → **Echo Hue bridge**. UserDefaults key: `alexaHueBridgeEnabled`. Alexa app: Add Device → Philips Hue → Discover. Requires Local Network permission. Does not add PS5 HDMI sync; screen sync remains Mac ScreenCaptureKit.
 
 ### Permissions
 

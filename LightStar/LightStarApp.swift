@@ -44,6 +44,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         RemoteControlCoordinator(ble: ble)
     }()
 
+    /// Echo Dot discovers this as a Hue bridge; commands land on `ble`.
+    lazy var alexaBridge = AlexaHueBridge()
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
         LightStarRuntime.register(ble: ble, presets: presets, schedules: schedules)
@@ -56,6 +59,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         startObservingBLE()
         setupGlobalHotKey()
         setupSleepWakeObserver()
+        configureAlexaBridge()
         ble.onConnect = { [weak self] in
             guard let self else { return }
             // Drain first: a schedule that fired while disconnected is what asked
@@ -79,6 +83,54 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Start remote control server for iPhone connectivity
         if UserDefaults.standard.object(forKey: "remoteControlEnabled") as? Bool ?? true {
             remoteControl.start()
+        }
+
+        if UserDefaults.standard.object(forKey: AlexaHueBridge.enabledDefaultsKey) as? Bool ?? false {
+            alexaBridge.start()
+        }
+    }
+
+    private func configureAlexaBridge() {
+        alexaBridge.getLightSnapshot = { [weak self] in
+            guard let self else {
+                return HueLightSnapshot(isOn: false, hue: 0, saturation: 0, brightness: 1)
+            }
+            return HueLightSnapshot(
+                isOn: self.ble.isOn,
+                hue: self.ble.colorHue,
+                saturation: self.ble.colorSat,
+                brightness: self.ble.brightness
+            )
+        }
+        alexaBridge.onApplyState = { [weak self] patch in
+            guard let self else { return }
+            if let on = patch.on {
+                self.ble.setPower(on: on)
+            }
+            if let kelvin = patch.kelvin {
+                let t = max(0, min(1, (kelvin - 2700) / 3800))
+                self.ble.setColorTemperature(t)
+            } else if patch.hue != nil || patch.saturation != nil {
+                let h = patch.hue ?? self.ble.colorHue
+                let s = patch.saturation ?? self.ble.colorSat
+                self.ble.setHue(h, saturation: s)
+            }
+            if let bri = patch.brightness {
+                self.ble.setBrightness(bri)
+            }
+            if patch.on == true, !self.ble.isOn {
+                self.ble.setPower(on: true)
+            }
+        }
+    }
+
+    func setAlexaBridgeEnabled(_ enabled: Bool) {
+        UserDefaults.standard.set(enabled, forKey: AlexaHueBridge.enabledDefaultsKey)
+        if enabled {
+            configureAlexaBridge()
+            alexaBridge.start()
+        } else {
+            alexaBridge.stop()
         }
     }
 
