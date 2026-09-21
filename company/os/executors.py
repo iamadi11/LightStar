@@ -20,6 +20,36 @@ def execute_item(item: dict[str, Any], workers: dict[str, Any]) -> dict[str, Any
     title = (item.get("title") or "").lower()
     typ = item.get("type", "")
 
+    if "billing" in title or "spend limit" in title:
+        evidence = list(item.get("evidence") or [])
+        refs = [e.get("ref") for e in evidence if isinstance(e, dict) and e.get("ref")]
+        item["completion_evidence"] = [
+            "external: GitHub Actions billing/spend limit — cannot fix in-repo",
+            *[f"ci_ref:{r}" for r in refs],
+            "action_required: human must raise Actions spend limit or fix account billing",
+        ]
+        item["status"] = "BLOCKED"
+        item["blocked_reason"] = (
+            "GitHub Actions billing/spend limit — blocked on human account billing, not code"
+        )
+        work_pool.append_decision(item, "blocked", "executor", item["blocked_reason"])
+        _release(item, workers)
+        return item
+
+    if "investigate main ci failure" in title:
+        evidence = list(item.get("evidence") or [])
+        refs = [e.get("ref") for e in evidence if isinstance(e, dict) and e.get("ref")]
+        item["completion_evidence"] = [
+            "ci_failure_recorded",
+            *[f"ci_ref:{r}" for r in refs],
+            "Cursor agent or human must inspect failed job logs",
+        ]
+        item["status"] = "BLOCKED"
+        item["blocked_reason"] = "Requires Cursor agent / ops to inspect CI logs"
+        work_pool.append_decision(item, "blocked", "executor", item["blocked_reason"])
+        _release(item, workers)
+        return item
+
     if "self-test" in title or "self-tests" in title or (
         item.get("department") == "ops" and typ == "process"
     ):

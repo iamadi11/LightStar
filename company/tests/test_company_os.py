@@ -260,6 +260,47 @@ class DiscoveryTests(unittest.TestCase):
         ids = [i["id"] for i in found]
         self.assertEqual(len(ids), len(set(ids)), f"duplicate ids: {ids}")
 
+    def test_ops_discovers_billing_ci_block(self):
+        from unittest import mock
+
+        from company.os import discovery as discovery_mod
+
+        fake = {
+            "conclusion": "failure",
+            "databaseId": 35651233844,
+            "displayTitle": "docs idle",
+            "url": "https://github.com/iamadi11/LightStar/actions/runs/35651233844",
+            "headSha": "2467d16",
+            "failure_kind": "billing_spend_limit",
+        }
+        with mock.patch.object(discovery_mod, "_latest_main_ci_failure", return_value=fake):
+            found = discovery_mod.discover_ops({}, {"items": []})
+        titles = [i["title"] for i in found]
+        self.assertTrue(any("billing" in t.lower() or "spend" in t.lower() for t in titles))
+        billing = next(i for i in found if "billing" in i["title"].lower() or "spend" in i["title"].lower())
+        self.assertEqual(billing["department"], "ops")
+        self.assertGreaterEqual(float(billing["confidence"]), 0.85)
+
+    def test_executor_blocks_billing_without_fake_fix(self):
+        from company.os import executors as ex
+
+        item = {
+            "id": "W-TEST",
+            "title": "Main CI blocked by GitHub Actions billing/spend limit",
+            "type": "process",
+            "department": "ops",
+            "status": "READY",
+            "evidence": [{"kind": "ci", "ref": "https://example/runs/1"}],
+            "decision_history": [],
+            "owner_worker": None,
+            "claim": None,
+        }
+        workers = {"workers": []}
+        out = ex.execute_item(item, workers)
+        self.assertEqual(out["status"], "BLOCKED")
+        self.assertIn("billing", (out.get("blocked_reason") or "").lower())
+        self.assertTrue(any("external" in e.lower() for e in out.get("completion_evidence", [])))
+
 
 class ConfigTests(unittest.TestCase):
     def test_config_and_adr2_exist(self):
