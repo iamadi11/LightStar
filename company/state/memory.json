@@ -1,5 +1,12 @@
 {
-  "decisions": [],
+  "decisions": [
+    {
+      "at": "2026-09-21T20:25:33+00:00",
+      "confidence": 0.9,
+      "decision": "repair:work_pool_ids+selftest",
+      "rationale": "Company found data integrity + stale block; repaired with evidence"
+    }
+  ],
   "failures": [
     {
       "at": "2026-09-21T20:14:21+00:00",
@@ -11,6 +18,10 @@
     {
       "at": "2026-09-21T20:06:38+00:00",
       "learning": "Retro cycle 1: completed=0 rejected=0 deferred=0"
+    },
+    {
+      "at": "2026-09-21T20:25:33+00:00",
+      "learning": "Duplicate W-0006 IDs from batch discovery; fixed run_discovery ID assignment. Self-test BLOCKED was timeout from nested MultiCycle."
     }
   ],
   "rejects": [],
@@ -19,6 +30,6 @@
     "Honor PD-001 / PD-002",
     "Prefer evidence over task count"
   ],
-  "updated_at": "2026-09-21T20:18:02+00:00",
+  "updated_at": "2026-09-21T20:26:01+00:00",
   "version": 1
 }

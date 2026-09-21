@@ -247,6 +247,20 @@ class AdversarialTests(unittest.TestCase):
         self.assertEqual(out["status"], "REJECTED")
 
 
+class DiscoveryTests(unittest.TestCase):
+    def test_run_discovery_assigns_unique_ids(self):
+        from company.os import discovery as discovery_mod
+
+        pool = {"version": 2, "items": []}
+        cfg = {
+            "discovery": {"scan_engineering_docs": True, "scan_todo_fixme": True},
+            "policy": {"require_evidence_for_tasks": True},
+        }
+        found = discovery_mod.run_discovery(cfg, pool)
+        ids = [i["id"] for i in found]
+        self.assertEqual(len(ids), len(set(ids)), f"duplicate ids: {ids}")
+
+
 class ConfigTests(unittest.TestCase):
     def test_config_and_adr2_exist(self):
         self.assertTrue((ROOT / "company" / "config.yaml").exists())

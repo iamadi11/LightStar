@@ -109,6 +109,7 @@ def _run_self_tests() -> tuple[bool, str]:
         "company.tests.test_company_os.ConsequencesTests",
         "company.tests.test_company_os.ConfigTests",
         "company.tests.test_company_os.AdversarialTests",
+        "company.tests.test_company_os.DiscoveryTests",
         "-v",
     ]
     env = {**_os.environ, "PYTHONPATH": str(ROOT)}

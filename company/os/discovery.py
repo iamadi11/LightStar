@@ -281,8 +281,9 @@ DEPARTMENTS: dict[str, DiscoveryFn] = {
 def run_discovery(cfg: dict[str, Any], pool: dict[str, Any], enabled: list[str] | None = None) -> list[dict[str, Any]]:
     """Run selected departments; skip fingerprints already in pool (any status)."""
     existing_fp = {i.get("fingerprint") for i in pool.get("items", [])}
-    # Also skip completed/rejected titles permanently via fingerprint
     found: list[dict[str, Any]] = []
+    # Include in-batch items so IDs stay unique across departments in one tick
+    id_source = list(pool.get("items", []))
     names = enabled or list(DEPARTMENTS.keys())
     for name in names:
         fn = DEPARTMENTS.get(name)
@@ -291,7 +292,8 @@ def run_discovery(cfg: dict[str, Any], pool: dict[str, Any], enabled: list[str] 
         for item in fn(cfg, pool):
             if item.get("fingerprint") in existing_fp:
                 continue
-            # Skip if same fingerprint as a COMPLETED item — already done forever unless status reopened
+            # Re-issue ID against pool + already-found batch
+            item["id"] = work_pool.next_work_id(id_source + found)
             existing_fp.add(item.get("fingerprint"))
             found.append(item)
     return found
