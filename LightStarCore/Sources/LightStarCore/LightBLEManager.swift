@@ -250,6 +250,8 @@ public final class LightBLEManager: NSObject {
     public var transitionTask: Task<Void, Never>?
     public var fadeTask: Task<Void, Never>?
     public var syncCleanupTask: Task<Void, Never>?
+    /// Serializes display-sleep pause/resume so stop completes before start.
+    public var sleepWakeTask: Task<Void, Never>?
     public var coalescer: BLEWriteCoalescer!
     public var beatHue: Double = 0
     public var flashLevel: Double = 0

@@ -1061,6 +1061,7 @@ final class ConnectAndSchedulePolicyTests: XCTestCase {
         XCTAssertTrue(CaptureSessionPolicy.shouldStopSyncAfterResumeError(
             NSError(domain: "ScreenCapture", code: -3801)
         ))
+        XCTAssertTrue(SleepWakeCapturePolicy.shouldDrainStopBeforeResumeStart())
     }
 
     func testCombinedScreenCancellationContinuesWithoutAbortingAudio() {

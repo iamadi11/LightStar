@@ -68,13 +68,23 @@ public extension LightBLEManager {
         screenSampler.onFrameAnalysis = nil
         screenSampler.onDiagnosticsUpdate = nil
         protectedContentBanner = nil
-        Task { await self.screenSampler.stop() }
+        let prior = sleepWakeTask
+        sleepWakeTask = Task { [weak self] in
+            await prior?.value
+            await self?.screenSampler.stop()
+        }
     }
 
     public func resumeScreenSync() {
         guard isSyncingVideo else { return }
-        Task { @MainActor [weak self] in
+        let prior = sleepWakeTask
+        sleepWakeTask = Task { @MainActor [weak self] in
             guard let self else { return }
+            await prior?.value
+            // EE-010: drain stop before start — start() is a no-op while isRunning.
+            if SleepWakeCapturePolicy.shouldDrainStopBeforeResumeStart() {
+                await self.screenSampler.stop()
+            }
             do {
                 if CombinedCapturePolicy.shouldCaptureAudioOnScreenStream(mode: self.syncMode) {
                     self.screenSampler.capturesAudio = true

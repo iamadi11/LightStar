@@ -17,6 +17,12 @@
       "confidence": 0.95,
       "decision": "idle:cycle17",
       "rationale": "Selected empty; EE done; only billing block + deferred hardware \u2014 honest IDLE_MONITORING"
+    },
+    {
+      "at": "2026-09-21T20:58:40+00:00",
+      "confidence": 0.9,
+      "decision": "sync-audit:EE-010-012",
+      "rationale": "User-requested screen/audio/Both sync audit; shipped EE-010 pause/resume serialize, EE-011 20Hz capture, EE-012 FFT prepare order"
     }
   ],
   "failures": [
@@ -67,6 +73,10 @@
     {
       "at": "2026-09-21T20:44:47+00:00",
       "learning": "Stale Selected table causes false HIGH_VALUE_WORK. Keep engineering-roadmap Selected in sync with tracker Implemented."
+    },
+    {
+      "at": "2026-09-21T20:58:40+00:00",
+      "learning": "Sync improvements must stay evidence-backed: sleep/wake races and capture/write rate mismatch beat speculative Metal rewrites."
     }
   ],
   "rejects": [],
@@ -75,6 +85,6 @@
     "Honor PD-001 / PD-002",
     "Prefer evidence over task count"
   ],
-  "updated_at": "2026-09-21T20:47:26+00:00",
+  "updated_at": "2026-09-21T20:58:42+00:00",
   "version": 1
 }

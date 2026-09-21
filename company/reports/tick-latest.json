@@ -1,10 +1,10 @@
 {
   "company": {
-    "cycle": 17,
+    "cycle": 18,
     "idle_streak": 1,
     "last_tick_summary": {
       "completed": [],
-      "cycle": 17,
+      "cycle": 18,
       "discovered": [],
       "followups": [],
       "idle": true,
@@ -12,14 +12,14 @@
     },
     "mode": "IDLE_MONITORING",
     "stop_reason": "ONLY_SPECULATIVE_OR_DEFERRED",
-    "updated_at": "2026-09-21T20:47:09+00:00",
+    "updated_at": "2026-09-21T20:58:42+00:00",
     "version": 1
   },
-  "generated_at": "2026-09-21T20:47:09+00:00",
+  "generated_at": "2026-09-21T20:58:42+00:00",
   "summary": {
     "blocked": [],
     "completed": [],
-    "cycle": 17,
+    "cycle": 18,
     "deliberations": [],
     "discovered": [],
     "feedback": [],
