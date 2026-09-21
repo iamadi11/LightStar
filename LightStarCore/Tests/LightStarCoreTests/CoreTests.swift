@@ -260,6 +260,15 @@ final class BLEWriteCoalescerTests: XCTestCase {
         XCTAssertEqual(drained[2][1], 0x05)
     }
 
+    func testScreenHueAndStreamingBeatDoNotCoalesce() {
+        let coalescer = BLEWriteCoalescer(send: { _ in }, isConnected: { true })
+        coalescer.enqueue(Cmd.hue(0.1, saturation: 0.5))
+        coalescer.enqueue(CombinedSyncMixer.combinedBeatColor(hue: 0.1, saturation: 0.9))
+        coalescer.enqueue(Cmd.brightness(0.4))
+        let drained = coalescer.drainOrderedForTesting()
+        XCTAssertEqual(drained.map { $0[1] }, [0x04, 0x09, 0x05])
+    }
+
     func testFlushClearsQueue() {
         let coalescer = BLEWriteCoalescer(send: { _ in }, isConnected: { true })
         coalescer.enqueue(Cmd.powerOn)
@@ -1081,6 +1090,32 @@ final class ConnectAndSchedulePolicyTests: XCTestCase {
             audioAvailable: true
         )
         XCTAssertEqual(pausedScreenStillCombined, .combined)
+    }
+
+    func testCombinedMixerKeepsScreenHueOffBrightnessAndHoldsBeats() {
+        XCTAssertTrue(CombinedSyncMixer.screenShouldWriteBrightness(
+            mode: .video, videoSyncBrightness: true
+        ))
+        XCTAssertFalse(CombinedSyncMixer.screenShouldWriteBrightness(
+            mode: .video, videoSyncBrightness: false
+        ))
+        XCTAssertFalse(CombinedSyncMixer.screenShouldWriteBrightness(
+            mode: .combined, videoSyncBrightness: true
+        ), "leftover Follow-screen-brightness must not fight audio BC05 in combined")
+        XCTAssertTrue(CombinedSyncMixer.screenShouldWriteHue(mode: .video, flashLevel: 1))
+        XCTAssertTrue(CombinedSyncMixer.screenShouldWriteHue(mode: .combined, flashLevel: 0.4))
+        XCTAssertFalse(CombinedSyncMixer.screenShouldWriteHue(
+            mode: .combined, flashLevel: CombinedSyncMixer.beatFlashHold + 0.01
+        ))
+        XCTAssertTrue(CombinedSyncMixer.shouldRestoreScreenHueAfterFlash(
+            previousFlash: 0.51, nextFlash: 0.42
+        ))
+        XCTAssertFalse(CombinedSyncMixer.shouldRestoreScreenHueAfterFlash(
+            previousFlash: 0.4, nextFlash: 0.3
+        ))
+        let beat = CombinedSyncMixer.combinedBeatColor(hue: 0.3, saturation: 0.9)
+        XCTAssertEqual(beat[1], 0x09, "combined beats must use streaming color, not static BC04")
+        XCTAssertEqual(beat, Cmd.audioHue(0.3, saturation: 0.9))
     }
 
     func testRemoteBroadcastThrottlesSyncColorOnlyChanges() {

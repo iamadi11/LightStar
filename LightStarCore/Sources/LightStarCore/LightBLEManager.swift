@@ -901,3 +901,34 @@ public enum CombinedSyncAssembly: Sendable {
         }
     }
 }
+
+/// Who owns hue vs brightness on the combined path, and which BC/55 command
+/// carries a beat flash. The coalescer keys on `bytes[1]`; screen color is
+/// BC04 and audio-only already uses BC09 — combined beats must too, or a
+/// pending screen frame replaces the flash before it is sent.
+public enum CombinedSyncMixer: Sendable {
+    /// `flashLevel` decays by 0.82 per 30 Hz audio tick. 0.5 ≈ three ticks (~100ms).
+    public static let beatFlashHold: Double = 0.5
+
+    public static func screenShouldWriteBrightness(
+        mode: LightBLEManager.SyncMode,
+        videoSyncBrightness: Bool
+    ) -> Bool {
+        mode == .video && videoSyncBrightness
+    }
+
+    public static func screenShouldWriteHue(
+        mode: LightBLEManager.SyncMode,
+        flashLevel: Double
+    ) -> Bool {
+        !(mode == .combined && flashLevel > beatFlashHold)
+    }
+
+    public static func shouldRestoreScreenHueAfterFlash(previousFlash: Double, nextFlash: Double) -> Bool {
+        previousFlash > beatFlashHold && nextFlash <= beatFlashHold
+    }
+
+    public static func combinedBeatColor(hue: Double, saturation: Double) -> [UInt8] {
+        Cmd.audioHue(hue, saturation: saturation)
+    }
+}

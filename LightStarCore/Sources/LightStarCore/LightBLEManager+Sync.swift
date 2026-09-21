@@ -286,13 +286,17 @@ public extension LightBLEManager {
             smoothV = smoothV + (v - smoothV) * 0.15
             let hueDelta = min(abs(smoothH - (self.lastScreenH)), 1 - abs(smoothH - self.lastScreenH))
             guard hueDelta > 0.008 || now - lastWrite > 0.5 else { return }
-            lastWrite = now
             let boostedS = smoothS < 0.3 ? min(1.0, smoothS * 3.0) : min(1.0, smoothS * 1.5)
             self.lastScreenH = smoothH
             self.lastScreenS = boostedS
             self.syncColor = Color(hue: smoothH, saturation: boostedS, brightness: 1)
-            self.write(Cmd.hue(smoothH, saturation: boostedS))
-            if self.videoSyncBrightness {
+            if CombinedSyncMixer.screenShouldWriteHue(mode: self.syncMode, flashLevel: self.flashLevel) {
+                lastWrite = now
+                self.write(Cmd.hue(smoothH, saturation: boostedS))
+            }
+            if CombinedSyncMixer.screenShouldWriteBrightness(
+                mode: self.syncMode, videoSyncBrightness: self.videoSyncBrightness
+            ) {
                 self.write(Cmd.brightness(min(1.0, max(0.05, smoothV * 1.3))))
             }
         }
@@ -336,9 +340,18 @@ public extension LightBLEManager {
             if self.syncMode == .combined {
                 if isBeat {
                     self.flashLevel = 1.0
-                    self.write(Cmd.hue(self.lastScreenH, saturation: min(1.0, self.lastScreenS * 1.3 + 0.15)))
+                    self.write(CombinedSyncMixer.combinedBeatColor(
+                        hue: self.lastScreenH,
+                        saturation: min(1.0, self.lastScreenS * 1.3 + 0.15)
+                    ))
                 } else {
+                    let previousFlash = self.flashLevel
                     self.flashLevel = max(0.0, self.flashLevel * 0.82)
+                    if CombinedSyncMixer.shouldRestoreScreenHueAfterFlash(
+                        previousFlash: previousFlash, nextFlash: self.flashLevel
+                    ) {
+                        self.write(Cmd.hue(self.lastScreenH, saturation: self.lastScreenS))
+                    }
                 }
                 self.syncColor = Color(hue: self.lastScreenH, saturation: self.lastScreenS, brightness: 1)
                 let bri = min(1.0, max(0.04, bands.bass * 0.55 + bands.rms * 0.15 + self.flashLevel * 0.80))
