@@ -16,13 +16,43 @@ public struct FrequencyBands: Sendable {
     }
 }
 
-/// Concurrent stop() during start() must fail the start so sync UI cannot stay "on".
+/// How `buildSync` reacts when a sampler `start()` throws.
+/// A newer `setSyncMode` cancels the transition and owns `syncMode`. Display-sleep
+/// `pauseScreenSync` does not — combined must still start audio, and video must stay on.
+public enum CaptureStartDisposition: Equatable, Sendable {
+    case continueWithoutSampler
+    case abortQuietTeardown
+    case surfaceFailure
+}
+
+/// Concurrent `stop()` during `start()` fails the start (`CancellationError`).
+/// That is not a permission error, and it is not a reason to kill a paused session.
 public enum CaptureSessionPolicy: Sendable {
-    public static func isSuperseded(startGeneration: UInt64, currentGeneration: UInt64) -> Bool {
+    public static func isSuperseded<G: Equatable>(startGeneration: G, currentGeneration: G) -> Bool {
         startGeneration != currentGeneration
     }
 
     public static func shouldSurfaceStartError(_ error: Error) -> Bool {
         !(error is CancellationError)
+    }
+
+    /// Sleep/wake `resumeScreenSync` must not `stopSyncInline()` on a superseded start.
+    public static func shouldStopSyncAfterResumeError(_ error: Error) -> Bool {
+        shouldSurfaceStartError(error)
+    }
+
+    public static func disposition(
+        forStartError error: Error,
+        transitionCancelled: Bool
+    ) -> CaptureStartDisposition {
+        if transitionCancelled { return .abortQuietTeardown }
+        if error is CancellationError { return .continueWithoutSampler }
+        return .surfaceFailure
+    }
+
+    /// A superseded start still counts as "this sampler belongs to the mode" so
+    /// combined does not degrade to audio-only (which would skip wake resume).
+    public static func samplerAvailable(callbackInstalled: Bool, startWasSuperseded: Bool) -> Bool {
+        callbackInstalled || startWasSuperseded
     }
 }

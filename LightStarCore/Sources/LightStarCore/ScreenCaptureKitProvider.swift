@@ -72,7 +72,7 @@ public final class ScreenCaptureKitProvider: NSObject, ScreenFrameProvider {
         try s.addStreamOutput(self, type: .screen, sampleHandlerQueue: queue)
         try await s.startCapture()
         
-        guard generation == gen else {
+        guard !CaptureSessionPolicy.isSuperseded(startGeneration: gen, currentGeneration: generation) else {
             try? await s.stopCapture()
             throw CancellationError()
         }

@@ -68,11 +68,21 @@ public extension LightBLEManager {
                 await MainActor.run { self.setupScreenCallback() }
             } catch {
                 await MainActor.run {
+                    guard CaptureSessionPolicy.shouldStopSyncAfterResumeError(error) else { return }
                     self.setSyncError(error)  // capture pendingSyncMode while mode is still .video/.combined
                     self.stopSyncInline()     // stops audio engine, saves lastSyncMode, sets syncMode = .off
                 }
             }
         }
+    }
+
+    private func haltCaptureSources() async {
+        screenSampler.onColor = nil
+        micAudio.onBands = nil
+        systemAudio.onBands = nil
+        await screenSampler.stop()
+        await micAudio.stop()
+        await systemAudio.stop()
     }
 
     public func stopSyncInline() {
@@ -119,16 +129,22 @@ public extension LightBLEManager {
             do {
                 try await screenSampler.start()
                 if Task.isCancelled {
-                    screenSampler.onColor = nil
-                    await screenSampler.stop()
+                    await haltCaptureSources()
                     return
                 }
             } catch {
                 screenSampler.onColor = nil
-                guard CaptureSessionPolicy.shouldSurfaceStartError(error) else { return }
-                setSyncError(error)
-                syncMode = .off
-                restoreSteadyState()
+                switch CaptureSessionPolicy.disposition(
+                    forStartError: error, transitionCancelled: Task.isCancelled
+                ) {
+                case .abortQuietTeardown, .continueWithoutSampler:
+                    await screenSampler.stop()
+                    return
+                case .surfaceFailure:
+                    setSyncError(error)
+                    syncMode = .off
+                    restoreSteadyState()
+                }
             }
 
         case .audio:
@@ -147,16 +163,22 @@ public extension LightBLEManager {
                 do {
                     if useMic { try await micAudio.start() } else { try await systemAudio.start() }
                     if Task.isCancelled {
-                        if useMic { micAudio.onBands = nil } else { systemAudio.onBands = nil }
-                        if useMic { await micAudio.stop() } else { await systemAudio.stop() }
+                        await haltCaptureSources()
                         return
                     }
                 } catch {
                     if useMic { micAudio.onBands = nil } else { systemAudio.onBands = nil }
-                    guard CaptureSessionPolicy.shouldSurfaceStartError(error) else { return }
-                    setSyncError(error)
-                    syncMode = .off
-                    restoreSteadyState()
+                    switch CaptureSessionPolicy.disposition(
+                        forStartError: error, transitionCancelled: Task.isCancelled
+                    ) {
+                    case .abortQuietTeardown, .continueWithoutSampler:
+                        if useMic { await micAudio.stop() } else { await systemAudio.stop() }
+                        return
+                    case .surfaceFailure:
+                        setSyncError(error)
+                        syncMode = .off
+                        restoreSteadyState()
+                    }
                 }
             }
 
@@ -166,22 +188,25 @@ public extension LightBLEManager {
             syncMode = .combined  // set before start so warm-up frames pass guards
             var screenErr: Error? = nil
             var audioErr:  Error? = nil
+            var screenSuperseded = false
+            var audioSuperseded = false
             async let screenStart: () = screenSampler.start()
             do { try await screenStart } catch {
                 screenSampler.onColor = nil
-                if CaptureSessionPolicy.shouldSurfaceStartError(error) {
-                    screenErr = error
-                } else {
+                switch CaptureSessionPolicy.disposition(
+                    forStartError: error, transitionCancelled: Task.isCancelled
+                ) {
+                case .abortQuietTeardown:
+                    await haltCaptureSources()
                     return
+                case .continueWithoutSampler:
+                    screenSuperseded = true
+                case .surfaceFailure:
+                    screenErr = error
                 }
             }
             if Task.isCancelled {
-                screenSampler.onColor = nil
-                micAudio.onBands = nil
-                systemAudio.onBands = nil
-                await screenSampler.stop()
-                await micAudio.stop()
-                await systemAudio.stop()
+                await haltCaptureSources()
                 return
             }
 
@@ -196,39 +221,42 @@ public extension LightBLEManager {
                     if useMic { try await micAudio.start() } else { try await systemAudio.start() }
                 } catch {
                     if useMic { micAudio.onBands = nil } else { systemAudio.onBands = nil }
-                    if CaptureSessionPolicy.shouldSurfaceStartError(error) {
-                        audioErr = error
-                    } else {
-                        screenSampler.onColor = nil
-                        await screenSampler.stop()
-                        await micAudio.stop()
-                        await systemAudio.stop()
+                    switch CaptureSessionPolicy.disposition(
+                        forStartError: error, transitionCancelled: Task.isCancelled
+                    ) {
+                    case .abortQuietTeardown:
+                        await haltCaptureSources()
                         return
+                    case .continueWithoutSampler:
+                        audioSuperseded = true
+                    case .surfaceFailure:
+                        audioErr = error
                     }
                 }
             }
             if Task.isCancelled {
-                screenSampler.onColor = nil
-                micAudio.onBands = nil
-                systemAudio.onBands = nil
-                await screenSampler.stop()
-                await micAudio.stop()
-                await systemAudio.stop()
+                await haltCaptureSources()
                 return
             }
-            let screenOk = screenSampler.onColor != nil
+            let screenOk = CaptureSessionPolicy.samplerAvailable(
+                callbackInstalled: screenSampler.onColor != nil,
+                startWasSuperseded: screenSuperseded
+            )
             let audioOk: Bool
             if audioInputSource == .stripMic {
                 audioOk = true
             } else if audioInputSource == .mic {
-                audioOk = micAudio.onBands != nil
+                audioOk = CaptureSessionPolicy.samplerAvailable(
+                    callbackInstalled: micAudio.onBands != nil,
+                    startWasSuperseded: audioSuperseded
+                )
             } else {
-                audioOk = systemAudio.onBands != nil
+                audioOk = CaptureSessionPolicy.samplerAvailable(
+                    callbackInstalled: systemAudio.onBands != nil,
+                    startWasSuperseded: audioSuperseded
+                )
             }
-            syncMode = screenOk && audioOk ? .combined
-                     : screenOk           ? .video
-                     : audioOk            ? .audio
-                     :                     .off
+            syncMode = CombinedSyncAssembly.resolvedMode(screenAvailable: screenOk, audioAvailable: audioOk)
             if let e = screenErr ?? audioErr {
                 // When both fail syncMode == .off; save pendingSyncMode before setSyncError reads it.
                 if syncMode == .off { pendingSyncMode = .combined }

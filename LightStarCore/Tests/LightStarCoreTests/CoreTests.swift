@@ -1028,6 +1028,59 @@ final class ConnectAndSchedulePolicyTests: XCTestCase {
         XCTAssertTrue(CaptureSessionPolicy.shouldSurfaceStartError(
             NSError(domain: "ScreenCapture", code: 1)
         ))
+        XCTAssertFalse(CaptureSessionPolicy.shouldStopSyncAfterResumeError(CancellationError()))
+        XCTAssertTrue(CaptureSessionPolicy.shouldStopSyncAfterResumeError(
+            NSError(domain: "ScreenCapture", code: -3801)
+        ))
+    }
+
+    func testCombinedScreenCancellationContinuesWithoutAbortingAudio() {
+        XCTAssertEqual(
+            CaptureSessionPolicy.disposition(
+                forStartError: CancellationError(), transitionCancelled: false
+            ),
+            .continueWithoutSampler
+        )
+        XCTAssertEqual(
+            CaptureSessionPolicy.disposition(
+                forStartError: CancellationError(), transitionCancelled: true
+            ),
+            .abortQuietTeardown
+        )
+        XCTAssertEqual(
+            CaptureSessionPolicy.disposition(
+                forStartError: NSError(domain: "ScreenCapture", code: -3801),
+                transitionCancelled: false
+            ),
+            .surfaceFailure
+        )
+        XCTAssertTrue(CaptureSessionPolicy.samplerAvailable(
+            callbackInstalled: false, startWasSuperseded: true
+        ))
+        XCTAssertFalse(CaptureSessionPolicy.samplerAvailable(
+            callbackInstalled: false, startWasSuperseded: false
+        ))
+        XCTAssertEqual(
+            CombinedSyncAssembly.resolvedMode(screenAvailable: true, audioAvailable: true),
+            .combined
+        )
+        XCTAssertEqual(
+            CombinedSyncAssembly.resolvedMode(screenAvailable: true, audioAvailable: false),
+            .video
+        )
+        XCTAssertEqual(
+            CombinedSyncAssembly.resolvedMode(screenAvailable: false, audioAvailable: true),
+            .audio
+        )
+        // Pause during combined screen start: screen superseded + audio running stays combined
+        // so display-wake resumeScreenSync still sees isSyncingVideo.
+        let pausedScreenStillCombined = CombinedSyncAssembly.resolvedMode(
+            screenAvailable: CaptureSessionPolicy.samplerAvailable(
+                callbackInstalled: false, startWasSuperseded: true
+            ),
+            audioAvailable: true
+        )
+        XCTAssertEqual(pausedScreenStillCombined, .combined)
     }
 
     func testRemoteBroadcastThrottlesSyncColorOnlyChanges() {

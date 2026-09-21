@@ -16,6 +16,12 @@ Ordered by impact × evidence × small blast radius. Product behavior preserved 
 | EE-005 | Do not fan `syncColor` into widget writes; throttle remote broadcasts | 20–30 Hz Observation currently resets widget debounce and broadcasts full JSON snapshots. Menu-bar live icon remains. |
 | EE-006 | Mic sampler Sendable captures | Strict concurrency warnings on the audio tap / engine observer; tiny, local, CI-relevant. |
 
+## Follow-up (this pass)
+
+| ID | Title | Why |
+|----|-------|-----|
+| EE-009 | Combined/resume `CancellationError` wiring | Independent review of EE-003: combined screen cancel skipped audio; wake resume called `stopSyncInline()`. |
+
 ## Deferred
 
 | Item | Reason |
