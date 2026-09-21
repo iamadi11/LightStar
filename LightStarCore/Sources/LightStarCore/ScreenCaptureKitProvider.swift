@@ -74,7 +74,7 @@ public final class ScreenCaptureKitProvider: NSObject, ScreenFrameProvider {
         
         guard generation == gen else {
             try? await s.stopCapture()
-            return
+            throw CancellationError()
         }
         
         stream = s

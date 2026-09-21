@@ -15,3 +15,14 @@ public struct FrequencyBands: Sendable {
         self.flux = flux
     }
 }
+
+/// Concurrent stop() during start() must fail the start so sync UI cannot stay "on".
+public enum CaptureSessionPolicy: Sendable {
+    public static func isSuperseded(startGeneration: UInt64, currentGeneration: UInt64) -> Bool {
+        startGeneration != currentGeneration
+    }
+
+    public static func shouldSurfaceStartError(_ error: Error) -> Bool {
+        !(error is CancellationError)
+    }
+}

@@ -992,4 +992,47 @@ final class ConnectAndSchedulePolicyTests: XCTestCase {
         XCTAssertEqual(decoded, original)
         XCTAssertEqual(PendingScheduleStore.capped(original + original + original, cap: 2).count, 2)
     }
+
+    func testUnauthenticatedPointerFramesAreConsumedNotInjected() {
+        XCTAssertTrue(RemotePointerAuthPolicy.isPointerCommand(.mouseMove))
+        XCTAssertTrue(RemotePointerAuthPolicy.isPointerCommand(.scroll))
+        XCTAssertTrue(RemotePointerAuthPolicy.isPointerCommand(.mouseDown))
+        XCTAssertFalse(RemotePointerAuthPolicy.isPointerCommand(.setPower))
+        XCTAssertTrue(RemotePointerAuthPolicy.shouldConsumeUnauthenticatedPointerFrame(authenticated: false))
+        XCTAssertFalse(RemotePointerAuthPolicy.shouldConsumeUnauthenticatedPointerFrame(authenticated: true))
+        XCTAssertFalse(RemotePointerAuthPolicy.shouldInjectPointer(authenticated: false))
+        XCTAssertTrue(RemotePointerAuthPolicy.shouldInjectPointer(authenticated: true))
+    }
+
+    func testSupersededCaptureStartIsNotAUserFacingError() {
+        XCTAssertTrue(CaptureSessionPolicy.isSuperseded(startGeneration: 1, currentGeneration: 2))
+        XCTAssertFalse(CaptureSessionPolicy.isSuperseded(startGeneration: 4, currentGeneration: 4))
+        XCTAssertFalse(CaptureSessionPolicy.shouldSurfaceStartError(CancellationError()))
+        XCTAssertTrue(CaptureSessionPolicy.shouldSurfaceStartError(
+            NSError(domain: "ScreenCapture", code: 1)
+        ))
+    }
+
+    func testRemoteBroadcastThrottlesSyncColorOnlyChanges() {
+        let a = RemoteStateBroadcastPolicy.significantIdentity(
+            isConnected: true, isOn: true, syncMode: "Video", brightness: 1, effectID: nil
+        )
+        let b = RemoteStateBroadcastPolicy.significantIdentity(
+            isConnected: true, isOn: true, syncMode: "Video", brightness: 1, effectID: nil
+        )
+        let powerOff = RemoteStateBroadcastPolicy.significantIdentity(
+            isConnected: true, isOn: false, syncMode: "Video", brightness: 1, effectID: nil
+        )
+        XCTAssertEqual(a, b)
+        XCTAssertNotEqual(a, powerOff)
+        XCTAssertFalse(RemoteStateBroadcastPolicy.shouldBroadcast(
+            identityChanged: false, now: 1.05, lastBroadcastAt: 1.0
+        ))
+        XCTAssertTrue(RemoteStateBroadcastPolicy.shouldBroadcast(
+            identityChanged: false, now: 1.11, lastBroadcastAt: 1.0
+        ))
+        XCTAssertTrue(RemoteStateBroadcastPolicy.shouldBroadcast(
+            identityChanged: true, now: 1.01, lastBroadcastAt: 1.0
+        ))
+    }
 }

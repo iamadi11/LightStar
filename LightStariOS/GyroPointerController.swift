@@ -239,9 +239,6 @@ private final class MotionPump: @unchecked Sendable {
     }
 
     private func emit(_ dx: Double, _ dy: Double) {
-        guard let callback = onDelta else { return }
-        DispatchQueue.main.async {
-            callback(dx, dy)
-        }
+        onDelta?(dx, dy)
     }
 }

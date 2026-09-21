@@ -54,7 +54,7 @@ public final class SystemAudioSampler: NSObject {
         guard generation == gen else {
             // stop() ran while startCapture was pending — discard and clean up
             try? await s.stopCapture()
-            return
+            throw CancellationError()
         }
         fftSetup = vDSP_DFT_zop_CreateSetup(nil, vDSP_Length(fftN), .FORWARD)
         stream = s

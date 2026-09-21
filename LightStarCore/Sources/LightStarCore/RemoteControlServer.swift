@@ -133,11 +133,18 @@ public final class RemoteControlServer: ObservableObject {
         let connection = ClientConnection(id: id, connection: nwConnection)
         let injector = pointerInjector
         connection.onPointer = { [weak connection] dx, dy, isScroll in
-            guard connection?.authenticated == true else { return false }
+            guard !RemotePointerAuthPolicy.shouldConsumeUnauthenticatedPointerFrame(
+                authenticated: connection?.authenticated == true
+            ) else { return true }
             return injector?.applyPointer(deltaX: dx, deltaY: dy, isScroll: isScroll) == true
         }
-        connection.onMessage = { [weak self] message in
-            if injector?.handle(message) == true { return }
+        connection.onMessage = { [weak self, weak connection] message in
+            if RemotePointerAuthPolicy.isPointerCommand(message.type) {
+                guard RemotePointerAuthPolicy.shouldInjectPointer(
+                    authenticated: connection?.authenticated == true
+                ) else { return }
+                if injector?.handle(message) == true { return }
+            }
             Task { @MainActor in
                 self?.handleMessage(message, from: id)
             }

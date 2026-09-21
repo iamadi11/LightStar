@@ -127,6 +127,8 @@ public final class RemoteControlCoordinator: ObservableObject {
     private weak var ble: LightBLEManager?
     private var stateObservationTask: Task<Void, Never>?
     private var shouldObserveState = false
+    private var lastBroadcastIdentity = ""
+    private var lastBroadcastAt: TimeInterval = 0
     
     public init(ble: LightBLEManager) {
         self.ble = ble
@@ -280,7 +282,24 @@ public final class RemoteControlCoordinator: ObservableObject {
                 _ = ble.effectID
                 
                 let state = ble.createStateSnapshot()
-                self.server.broadcastStateUpdate(state)
+                let identity = RemoteStateBroadcastPolicy.significantIdentity(
+                    isConnected: state.isConnected,
+                    isOn: state.isOn,
+                    syncMode: state.syncMode,
+                    brightness: state.brightness,
+                    effectID: state.effectID
+                )
+                let now = ProcessInfo.processInfo.systemUptime
+                let identityChanged = identity != self.lastBroadcastIdentity
+                if RemoteStateBroadcastPolicy.shouldBroadcast(
+                    identityChanged: identityChanged,
+                    now: now,
+                    lastBroadcastAt: self.lastBroadcastAt
+                ) {
+                    self.lastBroadcastIdentity = identity
+                    self.lastBroadcastAt = now
+                    self.server.broadcastStateUpdate(state)
+                }
             } onChange: { [weak self] in
                 Task { @MainActor in
                     guard let self, self.shouldObserveState else { return }

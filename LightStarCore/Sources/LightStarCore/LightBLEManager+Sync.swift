@@ -123,6 +123,7 @@ public extension LightBLEManager {
                 }
             } catch {
                 screenSampler.onColor = nil
+                guard CaptureSessionPolicy.shouldSurfaceStartError(error) else { return }
                 setSyncError(error)
                 syncMode = .off
                 restoreSteadyState()
@@ -150,6 +151,7 @@ public extension LightBLEManager {
                     }
                 } catch {
                     if useMic { micAudio.onBands = nil } else { systemAudio.onBands = nil }
+                    guard CaptureSessionPolicy.shouldSurfaceStartError(error) else { return }
                     setSyncError(error)
                     syncMode = .off
                     restoreSteadyState()
@@ -163,7 +165,14 @@ public extension LightBLEManager {
             var screenErr: Error? = nil
             var audioErr:  Error? = nil
             async let screenStart: () = screenSampler.start()
-            do { try await screenStart } catch { screenSampler.onColor = nil; screenErr = error }
+            do { try await screenStart } catch {
+                screenSampler.onColor = nil
+                if CaptureSessionPolicy.shouldSurfaceStartError(error) {
+                    screenErr = error
+                } else {
+                    return
+                }
+            }
             if Task.isCancelled {
                 screenSampler.onColor = nil
                 micAudio.onBands = nil
@@ -185,7 +194,15 @@ public extension LightBLEManager {
                     if useMic { try await micAudio.start() } else { try await systemAudio.start() }
                 } catch {
                     if useMic { micAudio.onBands = nil } else { systemAudio.onBands = nil }
-                    audioErr = error
+                    if CaptureSessionPolicy.shouldSurfaceStartError(error) {
+                        audioErr = error
+                    } else {
+                        screenSampler.onColor = nil
+                        await screenSampler.stop()
+                        await micAudio.stop()
+                        await systemAudio.stop()
+                        return
+                    }
                 }
             }
             if Task.isCancelled {

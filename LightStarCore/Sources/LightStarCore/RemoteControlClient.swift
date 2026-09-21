@@ -221,18 +221,7 @@ public final class RemoteControlClient: ObservableObject {
             startReceiving()
             sendHello()
         case .failed(let error):
-            connectionTimeoutTask?.cancel()
-            connectionTimeoutTask = nil
-            pingTask?.cancel()
-            pingTask = nil
-            connection?.cancel()
-            connection = nil
-            pointerChannel.reset()
-            receiveBuffer = Data()
-            requiresPairing = false
-            connectedServerName = nil
-            currentState = nil
-            state = .error(lightStarNetworkErrorMessage(error))
+            fail(lightStarNetworkErrorMessage(error))
         case .cancelled:
             if case .connected = state {
                 state = .disconnected

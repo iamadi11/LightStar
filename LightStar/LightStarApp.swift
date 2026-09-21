@@ -118,6 +118,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // Recursively re-registers with @Observable so every state change redraws the icon.
     private func startObservingBLE() {
+        startObservingWidgetAndConnection()
+        startObservingIcon()
+    }
+
+    /// Widget JSON uses static color/power/connection — not 20–30 Hz syncColor.
+    private func startObservingWidgetAndConnection() {
+        withObservationTracking {
+            _ = ble.color
+            _ = ble.isOn
+            _ = ble.connectionState
+            writeWidgetState()
+        } onChange: {
+            Task { @MainActor in self.startObservingWidgetAndConnection() }
+        }
+    }
+
+    /// Menu-bar icon still follows live syncColor (product), plus power/connection/mode.
+    private func startObservingIcon() {
         withObservationTracking {
             _ = ble.color
             _ = ble.isOn
@@ -125,9 +143,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             _ = ble.syncMode
             _ = ble.syncColor
             updateIcon()
-            writeWidgetState()
         } onChange: {
-            Task { @MainActor in self.startObservingBLE() }
+            Task { @MainActor in self.startObservingIcon() }
         }
     }
 

@@ -43,7 +43,7 @@ public final class MicAudioSampler {
             }
             if !granted { throw Self.micDeniedError }
         }
-        guard generation == gen else { return }
+        guard generation == gen else { throw CancellationError() }
 
         #if os(iOS)
         let session = AVAudioSession.sharedInstance()
@@ -90,9 +90,10 @@ public final class MicAudioSampler {
                 vDSP_vsmul(mono, 1, [invCh], &mono, 1, vDSP_Length(frameCount))
             }
 
+            let samples = mono
             self.analyzeQueue.async { [weak self] in
                 guard let self else { return }
-                self.accumulator.append(contentsOf: mono)
+                self.accumulator.append(contentsOf: samples)
                 var offset = 0
                 while self.accumulator.count - offset >= self.fftN {
                     let window = Array(self.accumulator[offset ..< offset + self.fftN])
@@ -121,7 +122,7 @@ public final class MicAudioSampler {
             #if os(iOS)
             try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
             #endif
-            return
+            throw CancellationError()
         }
         engine = eng
         isRunning = true
@@ -131,7 +132,6 @@ public final class MicAudioSampler {
             object: eng,
             queue: .main
         ) { [weak self] _ in
-            guard let self, self.isRunning else { return }
             Task { @MainActor [weak self] in
                 guard let self, self.isRunning else { return }
                 await self.stop()

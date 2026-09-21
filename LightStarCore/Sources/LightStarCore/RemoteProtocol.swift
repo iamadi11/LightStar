@@ -487,3 +487,48 @@ public func decodeMessage(from data: Data) throws -> (RemoteMessage, Int) {
         return (message, totalLength)
     }
 }
+
+/// Pairing (when enabled) must not lose pointer injection to a JSON fallback.
+public enum RemotePointerAuthPolicy: Sendable {
+    public static func isPointerCommand(_ type: RemoteMessageType) -> Bool {
+        switch type {
+        case .mouseMove, .mouseDown, .mouseUp, .rightClick, .scroll:
+            return true
+        default:
+            return false
+        }
+    }
+
+    /// Consume an unauthenticated binary pointer frame so it cannot become JSON HID.
+    public static func shouldConsumeUnauthenticatedPointerFrame(authenticated: Bool) -> Bool {
+        !authenticated
+    }
+
+    public static func shouldInjectPointer(authenticated: Bool) -> Bool {
+        authenticated
+    }
+}
+
+/// Live sync color may update at 20–30 Hz; power/mode/connection still go out immediately.
+public enum RemoteStateBroadcastPolicy: Sendable {
+    public static let minInterval: TimeInterval = 0.1
+
+    public static func significantIdentity(
+        isConnected: Bool,
+        isOn: Bool,
+        syncMode: String,
+        brightness: Double,
+        effectID: UInt8?
+    ) -> String {
+        "\(isConnected)|\(isOn)|\(syncMode)|\(brightness)|\(effectID ?? 255)"
+    }
+
+    public static func shouldBroadcast(
+        identityChanged: Bool,
+        now: TimeInterval,
+        lastBroadcastAt: TimeInterval,
+        minInterval: TimeInterval = minInterval
+    ) -> Bool {
+        identityChanged || now - lastBroadcastAt >= minInterval
+    }
+}
