@@ -62,8 +62,8 @@ public final class SystemAudioSampler: NSObject {
     }
 
     public func stop() async {
+        generation &+= 1  // invalidate any concurrent start(), even if idle
         guard isRunning else { return }
-        generation &+= 1  // invalidate any concurrent start()
         isRunning = false
         try? await stream?.stopCapture()
         stream = nil

@@ -96,6 +96,9 @@ public final class RemoteControlServer: ObservableObject {
     // MARK: - Private
 
     private func closeListenerAndClients() {
+        pairingCodeExpireTask?.cancel()
+        pairingCodeExpireTask = nil
+        activePairingCode = nil
         listener?.cancel()
         listener = nil
         pointerInjector?.cleanup()

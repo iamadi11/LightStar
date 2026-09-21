@@ -176,7 +176,21 @@ public final class LightBLEManager: NSObject {
     public var multiLightEnabled: Bool = UserDefaults.standard.bool(forKey: "multiLightEnabled") {
         didSet {
             UserDefaults.standard.set(multiLightEnabled, forKey: "multiLightEnabled")
-            if !multiLightEnabled { disconnectExtraLights() }
+            if !multiLightEnabled {
+                disconnectExtraLights()
+#if !os(iOS)
+                if BLEDiscoveryPolicy.shouldStopScanWhenDisablingMultiLight(connectionState: connectionState) {
+                    central.stopScan()
+                }
+#endif
+            } else {
+#if !os(iOS)
+                if BLEDiscoveryPolicy.shouldStartExtraScanWhenEnablingMultiLight(connectionState: connectionState),
+                   central.state == .poweredOn {
+                    central.scanForPeripherals(withServices: [Self.advertisedUUID], options: nil)
+                }
+#endif
+            }
         }
     }
     // Names of all connected lights (primary first, then extras)
@@ -413,10 +427,10 @@ public final class LightBLEManager: NSObject {
                 let (h, s, _) = self.color.hsvComponents
                 self.write(Cmd.hue(h, saturation: s))
                 self.write(Cmd.brightness(self.brightness))
-                let modeToRestore = self.lastSyncMode
-                self.lastSyncMode = .off
-                if modeToRestore != .off {
-                    self.setSyncMode(modeToRestore)
+                // Keep lastSyncMode until restore succeeds or the user turns sync
+                // off. Clearing it here races onConnect's default preset.
+                if self.lastSyncMode != .off {
+                    self.setSyncMode(self.lastSyncMode)
                 } else if self.circadianEnabled {
                     self.applyCircadianCCT()
                 }
@@ -558,13 +572,22 @@ extension LightBLEManager: CBCentralManagerDelegate {
         nonisolated(unsafe) let discoveredPeripheral = peripheral
         nonisolated(unsafe) let centralManager = central
         Task { @MainActor in
-            if self.multiLightEnabled && self.peripheral != nil {
+            if BLEDiscoveryPolicy.shouldTreatAdvertisementAsExtraLight(
+                multiLightEnabled: self.multiLightEnabled,
+                primaryConnectionState: self.connectionState
+            ) {
                 // Extra light — connect without stopping scan (more may appear)
                 guard discoveredPeripheral !== self.peripheral else { return }
                 guard self.extraLightIndex(of: discoveredPeripheral) == nil else { return }
                 discoveredPeripheral.delegate = self
                 self.extraLights.append((peripheral: discoveredPeripheral, writeChar: nil))
                 centralManager.connect(discoveredPeripheral, options: nil)
+                return
+            }
+            if BLEDiscoveryPolicy.shouldIgnoreNonPrimaryAdvertisement(
+                hasPrimaryPeripheral: self.peripheral != nil,
+                primaryConnectionState: self.connectionState
+            ) {
                 return
             }
             if BLEDiscoveryPolicy.shouldStopScanOnPrimaryDiscovery(multiLightEnabled: self.multiLightEnabled) {
@@ -745,6 +768,40 @@ public enum BLEDiscoveryPolicy: Sendable {
         !multiLightEnabled
     }
 
+    /// Extra lights are only attached while the primary is actually connected.
+    /// `peripheral != nil` is not enough: disconnect keeps the CBPeripheral for
+    /// reconnect, and treating that leftover as "already have a primary" swallows
+    /// rediscovery of the primary itself.
+    public static func shouldTreatAdvertisementAsExtraLight(
+        multiLightEnabled: Bool,
+        primaryConnectionState: LightBLEManager.ConnectionState
+    ) -> Bool {
+        multiLightEnabled && primaryConnectionState == .connected
+    }
+
+    /// While connecting or already connected, a second advertisement must not
+    /// replace the in-flight / live primary. Scanning after a drop with a leftover
+    /// peripheral is allowed to adopt whoever is discovered as the new primary.
+    public static func shouldIgnoreNonPrimaryAdvertisement(
+        hasPrimaryPeripheral: Bool,
+        primaryConnectionState: LightBLEManager.ConnectionState
+    ) -> Bool {
+        hasPrimaryPeripheral
+            && (primaryConnectionState == .connecting || primaryConnectionState == .connected)
+    }
+
+    public static func shouldStopScanWhenDisablingMultiLight(
+        connectionState: LightBLEManager.ConnectionState
+    ) -> Bool {
+        connectionState == .connected
+    }
+
+    public static func shouldStartExtraScanWhenEnablingMultiLight(
+        connectionState: LightBLEManager.ConnectionState
+    ) -> Bool {
+        connectionState == .connected
+    }
+
     public static func shouldReconnectPrimaryAfterConnectFailure(failedIsPrimary: Bool) -> Bool {
         failedIsPrimary
     }
@@ -769,5 +826,28 @@ public enum StripReconnectPolicy: Sendable {
         case .scanning, .connecting:
             return true
         }
+    }
+}
+
+/// Display-sleep wake must not undo an explicit user disconnect.
+public enum WakeReconnectPolicy: Sendable {
+    public static func shouldReconnect(
+        autoConnect: Bool,
+        connectionState: LightBLEManager.ConnectionState,
+        userInitiatedDisconnect: Bool
+    ) -> Bool {
+        autoConnect && connectionState == .disconnected && !userInitiatedDisconnect
+    }
+}
+
+/// lastSyncMode is the restore target after reconnect. Turning sync off must
+/// remember the mode; restoring must not wipe it first.
+public enum SyncModePersistence: Sendable {
+    public static func lastSyncModeToPersist(
+        previous: LightBLEManager.SyncMode,
+        next: LightBLEManager.SyncMode
+    ) -> LightBLEManager.SyncMode? {
+        guard next == .off, previous != .off else { return nil }
+        return previous
     }
 }

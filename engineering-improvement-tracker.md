@@ -1,18 +1,19 @@
 # Engineering Improvement Tracker
 
-Last updated: 2026-09-20
-Branch: `cursor/sdlc-quality-pass-6022`
-Base: `origin/main` @ `26f9cd6`
+Last updated: 2026-09-21
+Branch: `cursor/sdlc-reliability-pass-6022`
+Base: `origin/main` @ `adda24d`
 
 ## Status
 
 | Phase | State |
 |-------|--------|
-| 0 Discovery | Complete |
-| 1 Baseline | CI on `26f9cd6` cancelled; PR tests compiled then failed S011 Int16 range |
-| 2 QA | Independent iOS/Mac/remote QA; mock suites documented as non-production |
-| 3–5 | ENG-007…019 implemented |
-| 6–8 | Policy helpers only; mock Security/UserJourney not rewritten |
+| 0 Discovery | Complete — architecture unchanged from quality pass |
+| 1 Baseline | `adda24d` CI **success** (35536096195) |
+| 2 QA | Remaining production paths inspected in source |
+| 3–4 | ENG-022–034 triaged; PD-001/PD-002 stand |
+| 5 | ENG-022–034 implemented with policy tests |
+| 6–8 | Policy helpers only; no speculative rewrites |
 | 9 | GitHub Actions on this PR after push |
 | 10–11 | Not available (Linux, no devices) |
 | 18 | Merge after CI green |
@@ -21,27 +22,20 @@ Base: `origin/main` @ `26f9cd6`
 
 | ID | Title | Severity | Status |
 |----|-------|----------|--------|
-| ENG-001 | Swift 6 deinit isolation | Critical | Fixed on main `26f9cd6` |
-| ENG-002 | iOS pairing 4 vs 6 chars | High | Fixed on main `26f9cd6` |
-| ENG-003 | Mock actor isolation | High (CI) | Fixed on this branch |
-| ENG-004 | NSLock.lock() in async `send` | High (CI) | Fixed on this branch |
-| ENG-005 | Server protocol error does not cancel NWConnection | Medium | Fixed on this branch |
-| ENG-006 | Pointer encode Int trap + asymmetric Int16 test | High | Code fixed; test range corrected |
-| ENG-007 | Connect init color after powerOff wakes strip | High | Fixed on this branch |
-| ENG-008 | Extra GATT services restart connect sequence | High | Fixed on this branch |
-| ENG-009 | Default preset overwrites scheduled connect actions | High | Fixed on this branch |
-| ENG-010 | Firmware timers not pushed on connect / slots not cleared | High | Fixed on this branch |
-| ENG-011 | stopSyncInline leaves strip mic enabled | Medium | Fixed on this branch |
-| ENG-012 | Extra-light fail reconnects primary | Medium | Fixed on this branch |
-| ENG-013 | Multi-light scan stops on first advertisement | Medium | Fixed on this branch |
-| ENG-014 | Listener `.error` overwritten; pointer injector leak | Medium | Fixed on this branch |
-| ENG-015 | Pairing timeout / error clobber | Medium | Fixed on this branch |
-| ENG-016 | Hide keyboard sends deletes for typed text | High | Fixed on this branch |
-| ENG-017 | Click-drag + extra finger scrolls | High | Fixed on this branch |
-| ENG-018 | Connect strip wipes lastSyncMode | Medium | Fixed on this branch |
-| ENG-019 | Cancelled sync build still starts capture | Medium | Fixed on this branch |
-| ENG-020 | iOS Task capture list isolation order | High (CI) | Fixed on this branch |
-| ENG-021 | iOS haptics/gyro Swift 6 isolation | High (CI) | Fixed on this branch |
+| ENG-001–021 | Prior quality pass | — | Fixed on main `adda24d` |
+| ENG-022 | Extras path swallows primary rediscovery | High | Fixed this branch |
+| ENG-023 | Multi-light off leaves extras scan running | Medium | Fixed this branch |
+| ENG-024 | lastSyncMode wiped before async restore | High | Fixed this branch |
+| ENG-025 | silenceTask not cancelled on sync stop | Medium | Fixed this branch |
+| ENG-026 | Stale TCP callbacks drop new session | High | Fixed this branch |
+| ENG-027 | iOS snapshot connects strip without intent | Medium | Fixed this branch |
+| ENG-028 | Wake reconnects after user disconnect | Medium | Fixed this branch |
+| ENG-029 | Sampler stop no-op during in-flight start | Medium | Fixed this branch |
+| ENG-030 | Server stop leaves pairing code | Low | Fixed this branch |
+| ENG-031 | Pointer cleanup left-button only | Medium | Fixed this branch |
+| ENG-032 | Pairing field survives disconnect | Low | Fixed this branch |
+| ENG-033 | Launch at Login UI ignores register failure | Low | Fixed this branch |
+| ENG-034 | Pending schedule not durable | Medium | Fixed this branch |
 
 ## Product decisions
 

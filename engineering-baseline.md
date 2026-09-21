@@ -1,17 +1,16 @@
 # Engineering Baseline
 
-Recorded: 2026-09-20 (updated)
-HEAD at last baseline: `c37f751` on `cursor/sdlc-quality-pass-6022` (this pass continues from there)
+Recorded: 2026-09-21
+HEAD at last baseline: `adda24d` on `main` / `cursor/sdlc-reliability-pass-6022`
 
 ## Latest CI evidence
 
 | Commit | Run | Result |
 |--------|-----|--------|
-| `26f9cd6` main push | 35534071590 | **cancelled** after 2s — tests not run |
-| `c37f751` PR #11 | 35534500417 | **failure** — compile succeeded; 125 tests, 2 assertions in `testExtremeMouseDeltas` (`3276.8` > `3276.7`) |
-| Prior PR jobs | 35534454058 / 35534373197 / 35534249176 | cancelled or failed |
+| `adda24d` main | 35536096195 | **success** — LightStarCore tests, unsigned macOS build, widget embed, unsigned iOS build |
+| Prior quality-pass PR | 35536096195 | Same commit after ENG-001–021 |
 
-Local `swift test` / `xcodebuild`: **not executed** (no Swift on this Linux agent).
+Local `swift test` / `xcodebuild`: **not executed** (no Swift on this Linux agent). GitHub Actions on macOS 15 is the compile/test gate.
 
 ## Product
 
@@ -44,11 +43,11 @@ xcodebuild -scheme LightStar -configuration Debug
 | Hardware / BLE | **Not executed** | Linux VM |
 | Manual device install | **Not executed** | No devices |
 
-## Existing test inventory (code present, not run here)
+## Existing test inventory (code present)
 
 `LightStarCore/Tests/LightStarCoreTests/`
 
-- `CoreTests.swift` — protocol frames, color math, schedules, coalescer, remote messages, connect/firmware policies
+- `CoreTests.swift` — protocol frames, color math, schedules, coalescer, remote messages, connect/firmware/discovery policies
 - `Integration/SecurityTests.swift` — mock authenticator + pointer encode clamp
 - `Integration/ProtocolIntegrationTests.swift` — encode/decode
 - `Integration/FrameAnalysisTests.swift` — mock frames (wait on `framesDelivered`)
@@ -67,11 +66,12 @@ App targets (`LightStar`, `LightStariOS`) have **no** Xcode test targets (`proje
 
 ## High-risk areas
 
-- Remote control (LAN, no TLS, pairing off by default)
-- BLE connection state machine and scan timeouts
-- ScreenCaptureKit + Metal fallback
+- Remote control (LAN, no TLS, pairing off by default — PD-001)
+- BLE connection state machine, leftover `peripheral` after disconnect, multi-light extras
+- ScreenCaptureKit + Metal fallback; sampler start/stop races
 - Swift 6 strict concurrency (`SWIFT_STRICT_CONCURRENCY: complete`)
 - Schedule timer arming, pending drain vs default preset, BC0D firmware timers
+- lastSyncMode restore racing default preset on connect
 
 ## Known limitation of this baseline
 

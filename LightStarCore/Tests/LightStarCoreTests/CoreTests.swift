@@ -704,6 +704,14 @@ final class PairingCodeGenerationTests: XCTestCase {
             XCTAssertNil(code.rangeOfCharacter(from: forbidden))
         }
     }
+
+    func testStopClearsActivePairingCode() {
+        let server = RemoteControlServer()
+        XCTAssertNotNil(server.generatePairingCode())
+        XCTAssertNotNil(server.activePairingCode)
+        server.stop()
+        XCTAssertNil(server.activePairingCode)
+    }
 }
 #endif
 
@@ -744,6 +752,12 @@ final class ConnectAndSchedulePolicyTests: XCTestCase {
         ))
         XCTAssertFalse(ConnectAppearancePolicy.shouldApplyDefaultPreset(
             isOn: true, isSyncing: true, pendingScheduleCount: 0
+        ))
+        XCTAssertFalse(ConnectAppearancePolicy.shouldApplyDefaultPreset(
+            isOn: true, isSyncing: false, pendingScheduleCount: 0, hasSyncToRestore: true
+        ))
+        XCTAssertTrue(ConnectAppearancePolicy.shouldApplyDefaultPreset(
+            isOn: true, isSyncing: false, pendingScheduleCount: 0, hasSyncToRestore: false
         ))
     }
 
@@ -851,5 +865,131 @@ final class ConnectAndSchedulePolicyTests: XCTestCase {
         XCTAssertFalse(StripReconnectPolicy.shouldDisconnectBeforeReconnect(.disconnected))
         XCTAssertTrue(StripReconnectPolicy.shouldDisconnectBeforeReconnect(.scanning))
         XCTAssertTrue(StripReconnectPolicy.shouldDisconnectBeforeReconnect(.connecting))
+    }
+
+    func testExtraLightsRequirePrimaryConnected() {
+        XCTAssertTrue(BLEDiscoveryPolicy.shouldTreatAdvertisementAsExtraLight(
+            multiLightEnabled: true, primaryConnectionState: .connected
+        ))
+        XCTAssertFalse(BLEDiscoveryPolicy.shouldTreatAdvertisementAsExtraLight(
+            multiLightEnabled: true, primaryConnectionState: .disconnected
+        ))
+        XCTAssertFalse(BLEDiscoveryPolicy.shouldTreatAdvertisementAsExtraLight(
+            multiLightEnabled: true, primaryConnectionState: .connecting
+        ))
+        XCTAssertFalse(BLEDiscoveryPolicy.shouldTreatAdvertisementAsExtraLight(
+            multiLightEnabled: false, primaryConnectionState: .connected
+        ))
+    }
+
+    func testStalePrimaryPeripheralDoesNotSwallowRediscoveryWhileDisconnected() {
+        XCTAssertFalse(BLEDiscoveryPolicy.shouldIgnoreNonPrimaryAdvertisement(
+            hasPrimaryPeripheral: true, primaryConnectionState: .disconnected
+        ))
+        XCTAssertFalse(BLEDiscoveryPolicy.shouldIgnoreNonPrimaryAdvertisement(
+            hasPrimaryPeripheral: true, primaryConnectionState: .scanning
+        ))
+        XCTAssertTrue(BLEDiscoveryPolicy.shouldIgnoreNonPrimaryAdvertisement(
+            hasPrimaryPeripheral: true, primaryConnectionState: .connecting
+        ))
+        XCTAssertTrue(BLEDiscoveryPolicy.shouldIgnoreNonPrimaryAdvertisement(
+            hasPrimaryPeripheral: true, primaryConnectionState: .connected
+        ))
+        XCTAssertFalse(BLEDiscoveryPolicy.shouldIgnoreNonPrimaryAdvertisement(
+            hasPrimaryPeripheral: false, primaryConnectionState: .connected
+        ))
+    }
+
+    func testMultiLightToggleScanFollowsPrimaryConnection() {
+        XCTAssertTrue(BLEDiscoveryPolicy.shouldStopScanWhenDisablingMultiLight(connectionState: .connected))
+        XCTAssertFalse(BLEDiscoveryPolicy.shouldStopScanWhenDisablingMultiLight(connectionState: .scanning))
+        XCTAssertTrue(BLEDiscoveryPolicy.shouldStartExtraScanWhenEnablingMultiLight(connectionState: .connected))
+        XCTAssertFalse(BLEDiscoveryPolicy.shouldStartExtraScanWhenEnablingMultiLight(connectionState: .disconnected))
+    }
+
+    func testWakeDoesNotReconnectAfterUserDisconnect() {
+        XCTAssertTrue(WakeReconnectPolicy.shouldReconnect(
+            autoConnect: true, connectionState: .disconnected, userInitiatedDisconnect: false
+        ))
+        XCTAssertFalse(WakeReconnectPolicy.shouldReconnect(
+            autoConnect: true, connectionState: .disconnected, userInitiatedDisconnect: true
+        ))
+        XCTAssertFalse(WakeReconnectPolicy.shouldReconnect(
+            autoConnect: false, connectionState: .disconnected, userInitiatedDisconnect: false
+        ))
+        XCTAssertFalse(WakeReconnectPolicy.shouldReconnect(
+            autoConnect: true, connectionState: .connected, userInitiatedDisconnect: false
+        ))
+    }
+
+    func testLastSyncModePersistsWhenTurningSyncOff() {
+        XCTAssertEqual(
+            SyncModePersistence.lastSyncModeToPersist(previous: .video, next: .off),
+            .video
+        )
+        XCTAssertEqual(
+            SyncModePersistence.lastSyncModeToPersist(previous: .audio, next: .off),
+            .audio
+        )
+        XCTAssertNil(SyncModePersistence.lastSyncModeToPersist(previous: .off, next: .off))
+        XCTAssertNil(SyncModePersistence.lastSyncModeToPersist(previous: .video, next: .audio))
+    }
+
+    func testStaleRemoteCallbacksAreIgnored() {
+        XCTAssertTrue(RemoteClientSessionPolicy.shouldHandleCallback(
+            callbackGeneration: 3, currentGeneration: 3
+        ))
+        XCTAssertFalse(RemoteClientSessionPolicy.shouldHandleCallback(
+            callbackGeneration: 2, currentGeneration: 3
+        ))
+    }
+
+    func testStripSnapshotRequiresUserIntent() {
+        XCTAssertTrue(RemoteStripSnapshotPolicy.shouldApplyConnectionFromSnapshot(
+            wantsMacStripConnection: true
+        ))
+        XCTAssertFalse(RemoteStripSnapshotPolicy.shouldApplyConnectionFromSnapshot(
+            wantsMacStripConnection: false
+        ))
+    }
+
+    func testPairingFieldClearsWhenLeavingPairing() {
+        XCTAssertFalse(RemotePairingFieldPolicy.shouldClearLocalCode(for: .authenticating))
+        XCTAssertTrue(RemotePairingFieldPolicy.shouldClearLocalCode(for: .disconnected))
+        XCTAssertTrue(RemotePairingFieldPolicy.shouldClearLocalCode(for: .error("nope")))
+        XCTAssertTrue(RemotePairingFieldPolicy.shouldClearLocalCode(for: .connected("Mac")))
+    }
+
+    func testPointerCleanupReleasesEveryHeldButton() {
+        XCTAssertEqual(PointerButtonCleanup.buttonsToRelease(left: true, right: false, other: false), [0])
+        XCTAssertEqual(PointerButtonCleanup.buttonsToRelease(left: false, right: true, other: true), [1, 2])
+        XCTAssertEqual(PointerButtonCleanup.buttonsToRelease(left: true, right: true, other: true), [0, 1, 2])
+        XCTAssertEqual(PointerButtonCleanup.buttonsToRelease(left: false, right: false, other: false), [])
+    }
+
+    func testLaunchAtLoginToggleFollowsServiceOnFailure() {
+        XCTAssertTrue(LaunchAtLoginSync.displayedEnabled(
+            requested: true, succeeded: true, currentlyEnabled: true
+        ))
+        XCTAssertFalse(LaunchAtLoginSync.displayedEnabled(
+            requested: true, succeeded: false, currentlyEnabled: false
+        ))
+        XCTAssertTrue(LaunchAtLoginSync.displayedEnabled(
+            requested: false, succeeded: false, currentlyEnabled: true
+        ))
+    }
+
+    func testPendingScheduleStampRequiresApplyOrDurableQueue() {
+        XCTAssertTrue(ScheduleFirePersistence.shouldStampLastFiredAt(applied: true, pendingPersisted: false))
+        XCTAssertTrue(ScheduleFirePersistence.shouldStampLastFiredAt(applied: false, pendingPersisted: true))
+        XCTAssertFalse(ScheduleFirePersistence.shouldStampLastFiredAt(applied: false, pendingPersisted: false))
+    }
+
+    func testPendingScheduleStoreRoundTripAndCap() throws {
+        let original: [LightSchedule.ScheduledAction] = [.powerOn, .powerOff, .preset(colorHue: 0.2, colorSat: 0.8, brightness: 0.5)]
+        let data = try PendingScheduleStore.encode(original)
+        let decoded = try PendingScheduleStore.decode(data)
+        XCTAssertEqual(decoded, original)
+        XCTAssertEqual(PendingScheduleStore.capped(original + original + original, cap: 2).count, 2)
     }
 }

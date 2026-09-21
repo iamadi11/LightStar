@@ -16,6 +16,12 @@ public extension LightBLEManager {
     }
 
     public func setSyncMode(_ mode: SyncMode) {
+        silenceTask?.cancel()
+        silenceTask = nil
+        if let persist = SyncModePersistence.lastSyncModeToPersist(previous: syncMode, next: mode) {
+            lastSyncMode = persist
+            UserDefaults.standard.set(persist.rawValue, forKey: "lastSyncMode")
+        }
         let prevMode = syncMode
         transitionTask?.cancel()
         syncTransitioning = true
@@ -69,6 +75,7 @@ public extension LightBLEManager {
     }
 
     public func stopSyncInline() {
+        silenceTask?.cancel(); silenceTask = nil
         transitionTask?.cancel(); transitionTask = nil
         fadeTask?.cancel(); fadeTask = nil
         probeTask?.cancel(); probeTask = nil

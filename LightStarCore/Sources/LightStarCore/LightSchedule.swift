@@ -107,6 +107,13 @@ public final class ScheduleStore {
         return dir.appendingPathComponent("schedules.json")
     }
 
+    private static var pendingURL: URL {
+        let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        let dir = support.appendingPathComponent("LightStar", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir.appendingPathComponent("pending-actions.json")
+    }
+
     public init() {
         load()
         armNextTimer()
@@ -133,9 +140,14 @@ public final class ScheduleStore {
         var didFire = false
         for i in schedules.indices where schedules[i].isEnabled {
             guard schedules[i].isDue(at: now) else { continue }
-            perform(schedules[i].action)
-            schedules[i].lastFiredAt = now
-            didFire = true
+            let appliedOrQueued = perform(schedules[i].action)
+            if ScheduleFirePersistence.shouldStampLastFiredAt(
+                applied: appliedOrQueued.applied,
+                pendingPersisted: appliedOrQueued.pendingPersisted
+            ) {
+                schedules[i].lastFiredAt = now
+                didFire = true
+            }
         }
         if didFire { persist() }
         armNextTimer()
@@ -147,6 +159,7 @@ public final class ScheduleStore {
     public func drainPendingActions() -> Int {
         let queued = pendingActions
         pendingActions.removeAll()
+        persistPending()
         for action in queued { apply(action) }
         return queued.count
     }
@@ -171,15 +184,32 @@ public final class ScheduleStore {
         if let timer { RunLoop.main.add(timer, forMode: .common) }
     }
 
-    private func perform(_ action: LightSchedule.ScheduledAction) {
+    private func perform(_ action: LightSchedule.ScheduledAction) -> (applied: Bool, pendingPersisted: Bool) {
         guard let ble, ble.connectionState == .connected else {
-            if pendingActions.count < Self.pendingCap {
-                pendingActions.append(action)
-            }
+            let persisted = enqueuePending(action)
             ble?.connect()
-            return
+            return (false, persisted)
         }
         apply(action)
+        return (true, false)
+    }
+
+    @discardableResult
+    private func enqueuePending(_ action: LightSchedule.ScheduledAction) -> Bool {
+        guard pendingActions.count < Self.pendingCap else { return false }
+        pendingActions.append(action)
+        return persistPending()
+    }
+
+    @discardableResult
+    private func persistPending() -> Bool {
+        guard let data = try? PendingScheduleStore.encode(pendingActions) else { return false }
+        do {
+            try data.write(to: Self.pendingURL, options: .atomic)
+            return true
+        } catch {
+            return false
+        }
     }
 
     private func apply(_ action: LightSchedule.ScheduledAction) {
@@ -204,17 +234,25 @@ public final class ScheduleStore {
     }
 
     private func load() {
-        guard let data = try? Data(contentsOf: Self.storeURL),
-              let decoded = try? JSONDecoder().decode([LightSchedule].self, from: data)
-        else { return }
-        let now = Date()
-        // Stamp missing lastFiredAt so a catch-up cannot fire for times that
-        // passed before this install knew about the schedule.
-        schedules = decoded.map { s in
-            var copy = s
-            if copy.lastFiredAt == nil { copy.lastFiredAt = now }
-            return copy
+        if let data = try? Data(contentsOf: Self.storeURL),
+           let decoded = try? JSONDecoder().decode([LightSchedule].self, from: data) {
+            let now = Date()
+            // Stamp missing lastFiredAt so a catch-up cannot fire for times that
+            // passed before this install knew about the schedule.
+            schedules = decoded.map { s in
+                var copy = s
+                if copy.lastFiredAt == nil { copy.lastFiredAt = now }
+                return copy
+            }
         }
+        loadPending()
+    }
+
+    private func loadPending() {
+        guard let data = try? Data(contentsOf: Self.pendingURL),
+              let decoded = try? PendingScheduleStore.decode(data)
+        else { return }
+        pendingActions = PendingScheduleStore.capped(decoded, cap: Self.pendingCap)
     }
 }
 
@@ -224,9 +262,10 @@ public enum ConnectAppearancePolicy: Sendable {
     public static func shouldApplyDefaultPreset(
         isOn: Bool,
         isSyncing: Bool,
-        pendingScheduleCount: Int
+        pendingScheduleCount: Int,
+        hasSyncToRestore: Bool = false
     ) -> Bool {
-        isOn && !isSyncing && pendingScheduleCount == 0
+        isOn && !isSyncing && pendingScheduleCount == 0 && !hasSyncToRestore
     }
 }
 
@@ -275,5 +314,30 @@ public enum FirmwareTimerSync: Sendable {
             slot &+= 1
         }
         return frames
+    }
+}
+
+/// lastFiredAt may be stamped when the action is applied, or when it is durably
+/// queued for the next connect. Memory-only pending is not enough.
+public enum ScheduleFirePersistence: Sendable {
+    public static func shouldStampLastFiredAt(applied: Bool, pendingPersisted: Bool) -> Bool {
+        applied || pendingPersisted
+    }
+}
+
+public enum PendingScheduleStore: Sendable {
+    public static func encode(_ actions: [LightSchedule.ScheduledAction]) throws -> Data {
+        try JSONEncoder().encode(actions)
+    }
+
+    public static func decode(_ data: Data) throws -> [LightSchedule.ScheduledAction] {
+        try JSONDecoder().decode([LightSchedule.ScheduledAction].self, from: data)
+    }
+
+    public static func capped(
+        _ actions: [LightSchedule.ScheduledAction],
+        cap: Int
+    ) -> [LightSchedule.ScheduledAction] {
+        Array(actions.prefix(cap))
     }
 }

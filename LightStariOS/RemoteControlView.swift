@@ -40,6 +40,11 @@ struct RemoteControlView: View {
                 errorView(message)
             }
         }
+        .onChange(of: client.state) { _, newState in
+            if RemotePairingFieldPolicy.shouldClearLocalCode(for: newState) {
+                pairingCode = ""
+            }
+        }
         .task {
             switch client.state {
             case .disconnected, .error:

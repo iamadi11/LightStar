@@ -26,10 +26,13 @@ public final class MicAudioSampler {
         domain: "MicAudio", code: -5001,
         userInfo: [NSLocalizedDescriptionKey: "Microphone access required"])
 
+    // Generation counter prevents start() from committing after a concurrent stop() has run.
+    private var generation = 0
+
     public func start() async throws {
         guard !isRunning else { return }
-
-        // Check / request mic permission before touching AVAudioEngine
+        generation &+= 1
+        let gen = generation
         let status = AVCaptureDevice.authorizationStatus(for: .audio)
         if status == .denied || status == .restricted {
             throw Self.micDeniedError
@@ -40,6 +43,7 @@ public final class MicAudioSampler {
             }
             if !granted { throw Self.micDeniedError }
         }
+        guard generation == gen else { return }
 
         #if os(iOS)
         let session = AVAudioSession.sharedInstance()
@@ -110,6 +114,15 @@ public final class MicAudioSampler {
             #endif
             throw error
         }
+        guard generation == gen else {
+            input.removeTap(onBus: 0)
+            eng.stop()
+            if let s = fftSetup { vDSP_DFT_DestroySetup(s); fftSetup = nil }
+            #if os(iOS)
+            try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+            #endif
+            return
+        }
         engine = eng
         isRunning = true
 
@@ -128,6 +141,7 @@ public final class MicAudioSampler {
     }
 
     public func stop() async {
+        generation &+= 1  // invalidate any concurrent start(), even if idle
         guard isRunning else { return }
         isRunning = false
         if let obs = engineConfigObserver { NotificationCenter.default.removeObserver(obs) }

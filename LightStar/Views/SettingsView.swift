@@ -16,11 +16,23 @@ struct SettingsView: View {
                 Toggle("Launch at Login", isOn: $launchAtLogin)
                     .onAppear { launchAtLogin = SMAppService.mainApp.status == .enabled }
                     .onChange(of: launchAtLogin) { _, enabled in
-                        if enabled {
-                            try? SMAppService.mainApp.register()
-                        } else {
-                            try? SMAppService.mainApp.unregister()
+                        let succeeded: Bool
+                        do {
+                            if enabled {
+                                try SMAppService.mainApp.register()
+                            } else {
+                                try SMAppService.mainApp.unregister()
+                            }
+                            succeeded = true
+                        } catch {
+                            succeeded = false
                         }
+                        let next = LaunchAtLoginSync.displayedEnabled(
+                            requested: enabled,
+                            succeeded: succeeded,
+                            currentlyEnabled: SMAppService.mainApp.status == .enabled
+                        )
+                        if next != launchAtLogin { launchAtLogin = next }
                     }
                 Toggle("Auto-connect on Launch", isOn: $autoConnectOnLaunch)
                 Toggle("Multi-light (connect all nearby bars)", isOn: Binding(

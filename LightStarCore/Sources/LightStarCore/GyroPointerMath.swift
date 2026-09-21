@@ -306,3 +306,21 @@ public enum RemoteTrackpadMoveKind: Equatable, Sendable {
         }
     }
 }
+
+/// Disconnect cleanup must release every button that is still down, not only left.
+public enum PointerButtonCleanup: Sendable {
+    public static func buttonsToRelease(left: Bool, right: Bool, other: Bool) -> [Int] {
+        var buttons: [Int] = []
+        if left { buttons.append(0) }
+        if right { buttons.append(1) }
+        if other { buttons.append(2) }
+        return buttons
+    }
+}
+
+/// Launch-at-login toggle must follow SMAppService, not the failed request.
+public enum LaunchAtLoginSync: Sendable {
+    public static func displayedEnabled(requested: Bool, succeeded: Bool, currentlyEnabled: Bool) -> Bool {
+        succeeded ? requested : currentlyEnabled
+    }
+}

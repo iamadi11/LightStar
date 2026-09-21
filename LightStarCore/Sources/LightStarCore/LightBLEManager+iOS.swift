@@ -78,13 +78,15 @@ extension LightBLEManager {
     }
 
     func applyRemoteSnapshot(_ state: LightStarState) {
-        if state.isConnected {
-            if connectionState != .connected {
-                connectionState = .connected
-                connectionError = nil
-            }
-        } else if wantsMacStripConnection {
-            if case .connected = remoteClient.state {
+        if RemoteStripSnapshotPolicy.shouldApplyConnectionFromSnapshot(
+            wantsMacStripConnection: wantsMacStripConnection
+        ) {
+            if state.isConnected {
+                if connectionState != .connected {
+                    connectionState = .connected
+                    connectionError = nil
+                }
+            } else if case .connected = remoteClient.state {
                 connectionState = .connecting
             }
         }

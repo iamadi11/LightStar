@@ -65,7 +65,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             guard ConnectAppearancePolicy.shouldApplyDefaultPreset(
                 isOn: self.ble.isOn,
                 isSyncing: self.ble.syncMode != .off,
-                pendingScheduleCount: pendingCount
+                pendingScheduleCount: pendingCount,
+                hasSyncToRestore: self.ble.lastSyncMode != .off
             ),
                   let id = self.presets.defaultPresetID,
                   let preset = self.presets.presets.first(where: { $0.id == id })
@@ -421,8 +422,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         nc.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
             guard let self else { return }
             let autoConnect = UserDefaults.standard.object(forKey: "autoConnectOnLaunch") as? Bool ?? true
-            guard autoConnect, self.ble.connectionState == .disconnected else { return }
             Task { @MainActor in
+                guard WakeReconnectPolicy.shouldReconnect(
+                    autoConnect: autoConnect,
+                    connectionState: self.ble.connectionState,
+                    userInitiatedDisconnect: self.ble.userInitiatedDisconnect
+                ) else { return }
                 self.ble.connect()
                 self.schedules.fireDue()
             }

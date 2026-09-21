@@ -52,6 +52,8 @@ public final class RemoteControlClient: ObservableObject {
     private var pingTask: Task<Void, Never>?
     private var lastPongTime: Date?
     private var connectionTimeoutTask: Task<Void, Never>?
+    /// Invalidates receive / state callbacks from a cancelled NWConnection after reconnect.
+    private var connectionGeneration: UInt64 = 0
     
     public init() {
         #if os(iOS)
@@ -127,6 +129,8 @@ public final class RemoteControlClient: ObservableObject {
     }
     
     public func connect(to server: DiscoveredServer) {
+        connectionGeneration &+= 1
+        let generation = connectionGeneration
         pingTask?.cancel()
         pingTask = nil
         connectionTimeoutTask?.cancel()
@@ -145,7 +149,12 @@ public final class RemoteControlClient: ObservableObject {
         pointerChannel.attach(connection)
         connection?.stateUpdateHandler = { [weak self] newState in
             Task { @MainActor in
-                self?.handleConnectionStateChange(newState)
+                guard let self,
+                      RemoteClientSessionPolicy.shouldHandleCallback(
+                        callbackGeneration: generation,
+                        currentGeneration: self.connectionGeneration
+                      ) else { return }
+                self.handleConnectionStateChange(newState)
             }
         }
         connection?.start(queue: queue)
@@ -190,6 +199,7 @@ public final class RemoteControlClient: ObservableObject {
     }
     
     private func cleanupConnection() {
+        connectionGeneration &+= 1
         connectionTimeoutTask?.cancel()
         connectionTimeoutTask = nil
         pingTask?.cancel()
@@ -255,9 +265,14 @@ public final class RemoteControlClient: ObservableObject {
     }
     
     private func startReceiving() {
+        let generation = connectionGeneration
         connection?.receive(minimumIncompleteLength: 1, maximumLength: 65536) { [weak self] data, _, isComplete, error in
             Task { @MainActor in
-                guard let self = self else { return }
+                guard let self = self,
+                      RemoteClientSessionPolicy.shouldHandleCallback(
+                        callbackGeneration: generation,
+                        currentGeneration: self.connectionGeneration
+                      ) else { return }
                 
                 if let data = data, !data.isEmpty {
                     guard !receiveBufferWouldOverflow(currentCount: self.receiveBuffer.count, incomingCount: data.count) else {
@@ -538,6 +553,33 @@ public enum RemoteClientSessionPolicy: Sendable {
     ) -> RemoteControlClient.ConnectionState {
         if case .error = current { return current }
         return .disconnected
+    }
+
+    public static func shouldHandleCallback(
+        callbackGeneration: UInt64,
+        currentGeneration: UInt64
+    ) -> Bool {
+        callbackGeneration == currentGeneration
+    }
+}
+
+/// iPhone lighting UI must not flip to "strip connected" unless the user asked
+/// this session to drive the Mac strip.
+public enum RemoteStripSnapshotPolicy: Sendable {
+    public static func shouldApplyConnectionFromSnapshot(wantsMacStripConnection: Bool) -> Bool {
+        wantsMacStripConnection
+    }
+}
+
+/// Leave the pairing text field empty after the pairing screen is no longer shown.
+public enum RemotePairingFieldPolicy: Sendable {
+    public static func shouldClearLocalCode(for state: RemoteControlClient.ConnectionState) -> Bool {
+        switch state {
+        case .authenticating:
+            return false
+        default:
+            return true
+        }
     }
 }
 

@@ -1,7 +1,8 @@
 # Engineering Findings
 
-Triage date: 2026-09-20
-Sources: GitHub Actions logs, repository inspection, independent adversarial QA against current source.
+Triage date: 2026-09-21
+Base: `adda24d` (ENG-001–021 already on main)
+Sources: repository inspection of current production paths. Independent QA reports were re-checked in source; items that could not be reproduced were not treated as confirmed.
 
 ## Product decisions (unchanged)
 
@@ -10,160 +11,116 @@ Sources: GitHub Actions logs, repository inspection, independent adversarial QA 
 | PD-001 | Pairing stays **off by default**. No Mac pairing-code UI. No TLS. |
 | PD-002 | Pairing codes stay 6-character alphanumeric (`kLightStarPairingCodeAlphabet`). |
 
-No silent product-behavior changes. Connect restore now matches the comments already in `LightStarApp` / `setPower`.
+No silent product-behavior changes.
 
-## Confirmed bugs
+## Previously fixed (ENG-001–021)
 
-### ENG-001 — Swift 6 deinit isolation breaks the build
+See prior pass. Not re-opened.
 
-- **Severity:** Critical
-- **Status:** Fixed on main `26f9cd6`
+## Confirmed bugs (this pass)
 
-### ENG-002 — iOS pairing UI out of sync with server code format
-
-- **Severity:** High (only if pairing is enabled)
-- **Status:** Fixed on main `26f9cd6`
-
-### ENG-003 / ENG-004 — Test mock isolation / NSLock in async
-
-- **Severity:** High (CI)
-- **Status:** Fixed on this branch (`MockMessageTransport` is a lock-free class)
-
-### ENG-005 — Server leaves TCP connection open after protocol/buffer failure
-
-- **Severity:** Medium
-- **Status:** Fixed on this branch (`failConnection()`)
-
-### ENG-006 — Pointer encode could crash on huge finite deltas
+### ENG-022 — Multi-light extras path swallows primary rediscovery
 
 - **Severity:** High
-- **Status:** Fixed on this branch (`pointerDeltaToInt16` saturation)
-- **CI follow-up:** `testExtremeMouseDeltas` compared against `Int16.max/10` (3276.7). Negative saturation uses `Int16.min` (`-32768` → 3276.8). Test now uses the wider wire range.
+- **Classification:** Bug fix
+- **Feature:** BLE multi-light scan
+- **Evidence:** `didDiscover` used `multiLightEnabled && peripheral != nil`. Disconnect does not nil `peripheral` (needed for reconnect). After a drop, advertisements including the primary hit the extras branch (`guard discoveredPeripheral !== self.peripheral else { return }`) and the primary is never reconnected.
+- **Expected:** Extra lights only while the primary is actually `.connected`.
+- **Fix:** `BLEDiscoveryPolicy.shouldTreatAdvertisementAsExtraLight` requires `.connected`. Non-primary ads are ignored only while connecting/connected; a leftover peripheral while disconnected/scanning can become primary again.
+- **Regression risk:** Extra-light attach while primary is still connecting is delayed until `.connected`.
 
-### ENG-007 — Connect init writes color after power-off and wakes the strip
+### ENG-023 — Disabling multi-light leaves extras scan running
+
+- **Severity:** Medium
+- **Classification:** Reliability improvement
+- **Evidence:** `multiLightEnabled` didSet only called `disconnectExtraLights()`. With ENG-013 the scan keeps running after primary connect.
+- **Fix:** Stop scan when disabling multi-light while connected; start extra scan when enabling while already connected.
+
+### ENG-024 — Connect restore zeros `lastSyncMode` before async sync starts
 
 - **Severity:** High
-- **Feature:** BLE connect sequence
-- **Evidence:** `LightBLEManager` connect task always wrote `Cmd.hue` / `Cmd.brightness` after `Cmd.powerOff`. `setPower` already documents that those writes wake BC/55.
-- **Fix:** Restore appearance and sync only when `targetOn == true`.
-- **Status:** Implemented on this branch
+- **Classification:** Bug fix
+- **Evidence:** `startConnectSequence` copied `lastSyncMode`, set it to `.off`, then called `setSyncMode` (async). `onConnect` then saw `syncMode == .off` and `lastSyncMode == .off` and applied the default preset (ENG-009 race still open). `setSyncMode(.off)` also did not persist `lastSyncMode` (only `stopSyncInline` did).
+- **Fix:** Do not clear `lastSyncMode` before restore. Persist it when `setSyncMode(.off)`. `ConnectAppearancePolicy` skips the default preset when `hasSyncToRestore`.
 
-### ENG-008 — Every extra GATT service restarts the connect sequence
+### ENG-025 — Silence auto-off task not cancelled on sync stop
+
+- **Severity:** Medium
+- **Classification:** Reliability improvement
+- **Evidence:** `silenceTask` cancelled in `disconnect()` but not in `setSyncMode` / `stopSyncInline`. A 2s audio-silence task could turn sync off after the user had already started another mode.
+- **Fix:** Cancel and nil `silenceTask` in both paths.
+
+### ENG-026 — Stale NWConnection callbacks tear down a new remote session
 
 - **Severity:** High
-- **Evidence:** `discoverServices(nil)` then `didDiscoverCharacteristicsFor` started a new `connectSequenceTask` whenever `writeChar != nil`, without cancelling the previous task. `onConnect` could fire repeatedly.
-- **Fix:** Start the sequence only when the write characteristic transitions from nil to set.
-- **Status:** Implemented on this branch
+- **Classification:** Reliability improvement
+- **Evidence:** `RemoteControlClient.connect(to:)` cancels the old `NWConnection` then starts a new one. Receive / state handlers had no generation, so a late `handleTransportClose()` or `.failed` from the old socket could drop the new session.
+- **Fix:** `connectionGeneration` + `RemoteClientSessionPolicy.shouldHandleCallback`.
 
-### ENG-009 — Scheduled actions overwritten by the default preset
-
-- **Severity:** High
-- **Evidence:** `LightStarApp.onConnect` drained pending schedules then still applied the default preset (`setColor`/`setBrightness`), which wakes a strip that a bedtime schedule just turned off.
-- **Fix:** `ConnectAppearancePolicy` skips the default preset when pending actions existed, the strip is off, or sync is running. Firmware timers are also pushed on connect.
-- **Status:** Implemented on this branch
-
-### ENG-010 — Firmware weekly timers not synced on connect; unused slots not cleared
-
-- **Severity:** High
-- **Evidence:** `pushFirmwareTimers()` ran only from `save()`, never on reconnect, and never sent `enabled: false` for leftover BC0D slots.
-- **Fix:** `FirmwareTimerSync.frames` always emits `Cmd.weeklyTimerSlotCount` (8) slots; unused slots are disabled. Called from `save()` and from `onConnect`.
-- **Status:** Implemented on this branch
-
-### ENG-011 — `stopSyncInline()` never disables the strip mic
+### ENG-027 — iOS snapshot marks the strip connected without Connect Strip
 
 - **Severity:** Medium
-- **Evidence:** `teardownSync()` writes `Cmd.stripMic(false)`; the inline stop path did not, so leaving strip-mic sync via color/power left the onboard mic running.
-- **Fix:** Same strip-mic disable in `stopSyncInline()`.
-- **Status:** Implemented on this branch
+- **Classification:** Bug fix
+- **Evidence:** `applyRemoteSnapshot` set `connectionState = .connected` whenever `state.isConnected`, even if `wantsMacStripConnection` was false (trackpad-only Mac session).
+- **Fix:** `RemoteStripSnapshotPolicy` requires `wantsMacStripConnection`. Light color fields still update (display of Mac state).
 
-### ENG-012 — Extra-light connect failure reconnects the primary
-
-- **Severity:** Medium
-- **Fix:** Drop the extra peripheral; `BLEDiscoveryPolicy` reconnects only when the failed device is the primary.
-- **Status:** Implemented on this branch
-
-### ENG-013 — Multi-light scan stops on the first advertisement
+### ENG-028 — Wake-from-sleep reconnects after an explicit disconnect
 
 - **Severity:** Medium
-- **Evidence:** Extra-light branch required `peripheral != nil`, so the first hit always `stopScan()`’d.
-- **Fix:** Keep scanning when `multiLightEnabled`.
-- **Status:** Implemented on this branch
+- **Classification:** Bug fix
+- **Evidence:** `NSWorkspace.didWakeNotification` called `ble.connect()` whenever auto-connect was on and state was `.disconnected`, ignoring `userInitiatedDisconnect`. `connect()` also clears that flag, so a later BT-off/on could not distinguish intent either — the wake path is the one that must honor it.
+- **Fix:** `WakeReconnectPolicy` requires `!userInitiatedDisconnect`.
 
-### ENG-014 — Listener failure overwritten to `.stopped`; pointer injector not cleaned up
-
-- **Severity:** Medium
-- **Fix:** Failed listener sets `.error` without calling `stop()`. `stop()` still goes to `.stopped`. `start()` may retry from `.error`. `closeListenerAndClients()` releases the mouse button via `pointerInjector.cleanup()`.
-- **Status:** Implemented on this branch
-
-### ENG-015 — Pairing path handshake timer and error clobber
+### ENG-029 — Sampler `stop()` is a no-op while start is in flight
 
 - **Severity:** Medium
-- **Evidence:** 10s timer started at `connect()` was not reset when entering pairing; a later TCP close called `disconnect()` and replaced `.error` with `.disconnected`.
-- **Fix:** `armHandshakeTimeout()` on TCP hello and on pairing challenge. `RemoteClientSessionPolicy` keeps `.error` across transport close. Failed `pairAck` uses `fail()`.
-- **Status:** Implemented on this branch
+- **Classification:** Reliability improvement
+- **Evidence:** `SystemAudioSampler` / `ScreenCaptureKitProvider` only bumped `generation` if `isRunning`. `MicAudioSampler` had no generation. `stop()` during `startCapture()` / mic permission therefore did not invalidate the in-flight start.
+- **Fix:** Always bump generation in `stop()`. Mic sampler matches the screen/system-audio pattern.
 
-### ENG-016 — Hiding the iPhone keyboard deletes text already typed on the Mac
+### ENG-030 — Server stop leaves pairing code and expiry task alive
 
-- **Severity:** High
-- **Feature:** iPhone remote keyboard
-- **Evidence:** Clearing `typeBuffer` on dismiss fires `sendTypingDelta("hello", "")`, which sends one delete per character. Those characters were already sent while typing.
-- **Fix:** Local buffer reset is suppressed (`RemoteTypingDelta.shouldEmit(forLocalBufferReset:)`). Real user backspaces still send deletes.
-- **Status:** Implemented on this branch
+- **Severity:** Low (pairing off by default, PD-001)
+- **Classification:** Reliability improvement
+- **Evidence:** `closeListenerAndClients()` did not cancel `pairingCodeExpireTask` or clear `activePairingCode`.
+- **Fix:** Clear both in `closeListenerAndClients()` (covers `stop()` and listener failure).
 
-### ENG-017 — Extra finger during click-drag scrolls with the mouse button down
-
-- **Severity:** High
-- **Feature:** iPhone trackpad
-- **Evidence:** Long-press / three-finger drag sets `isClickDrag` and `mouseDown`, but `touchesMoved` switched on `activeIDs.count` only, so a second finger sent scroll while the button stayed down.
-- **Fix:** `RemoteTrackpadMoveKind` keeps pointer moves for the rest of a click-drag.
-- **Status:** Implemented on this branch
-
-### ENG-018 — Remote Connect Strip wipes lastSyncMode
+### ENG-031 — Pointer cleanup only released the left button
 
 - **Severity:** Medium
-- **Evidence:** `connectStrip` called `disconnect()` then `connect()` even when already disconnected. `disconnect()` sets `lastSyncMode = .off` and `userInitiatedDisconnect`.
-- **Fix:** `reconnectPreservingSync()` / `StripReconnectPolicy` — skip disconnect when idle; if aborting scan/connect, restore `lastSyncMode`.
-- **Status:** Implemented on this branch
+- **Classification:** Reliability improvement
+- **Evidence:** `MacPointerInjector.cleanup()` posted left-up only. Right/middle could stay down after disconnect.
+- **Fix:** Track right/other down; `PointerButtonCleanup` releases all held buttons.
 
-### ENG-019 — Cancelled sync transition still starts capture
+### ENG-032 — Pairing text field kept after disconnect
+
+- **Severity:** Low (pairing off by default)
+- **Classification:** Reliability improvement
+- **Evidence:** `RemoteControlView` `@State pairingCode` survived `.disconnected` / `.error`.
+- **Fix:** Clear when `RemotePairingFieldPolicy.shouldClearLocalCode`.
+
+### ENG-033 — Launch at Login toggle stays on if `SMAppService.register` fails
+
+- **Severity:** Low
+- **Classification:** Bug fix
+- **Evidence:** `try? register()` then left `@AppStorage("launchAtLogin")` as the requested value.
+- **Fix:** `LaunchAtLoginSync.displayedEnabled` follows the actual service status.
+
+### ENG-034 — Scheduled action lost if pending queue is only in memory
 
 - **Severity:** Medium
-- **Evidence:** `setSyncMode` waited for teardown then called `buildSync` with one cancel check. `stopSyncInline` could set `.off` while `buildSync` was awaiting cleanup, then still set `.video` and start ScreenCaptureKit.
-- **Fix:** `buildSync` returns after cleanup if cancelled, and stops samplers if cancelled after `start()`.
-- **Status:** Implemented on this branch
-
-### ENG-020 — iOS build fails: Task capture list isolation order
-
-- **Severity:** High (unsigned iOS archive)
-- **Evidence:** CI `1151ef0` — tests and macOS build passed; `xcodebuild` LightStariOS failed at `RemoteLevelHUD.swift:87` `expected ',' separator` for `Task { [weak self] @MainActor in }`
-- **Fix:** Use `Task { @MainActor [weak self] in }`, matching the rest of the codebase.
-- **Status:** Implemented on this branch
-
-### ENG-021 — iOS Swift 6 concurrency: haptics generators and gyro probe
-
-- **Severity:** High (unsigned iOS archive)
-- **Evidence:** CI `f2ba580` — tests and macOS build passed; iOS failed:
-  - `RemoteHaptics` static `UIImpactFeedbackGenerator` default values in a nonisolated enum
-  - `MotionPump.sharedProbe` static `CMMotionManager` is not Sendable
-- **Fix:** `@MainActor enum RemoteHaptics` (all call sites are UI). Per-instance availability probe instead of a shared static manager.
-- **Product behavior:** Same cached haptic generators and the same device-motion availability check.
-- **Status:** Implemented on this branch
+- **Classification:** Reliability improvement
+- **Evidence:** `fireDue` stamped `lastFiredAt` and persisted schedules after enqueueing `pendingActions`, which lived only in RAM. App restart before connect dropped the action and catch-up would not re-fire.
+- **Fix:** Persist pending to `pending-actions.json`. Stamp `lastFiredAt` only when applied or the pending file write succeeded.
 
 ## Test coverage (not product bugs)
 
-Independent review of `LightStarCore/Tests` vs production ([QA: Tests vs production mismatches](bc-bfe0d582-1826-55a3-9fc1-91eab1a6a22c)):
-
-- S004/S005/S014 and J5 session-token tests hit `MockSessionAuthenticator`, not `RemoteControlServer` (production auth is `connection.authenticated`).
-- S002/S006 rate-limit tests are per-mock-clientID; production is global lockout after 5 plus connection close on each failed pair.
-- S013 mock lighting clamp is not `LightBLEManager` (wire frames clamp; stored brightness does not). Left as designed.
-- S003 pairing expiry uses the mock’s 100ms timer, not the server’s 60s `Task.sleep`.
-- P001 `type: 255` is `.error`, not an unknown tag.
-
-These suites are not rewritten. Session-token validation, TLS, and `LightBLEManager` value clamping would be product changes (PD-001). Production policy helpers for the confirmed bugs above are unit-tested.
+Mock Security/UserJourney suites still do not hit `RemoteControlServer` production auth. Not rewritten (PD-001).
 
 ## Remaining risks
 
 - Local Swift/Xcode unavailable on this Linux agent; GitHub Actions is the compile/test gate.
 - Hardware journeys (real BC/55, iPhone, Accessibility) unverified here.
 - LAN remote control has no TLS (PD-001).
-- BC/55 weekly timer slot count is a conservative cap of 8 (OEM capture showed slot `0x01` only). Extra disabled writes are expected to be ignored if the firmware has fewer slots.
+- BC/55 weekly timer slot count is a conservative cap of 8.
+- Pending-actions file is best-effort (`try?` write); if disk write fails, lastFiredAt is not stamped so catch-up can retry.

@@ -84,8 +84,8 @@ public final class ScreenCaptureKitProvider: NSObject, ScreenFrameProvider {
     }
     
     public func stop() async {
+        generation &+= 1  // invalidate any concurrent start(), even if idle
         guard isRunning else { return }
-        generation &+= 1
         try? await stream?.stopCapture()
         stream = nil
         isRunning = false

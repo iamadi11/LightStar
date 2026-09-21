@@ -16,6 +16,8 @@ public final class MacPointerInjector: @unchecked Sendable {
     private var location: CGPoint
     private var posted = CGPoint.zero
     private var leftDown = false
+    private var rightDown = false
+    private var otherDown = false
     private var haveCursor = false
     private var lastInjectedAt: CFTimeInterval = 0
     private var fracX = 0.0
@@ -87,9 +89,20 @@ public final class MacPointerInjector: @unchecked Sendable {
     public func cleanup() {
         lock.lock()
         defer { lock.unlock() }
-        if leftDown {
-            leftDown = false
-            postLocked(type: .leftMouseUp, button: .left, clickState: 1)
+        for button in PointerButtonCleanup.buttonsToRelease(
+            left: leftDown, right: rightDown, other: otherDown
+        ) {
+            switch button {
+            case 0:
+                leftDown = false
+                postLocked(type: .leftMouseUp, button: .left, clickState: 1)
+            case 1:
+                rightDown = false
+                postLocked(type: .rightMouseUp, button: .right, clickState: 1)
+            default:
+                otherDown = false
+                postLocked(type: .otherMouseUp, button: .center, clickState: 1)
+            }
         }
     }
 
@@ -146,6 +159,8 @@ public final class MacPointerInjector: @unchecked Sendable {
         defer { lock.unlock() }
         refreshCursorIfNeededLocked()
         if button == 0 { leftDown = true }
+        if button == 1 { rightDown = true }
+        if button != 0 && button != 1 { otherDown = true }
         let type: CGEventType
         let mouseButton: CGMouseButton
         switch button {
@@ -167,6 +182,8 @@ public final class MacPointerInjector: @unchecked Sendable {
         defer { lock.unlock() }
         refreshCursorIfNeededLocked()
         if button == 0 { leftDown = false }
+        if button == 1 { rightDown = false }
+        if button != 0 && button != 1 { otherDown = false }
         let type: CGEventType
         let mouseButton: CGMouseButton
         switch button {
