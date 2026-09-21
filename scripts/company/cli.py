@@ -240,7 +240,8 @@ def discover(cfg: dict[str, Any]) -> list[DiscoveryHit]:
 
 def prioritize(hits: list[DiscoveryHit], existing: list[dict[str, Any]], max_tasks: int) -> list[dict[str, Any]]:
     """Deterministic prioritization with explicit rationale — not a fake ML score."""
-    existing_titles = {t.get("title") for t in existing if t.get("status") not in {"rejected", "done"}}
+    # Skip any title already in the pool (including done/blocked) to avoid duplicate work orders.
+    existing_titles = {t.get("title") for t in existing}
     ranked: list[tuple[int, DiscoveryHit]] = []
     for h in hits:
         if h.title in existing_titles:

@@ -44,6 +44,18 @@ class AutonomousCompanyTests(unittest.TestCase):
         out = self.mod.prioritize([hit], existing, max_tasks=5)
         self.assertEqual(out, [])
 
+    def test_prioritize_skips_done_titles(self):
+        hit = self.mod.DiscoveryHit(
+            title="Run autonomous-company self-tests",
+            category="process",
+            evidence=[{"kind": "repo", "ref": "company/tests"}],
+            priority_rationale="x" * 25,
+            acceptance=["ok"],
+        )
+        existing = [{"id": "T-0002", "title": hit.title, "status": "done"}]
+        out = self.mod.prioritize([hit], existing, max_tasks=5)
+        self.assertEqual(out, [])
+
     def test_challenge_rejects_missing_evidence(self):
         task = {
             "id": "T-0001",

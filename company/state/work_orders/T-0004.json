@@ -1,0 +1,18 @@
+{
+  "acceptance": [
+    "python3 -m unittest discover -s company/tests -v exits 0"
+  ],
+  "created_at": "2026-09-21T19:38:19+00:00",
+  "instructions": [
+    "Read company/memory/CONTEXT.md and agents.md before changing product code.",
+    "Answer anti-slop questions before coding.",
+    "Record commands run and outcomes in completion_evidence.",
+    "Do not claim Swift validation on Linux."
+  ],
+  "owner_role": "qa",
+  "task_id": "T-0004",
+  "title": "Run autonomous-company self-tests",
+  "validation_plan": [
+    "python3 -m unittest discover -s company/tests -v exits 0"
+  ]
+}
