@@ -40,7 +40,7 @@ Frame format: `BC [cmd] [data_len] [data × data_len] 55`. Invariant: `bytes[2] 
 | `0x12` | Mic sensitivity 0–255 |
 | `0x13` | Animation scene |
 
-GATT: advertised `0x2022`, service `FFF0`, write `FFF3` (with response), notify `FFF4` (never fires).
+GATT: advertised `0x2022`, service `FFF0`, write `FFF3` (Write + Write Without Response; OEM uses ATT Write Command / `withoutResponse`). Notify `FFF4` (never fires).
 
 All BLE writes go through `BLEWriteCoalescer.enqueue()`. Dedup key is `bytes[1]`. Insertion-ordered, replace-in-place.
 
@@ -150,13 +150,17 @@ iPhone requires:
 - No `try?` around `Task.sleep` in fade/power-cycle loops.
 - Corrupt stores are quarantined in later hardening; current stores decode-fail closed.
 - `lastFiredAt` is stamped `.now` at schedule creation so catch-up cannot fire for a time that passed before the schedule existed.
-- Silence auto-off applies to `.audio` only — never `.combined`.
+- Do not auto-off Music or Combined on silence. Quiet passages and delayed play are normal; the user turns sync off.
 - `connectionError` is cleared when `connectionState` becomes `.connected`.
 - `.connecting` has a 10s timeout so wake-from-sleep can self-heal.
 - User disconnect is `userInitiatedDisconnect`, not `reconnectAttempts == max`.
 - Pointer path stays off MainActor: iOS `PointerChannel` on the NW queue, Mac `MacPointerInjector` on the listener queue. TCP uses `noDelay` + `serviceClass = .signaling`. Pointer move/scroll uses 13-byte binary frames (`0xB1`) with `.idempotent` send; JSON stays for clicks and everything else.
-- Combined mixer: screen writes BC04 hue; beats write BC09 (same as audio-only). Screen must not write BC05 in combined — audio owns brightness. Skip screen hue while `flashLevel > CombinedSyncMixer.beatFlashHold`, then restore BC04 when the flash decays.
+- Combined mixer: Screen owns BC04 hue; Music Pulse (default) owns BC05 only; Rainbow/Frequency are Music-only color styles (BC09). Both is screen hue + audio brightness — beats pulse BC05, never BC09, and never suppress screen hue. Switching modes always teardowns every sampler, nils callbacks, cancels fade, and sends `Cmd.stripMic(false)` so the previous mode cannot leak.
 - Combined always uses Mac system audio (`AudioInputSyncPolicy.effectiveSource`). Leftover `.mic` / `.stripMic` from the audio-only picker must not skip `setupAudioCallback` or re-enable firmware mic. Leaving `.stripMic` always sends `Cmd.stripMic(false)` even if `didSet` already changed the source.
+- Live strip output (color, brightness, presets, sync, effects) requires connected **and** on (`StripCommandPolicy`). Power needs connected only. Schedules, Settings, and the iPhone Mac remote stay independent of strip power.
+- Power-off must be the only pending BLE frame. Hue (`0x04`), brightness (`0x05`) and streaming (`0x09`) after `Cmd.powerOff` wake the BC/55. `setPower(on: false)` `flush()`es the coalescer and `sendNow`s powerOff (no 20ms wait), then repeats once after 200ms. FFF3 writes use `withoutResponse` when the characteristic supports it — `withResponse` stalls because firmware never sends an ATT Write Response, which is why disconnect/reconnect used to be the only way to turn the strip off. `write()` also refuses non-`0x01` commands while `isOn` is false.
+- Hardened runtime (sandbox off) needs `com.apple.security.device.audio-input` for the macOS mic TCC prompt. `device.microphone` alone is the sandbox key and does not register LightStar in System Settings → Microphone.
+- `MicAudioSampler` tap must use a handler created in non-isolated `TapCore.init`. A closure literal in `@MainActor start()` inherits MainActor even if it only captures Sendable state — `AVAudioNodeTapBlock` is not `@Sendable`, so the realtime queue SIGTRAPs (`_dispatch_assert_queue_fail`).
 - Trackpad double-tap: first tap `clickCount` 1, second tap one down+up with `clickCount` 2 (`kCGMouseEventClickState`). Never emit extra singles for the second tap — YouTube/Safari ignore clickCount 1 storms.
 
 ---

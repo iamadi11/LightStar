@@ -13,14 +13,8 @@ public final class MicAudioSampler {
 
     private var engine: AVAudioEngine?
     private var engineConfigObserver: Any?
-    private let analyzeQueue = DispatchQueue(label: "audio.mic", qos: .userInteractive)
+    private var tapCore: TapCore?
     private let fftN = 512
-
-    // FFT state — only accessed from analyzeQueue (serial)
-    nonisolated(unsafe) private var fftSetup: vDSP_DFT_Setup?
-    nonisolated(unsafe) private var prevMags: [Float] = []
-    nonisolated(unsafe) private var maxBass = 0.001, maxMid = 0.001, maxHigh = 0.001, maxFlux = 0.001
-    nonisolated(unsafe) private var accumulator: [Float] = []
 
     public static let micDeniedError = NSError(
         domain: "MicAudio", code: -5001,
@@ -62,53 +56,31 @@ public final class MicAudioSampler {
                           userInfo: [NSLocalizedDescriptionKey: "No microphone available"])
         }
 
-        fftSetup = vDSP_DFT_zop_CreateSetup(nil, vDSP_Length(fftN), .FORWARD)
-
         let sampleRate = fmt.sampleRate
         let channelCount = Int(fmt.channelCount)
         guard channelCount > 0 else {
             throw NSError(domain: "MicAudio", code: 2,
                           userInfo: [NSLocalizedDescriptionKey: "No audio channels available"])
         }
-        input.installTap(onBus: 0, bufferSize: AVAudioFrameCount(fftN), format: fmt) {
-            [weak self] buffer, _ in
-            guard let self,
-                  let chData = buffer.floatChannelData else { return }
-            let frameCount = Int(buffer.frameLength)
-            guard frameCount > 0 else { return }
 
-            // Mix to mono
-            var mono = [Float](repeating: 0, count: frameCount)
-            if channelCount == 1 {
-                mono = Array(UnsafeBufferPointer(start: chData[0], count: frameCount))
-            } else {
-                for ch in 0..<channelCount {
-                    let ch0 = UnsafeBufferPointer(start: chData[ch], count: frameCount)
-                    for i in 0..<frameCount { mono[i] += ch0[i] }
-                }
-                let invCh = 1.0 / Float(channelCount)
-                vDSP_vsmul(mono, 1, [invCh], &mono, 1, vDSP_Length(frameCount))
-            }
+        let core = TapCore(fftN: fftN, sampleRate: sampleRate, channelCount: channelCount)
+        core.owner = self
+        core.fftSetup = vDSP_DFT_zop_CreateSetup(nil, vDSP_Length(fftN), .FORWARD)
 
-            let samples = mono
-            self.analyzeQueue.async { [weak self] in
-                guard let self else { return }
-                self.accumulator.append(contentsOf: samples)
-                var offset = 0
-                while self.accumulator.count - offset >= self.fftN {
-                    let window = Array(self.accumulator[offset ..< offset + self.fftN])
-                    offset += self.fftN
-                    let bands = self.analyze(window, sampleRate: sampleRate)
-                    DispatchQueue.main.async { [weak self] in self?.onBands?(bands) }
-                }
-                if offset > 0 { self.accumulator = Array(self.accumulator[offset...]) }
-            }
-        }
+        // AVAudioNodeTapBlock is not @Sendable. A literal here inherits @MainActor
+        // from start() and SIGTRAPs on the realtime tap queue. The handler must
+        // be created on TapCore (non-isolated).
+        input.installTap(
+            onBus: 0,
+            bufferSize: AVAudioFrameCount(fftN),
+            format: fmt,
+            block: core.tapHandler
+        )
 
         do {
             try eng.start()
         } catch {
-            if let s = fftSetup { vDSP_DFT_DestroySetup(s); fftSetup = nil }
+            core.teardownFFT()
             input.removeTap(onBus: 0)
             #if os(iOS)
             try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
@@ -118,12 +90,13 @@ public final class MicAudioSampler {
         guard !CaptureSessionPolicy.isSuperseded(startGeneration: gen, currentGeneration: generation) else {
             input.removeTap(onBus: 0)
             eng.stop()
-            if let s = fftSetup { vDSP_DFT_DestroySetup(s); fftSetup = nil }
+            core.teardownFFT()
             #if os(iOS)
             try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
             #endif
             throw CancellationError()
         }
+        tapCore = core
         engine = eng
         isRunning = true
 
@@ -153,25 +126,90 @@ public final class MicAudioSampler {
         #if os(iOS)
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
         #endif
+        let core = tapCore
+        tapCore = nil
+        await core?.drainAndTeardown()
+    }
+}
+
+/// FFT + mix live on a serial queue. `@unchecked Sendable` so the AVAudioEngine
+/// tap can capture it without hopping onto `MicAudioSampler`'s MainActor.
+private final class TapCore: @unchecked Sendable {
+    let queue: DispatchQueue
+    let fftN: Int
+    let sampleRate: Double
+    let channelCount: Int
+    nonisolated(unsafe) weak var owner: MicAudioSampler?
+    var fftSetup: vDSP_DFT_Setup?
+    var prevMags: [Float] = []
+    var maxBass = 0.001, maxMid = 0.001, maxHigh = 0.001, maxFlux = 0.001
+    var accumulator: [Float] = []
+    private(set) var tapHandler: AVAudioNodeTapBlock
+
+    init(fftN: Int, sampleRate: Double, channelCount: Int) {
+        self.queue = DispatchQueue(label: "audio.mic", qos: .userInteractive)
+        self.fftN = fftN
+        self.sampleRate = sampleRate
+        self.channelCount = channelCount
+        self.tapHandler = { _, _ in }
+        self.tapHandler = { [unowned self] buffer, _ in
+            self.handle(buffer)
+        }
+    }
+
+    func handle(_ buffer: AVAudioPCMBuffer) {
+        guard let chData = buffer.floatChannelData else { return }
+        let frameCount = Int(buffer.frameLength)
+        guard frameCount > 0 else { return }
+
+        var mono = [Float](repeating: 0, count: frameCount)
+        if channelCount == 1 {
+            mono = Array(UnsafeBufferPointer(start: chData[0], count: frameCount))
+        } else {
+            for ch in 0..<channelCount {
+                let ch0 = UnsafeBufferPointer(start: chData[ch], count: frameCount)
+                for i in 0..<frameCount { mono[i] += ch0[i] }
+            }
+            let invCh = 1.0 / Float(channelCount)
+            vDSP_vsmul(mono, 1, [invCh], &mono, 1, vDSP_Length(frameCount))
+        }
+
+        let samples = mono
+        queue.async { self.process(samples) }
+    }
+
+    private func process(_ samples: [Float]) {
+        accumulator.append(contentsOf: samples)
+        var offset = 0
+        while accumulator.count - offset >= fftN {
+            let window = Array(accumulator[offset ..< offset + fftN])
+            offset += fftN
+            let bands = analyze(window, sampleRate: sampleRate)
+            Task { @MainActor [weak owner] in owner?.onBands?(bands) }
+        }
+        if offset > 0 { accumulator = Array(accumulator[offset...]) }
+    }
+
+    func teardownFFT() {
+        if let s = fftSetup { vDSP_DFT_DestroySetup(s); fftSetup = nil }
+        prevMags = []; accumulator = []
+        maxBass = 0.001; maxMid = 0.001; maxHigh = 0.001; maxFlux = 0.001
+    }
+
+    func drainAndTeardown() async {
         await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
-            analyzeQueue.async {
-                if let s = self.fftSetup { vDSP_DFT_DestroySetup(s); self.fftSetup = nil }
-                self.prevMags = []; self.accumulator = []
-                self.maxBass = 0.001; self.maxMid = 0.001; self.maxHigh = 0.001; self.maxFlux = 0.001
+            queue.async {
+                self.teardownFFT()
                 cont.resume()
             }
         }
     }
-}
 
-// MARK: - FFT (same algorithm as SystemAudioSampler)
-
-public extension MicAudioSampler {
-    nonisolated private func analyze(_ samples: [Float], sampleRate: Double) -> FrequencyBands {
+    private func analyze(_ samples: [Float], sampleRate: Double) -> FrequencyBands {
         let n = samples.count
         var rmsVal: Float = 0
         vDSP_rmsqv(samples, 1, &rmsVal, vDSP_Length(n))
-        let rms = min(1.0, Double(rmsVal) * 20.0)  // mic is quieter than system audio
+        let rms = min(1.0, Double(rmsVal) * 20.0)
 
         guard let setup = fftSetup else {
             return FrequencyBands(bass: 0, mid: 0, high: 0, rms: rms, flux: 0)
@@ -207,7 +245,7 @@ public extension MicAudioSampler {
 
         maxBass = max(maxBass * 0.995, rawBass + 1e-9)
         maxMid  = max(maxMid  * 0.995, rawMid  + 1e-9)
-        maxHigh = max(maxHigh * 0.995, rawHigh + 1e-9)
+        maxHigh = max(maxHigh  * 0.995, rawHigh + 1e-9)
 
         let bass = min(1.0, rawBass / maxBass)
         let mid  = min(1.0, rawMid  / maxMid)
@@ -224,7 +262,7 @@ public extension MicAudioSampler {
         return FrequencyBands(bass: bass, mid: mid, high: high, rms: rms, flux: normFlux)
     }
 
-    nonisolated private func bandRMS(_ mags: [Float], lo: Double, hi: Double, binHz: Double) -> Double {
+    private func bandRMS(_ mags: [Float], lo: Double, hi: Double, binHz: Double) -> Double {
         let loIdx = max(1, Int(lo / binHz))
         let hiIdx = min(mags.count - 1, Int(hi / binHz))
         guard loIdx <= hiIdx else { return 0 }

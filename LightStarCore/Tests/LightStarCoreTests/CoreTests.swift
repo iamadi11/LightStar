@@ -249,21 +249,30 @@ final class LightScheduleTests: XCTestCase {
 final class BLEWriteCoalescerTests: XCTestCase {
     func testReplaceInPlacePreservesInsertionOrder() {
         let coalescer = BLEWriteCoalescer(send: { _ in }, isConnected: { true })
-        coalescer.enqueue(Cmd.powerOn)
         coalescer.enqueue(Cmd.hue(0, saturation: 1))
         coalescer.enqueue(Cmd.brightness(1))
-        coalescer.enqueue(Cmd.powerOff) // same cmd byte 0x01 — replaces powerOn in place
+        coalescer.enqueue(Cmd.hue(0.5, saturation: 1)) // same cmd 0x04 — replace in place
         let drained = coalescer.drainOrderedForTesting()
-        XCTAssertEqual(drained.count, 3)
-        XCTAssertEqual([UInt8](drained[0]), Cmd.powerOff)
-        XCTAssertEqual(drained[1][1], 0x04)
-        XCTAssertEqual(drained[2][1], 0x05)
+        XCTAssertEqual(drained.count, 2)
+        XCTAssertEqual([UInt8](drained[0]), Cmd.hue(0.5, saturation: 1))
+        XCTAssertEqual(drained[1][1], 0x05)
+    }
+
+    func testPowerOffDropsPendingHueAndBrightness() {
+        let coalescer = BLEWriteCoalescer(send: { _ in }, isConnected: { true })
+        coalescer.enqueue(Cmd.hue(0.2, saturation: 1))
+        coalescer.enqueue(Cmd.brightness(0.8))
+        coalescer.enqueue(Cmd.audioHue(0.2, saturation: 0.9))
+        coalescer.enqueue(Cmd.powerOff)
+        let drained = coalescer.drainOrderedForTesting()
+        XCTAssertEqual(drained.map { [UInt8]($0) }, [Cmd.powerOff],
+                       "powerOff must be the only pending frame so hue/brightness cannot wake the strip")
     }
 
     func testScreenHueAndStreamingBeatDoNotCoalesce() {
         let coalescer = BLEWriteCoalescer(send: { _ in }, isConnected: { true })
         coalescer.enqueue(Cmd.hue(0.1, saturation: 0.5))
-        coalescer.enqueue(CombinedSyncMixer.combinedBeatColor(hue: 0.1, saturation: 0.9))
+        coalescer.enqueue(Cmd.audioHue(0.1, saturation: 0.9))
         coalescer.enqueue(Cmd.brightness(0.4))
         let drained = coalescer.drainOrderedForTesting()
         XCTAssertEqual(drained.map { $0[1] }, [0x04, 0x09, 0x05])
@@ -287,6 +296,17 @@ final class BLEWriteCoalescerTests: XCTestCase {
                       "enqueue while disconnected must not add to the queue")
         XCTAssertTrue(sent.isEmpty,
                       "enqueue while disconnected must not trigger a send")
+    }
+
+    func testSendNowBypassesTimerAndDropsPendingFrames() {
+        var sent: [Data] = []
+        let coalescer = BLEWriteCoalescer(send: { sent.append($0) }, isConnected: { true })
+        coalescer.enqueue(Cmd.hue(0.2, saturation: 1))
+        coalescer.enqueue(Cmd.brightness(0.8))
+        coalescer.sendNow(Cmd.powerOff)
+        XCTAssertEqual(sent.map { [UInt8]($0) }, [Cmd.powerOff])
+        XCTAssertTrue(coalescer.drainOrderedForTesting().isEmpty,
+                      "sendNow must not leave hue/brightness behind powerOff")
     }
 }
 
@@ -1079,7 +1099,8 @@ final class ConnectAndSchedulePolicyTests: XCTestCase {
         )
         XCTAssertEqual(
             CombinedSyncAssembly.resolvedMode(screenAvailable: false, audioAvailable: true),
-            .audio
+            .combined,
+            "screen-down Both must stay combined so Music rainbow cannot steal hue"
         )
         // Pause during combined screen start: screen superseded + audio running stays combined
         // so display-wake resumeScreenSync still sees isSyncingVideo.
@@ -1103,19 +1124,35 @@ final class ConnectAndSchedulePolicyTests: XCTestCase {
             mode: .combined, videoSyncBrightness: true
         ), "leftover Follow-screen-brightness must not fight audio BC05 in combined")
         XCTAssertTrue(CombinedSyncMixer.screenShouldWriteHue(mode: .video, flashLevel: 1))
-        XCTAssertTrue(CombinedSyncMixer.screenShouldWriteHue(mode: .combined, flashLevel: 0.4))
-        XCTAssertFalse(CombinedSyncMixer.screenShouldWriteHue(
+        XCTAssertTrue(CombinedSyncMixer.screenShouldWriteHue(
             mode: .combined, flashLevel: CombinedSyncMixer.beatFlashHold + 0.01
-        ))
-        XCTAssertTrue(CombinedSyncMixer.shouldRestoreScreenHueAfterFlash(
-            previousFlash: 0.51, nextFlash: 0.42
-        ))
+        ), "beats must not suppress screen hue in Both")
+        XCTAssertFalse(CombinedSyncMixer.screenShouldWriteHue(mode: .audio, flashLevel: 0))
         XCTAssertFalse(CombinedSyncMixer.shouldRestoreScreenHueAfterFlash(
-            previousFlash: 0.4, nextFlash: 0.3
+            previousFlash: 0.51, nextFlash: 0.42
+        ), "audio must not write hue after a beat")
+        XCTAssertTrue(CombinedSyncMixer.audioShouldWriteStreamingHue(
+            mode: .audio, audioSyncMode: .rainbow
         ))
-        let beat = CombinedSyncMixer.combinedBeatColor(hue: 0.3, saturation: 0.9)
-        XCTAssertEqual(beat[1], 0x09, "combined beats must use streaming color, not static BC04")
-        XCTAssertEqual(beat, Cmd.audioHue(0.3, saturation: 0.9))
+        XCTAssertTrue(CombinedSyncMixer.audioShouldWriteStreamingHue(
+            mode: .audio, audioSyncMode: .frequency
+        ))
+        XCTAssertFalse(CombinedSyncMixer.audioShouldWriteStreamingHue(
+            mode: .audio, audioSyncMode: .pulse
+        ), "Pulse keeps the current color")
+        XCTAssertFalse(CombinedSyncMixer.audioShouldWriteStreamingHue(
+            mode: .combined, audioSyncMode: .rainbow
+        ), "Both never uses Music color styles")
+        let quiet = CombinedSyncMixer.combinedBrightness(
+            userBrightness: 0.5, bass: 0, rms: 0, flashLevel: 0
+        )
+        XCTAssertEqual(quiet, 0.5, accuracy: 0.001, "quiet combined must keep the user's brightness")
+        let flash = CombinedSyncMixer.combinedBrightness(
+            userBrightness: 0.5, bass: 0, rms: 0, flashLevel: 1
+        )
+        XCTAssertGreaterThan(flash, 0.9)
+        XCTAssertFalse(SilenceAutoOffPolicy.shouldTurnAudioSyncOff(silentFor: 2))
+        XCTAssertFalse(SilenceAutoOffPolicy.shouldTurnAudioSyncOff(silentFor: 120))
     }
 
     func testCombinedIgnoresLeftoverMicAndDisablesStripMicOnSourceChange() {
@@ -1148,6 +1185,35 @@ final class ConnectAndSchedulePolicyTests: XCTestCase {
         XCTAssertTrue(AudioInputSyncPolicy.shouldDisableStripMic(previous: .stripMic, next: .mic))
         XCTAssertFalse(AudioInputSyncPolicy.shouldDisableStripMic(previous: .system, next: .mic))
         XCTAssertFalse(AudioInputSyncPolicy.shouldDisableStripMic(previous: .stripMic, next: .stripMic))
+    }
+
+    func testStripCommandPolicySeparatesPowerRemoteAndLiveOutput() {
+        XCTAssertFalse(StripCommandPolicy.canTogglePower(isConnected: false))
+        XCTAssertTrue(StripCommandPolicy.canTogglePower(isConnected: true))
+        XCTAssertFalse(StripCommandPolicy.canSendStripCommands(isConnected: false, isOn: true))
+        XCTAssertFalse(StripCommandPolicy.canSendStripCommands(isConnected: true, isOn: false))
+        XCTAssertTrue(StripCommandPolicy.canSendStripCommands(isConnected: true, isOn: true))
+        XCTAssertTrue(StripCommandPolicy.canEditSchedules(isConnected: true))
+        XCTAssertFalse(StripCommandPolicy.canEditSchedules(isConnected: false))
+        XCTAssertTrue(StripCommandPolicy.canUseMacRemote(macLinked: true))
+        XCTAssertFalse(StripCommandPolicy.canUseMacRemote(macLinked: false))
+    }
+
+    func testStripPowerWritePolicyBlocksNonPowerWhileOff() {
+        XCTAssertTrue(StripPowerWritePolicy.shouldEnqueue(isOn: true, commandByte: 0x04))
+        XCTAssertTrue(StripPowerWritePolicy.shouldEnqueue(isOn: true, commandByte: 0x01))
+        XCTAssertTrue(StripPowerWritePolicy.shouldEnqueue(isOn: false, commandByte: 0x01))
+        XCTAssertFalse(StripPowerWritePolicy.shouldEnqueue(isOn: false, commandByte: 0x04))
+        XCTAssertFalse(StripPowerWritePolicy.shouldEnqueue(isOn: false, commandByte: 0x05))
+        XCTAssertFalse(StripPowerWritePolicy.shouldEnqueue(isOn: false, commandByte: 0x09))
+        XCTAssertTrue(StripPowerWritePolicy.isPowerOffFrame(Cmd.powerOff))
+        XCTAssertFalse(StripPowerWritePolicy.isPowerOffFrame(Cmd.powerOn))
+        XCTAssertFalse(StripPowerWritePolicy.isPowerOffFrame(Cmd.hue(0.5, saturation: 1)))
+    }
+
+    func testStripATTWritePolicyPrefersWriteCommand() {
+        XCTAssertTrue(StripATTWritePolicy.useWriteWithoutResponse(characteristicSupportsIt: true))
+        XCTAssertFalse(StripATTWritePolicy.useWriteWithoutResponse(characteristicSupportsIt: false))
     }
 
     func testRemoteBroadcastThrottlesSyncColorOnlyChanges() {

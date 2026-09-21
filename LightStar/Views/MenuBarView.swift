@@ -218,6 +218,15 @@ struct MenuBarView: View {
                     .help("Global shortcut: ⌘⇧L toggles power")
             }
 
+            let live = StripCommandPolicy.canSendStripCommands(
+                isConnected: true, isOn: ble.isOn
+            )
+            if !live {
+                Text("Turn the light on to use color, presets, and sync.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+            }
+
             VStack(alignment: .leading, spacing: 12) {
                 ColorControlView()
                 VStack(alignment: .leading, spacing: 4) {
@@ -232,11 +241,14 @@ struct MenuBarView: View {
                     .accessibilityValue("\(Int(ble.brightness * 100))%")
                 }
             }
+            .stripOutputEnabled(live)
 
             Divider().opacity(0.35)
             presetsBlock
+                .stripOutputEnabled(live)
             Divider().opacity(0.35)
             SyncControlView()
+                .stripOutputEnabled(live)
             Divider().opacity(0.35)
             HStack {
                 Button("Open full controls") { openLightStarControlWindow() }
@@ -597,10 +609,10 @@ struct SyncControlView: View {
         case .audio:
             switch ble.audioSyncMode {
             case .rainbow:   return "Music beats drive color and brightness"
-            case .pulse:     return "Bass pulses brightness, keeps current color"
+            case .pulse:     return "Keeps current color · bass and beats drive brightness"
             case .frequency: return "Bass → red · mids → green · treble → blue"
             }
-        case .combined: return "Screen sets color · Mac audio beats set brightness"
+        case .combined: return "Screen drives color · music drives brightness and beat pulse"
         }
     }
 }

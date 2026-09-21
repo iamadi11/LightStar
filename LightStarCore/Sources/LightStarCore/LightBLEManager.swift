@@ -64,7 +64,7 @@ public final class LightBLEManager: NSObject {
     // Called after the connect sequence completes with no sync mode to restore
     public var onConnect: (@MainActor () -> Void)?
     public enum AudioSyncMode: String, CaseIterable { case rainbow = "Rainbow"; case pulse = "Pulse"; case frequency = "Frequency" }
-    public var audioSyncMode: AudioSyncMode = .rainbow
+    public var audioSyncMode: AudioSyncMode = .pulse
     public enum AudioInputSource: String, CaseIterable { case system = "System Audio"; case mic = "Microphone"; case stripMic = "Strip Mic" }
     public var audioInputSource: AudioInputSource = {
         guard let raw = UserDefaults.standard.string(forKey: "audioInputSource"),
@@ -220,6 +220,7 @@ public final class LightBLEManager: NSObject {
     // Set during probe sweeps to mirror BLE notifications into probeLog
     public var notifyTapHandler: ((Data) -> Void)?
     public var connectSequenceTask: Task<Void, Never>?
+    var powerOffConfirmTask: Task<Void, Never>?
     public var connectWhenReady = false
     public var shouldAutoReconnect = false
     // Restored after reconnect and after full app restart
@@ -275,14 +276,7 @@ public final class LightBLEManager: NSObject {
         central = CBCentralManager(delegate: self, queue: .main)
         coalescer = BLEWriteCoalescer(
             send: { [weak self] data in
-                guard let self else { return }
-                if let p = self.peripheral, let ch = self.writeChar {
-                    p.writeValue(data, for: ch, type: .withResponse)
-                }
-                for light in self.extraLights {
-                    guard let ch = light.writeChar else { continue }
-                    light.peripheral.writeValue(data, for: ch, type: .withResponse)
-                }
+                self?.transmit(data)
             },
             isConnected: { [weak self] in self?.connectionState == .connected }
         )
@@ -399,13 +393,24 @@ public final class LightBLEManager: NSObject {
         isOn = on
         // Cancel connect-sequence task in both directions so it cannot overwrite isOn.
         connectSequenceTask?.cancel(); connectSequenceTask = nil
+        powerOffConfirmTask?.cancel(); powerOffConfirmTask = nil
         if !on {
             // Cancel ALL pending async work before powerOff — any hue/brightness
             // packet arriving after powerOff wakes the BC/55 strip back up.
             colorDebounce?.cancel(); colorDebounce = nil
             stopSyncInline()
+            coalescer.flush()
+            writeNow(Cmd.powerOff)
+            // Connect-sequence powerOff works because the ATT link is quiet.
+            // Repeat once after streaming writes drain so firmware actually latches off.
+            powerOffConfirmTask = Task { @MainActor in
+                do { try await Task.sleep(nanoseconds: 200_000_000) } catch { return }
+                guard !self.isOn, self.connectionState == .connected else { return }
+                self.writeNow(Cmd.powerOff)
+            }
+        } else {
+            writeNow(Cmd.powerOn)
         }
-        write(on ? Cmd.powerOn : Cmd.powerOff)
     }
 
     // MARK: - Private helpers
@@ -430,11 +435,12 @@ public final class LightBLEManager: NSObject {
     /// powerOff wakes the BC/55, so appearance and sync restore only when on.
     func startConnectSequence(targetOn: Bool) {
         connectSequenceTask?.cancel()
+        powerOffConfirmTask?.cancel(); powerOffConfirmTask = nil
         connectSequenceTask = Task { @MainActor in
-            self.write(Cmd.powerOff)
+            self.writeNow(Cmd.powerOff)
             do { try await Task.sleep(nanoseconds: 500_000_000) } catch { return }
             if targetOn {
-                self.write(Cmd.powerOn)
+                self.writeNow(Cmd.powerOn)
                 do { try await Task.sleep(nanoseconds: 500_000_000) } catch { return }
             }
             guard !Task.isCancelled else { return }
@@ -489,8 +495,36 @@ public final class LightBLEManager: NSObject {
         armConnectingTimeout(for: peripheral)
     }
 
-    // FFF3 supports write-with-response (.write) — CB queues internally, ACK guaranteed.
-    public func write(_ bytes: [UInt8]) { coalescer.enqueue(bytes) }
+    // FFF3 is Write + Write Without Response. OEM uses ATT Write Command
+    // (withoutResponse); Write Request stalls when the firmware never ACKs.
+    public func write(_ bytes: [UInt8]) {
+        guard bytes.count >= 2 else { return }
+        guard StripPowerWritePolicy.shouldEnqueue(isOn: isOn, commandByte: bytes[1]) else { return }
+        coalescer.enqueue(bytes)
+    }
+
+    func writeNow(_ bytes: [UInt8]) {
+        guard bytes.count >= 2 else { return }
+        guard StripPowerWritePolicy.shouldEnqueue(isOn: isOn, commandByte: bytes[1]) else { return }
+        coalescer.sendNow(bytes)
+    }
+
+    private func transmit(_ data: Data) {
+        if let p = peripheral, let ch = writeChar {
+            attWrite(data, to: p, characteristic: ch)
+        }
+        for light in extraLights {
+            guard let ch = light.writeChar else { continue }
+            attWrite(data, to: light.peripheral, characteristic: ch)
+        }
+    }
+
+    private func attWrite(_ data: Data, to peripheral: CBPeripheral, characteristic: CBCharacteristic) {
+        let type: CBCharacteristicWriteType = StripATTWritePolicy.useWriteWithoutResponse(
+            characteristicSupportsIt: characteristic.properties.contains(.writeWithoutResponse)
+        ) ? .withoutResponse : .withResponse
+        peripheral.writeValue(data, for: characteristic, type: type)
+    }
 
     private func scheduleReconnect() {
         guard !userInitiatedDisconnect else { return }
@@ -847,6 +881,15 @@ public enum BLEDiscoveryPolicy: Sendable {
     }
 }
 
+/// PacketLogger: Miracles Star sends ATT Write Command on FFF3. Write Request
+/// (withResponse) waits for an ATT response the firmware never sends, so later
+/// frames — including powerOff — sit in CoreBluetooth until disconnect.
+public enum StripATTWritePolicy: Sendable {
+    public static func useWriteWithoutResponse(characteristicSupportsIt: Bool) -> Bool {
+        characteristicSupportsIt
+    }
+}
+
 /// Remote "Connect strip" while scanning/connecting may abort the in-flight
 /// attempt, but a fully disconnected strip must not run `disconnect()`.
 public enum StripReconnectPolicy: Sendable {
@@ -896,25 +939,25 @@ public enum SyncReconnectPolicy: Sendable {
     public static func restoreFlagAfterSyncInterrupted(wasSyncing: Bool) -> Bool { wasSyncing }
 }
 
-/// Combined sync keeps `.combined` when screen start was paused/superseded so
-/// display-wake `resumeScreenSync` still sees `isSyncingVideo`.
+/// Combined stays `.combined` whenever either sampler is up. Falling through
+/// to `.audio` when screen failed used to start Music rainbow and steal hue.
 public enum CombinedSyncAssembly: Sendable {
     public static func resolvedMode(screenAvailable: Bool, audioAvailable: Bool) -> LightBLEManager.SyncMode {
         switch (screenAvailable, audioAvailable) {
         case (true, true): return .combined
         case (true, false): return .video
-        case (false, true): return .audio
+        case (false, true): return .combined
         case (false, false): return .off
         }
     }
 }
 
-/// Who owns hue vs brightness on the combined path, and which BC/55 command
-/// carries a beat flash. The coalescer keys on `bytes[1]`; screen color is
-/// BC04 and audio-only already uses BC09 — combined beats must too, or a
-/// pending screen frame replaces the flash before it is sent.
+/// Independent ownership per sync mode:
+/// - Screen: BC04 hue (optional BC05 if Follow-screen-brightness)
+/// - Music: BC05 brightness; Rainbow/Frequency may also write BC09
+/// - Both: screen BC04 + audio BC05 only — never BC09, never suppress screen hue
 public enum CombinedSyncMixer: Sendable {
-    /// `flashLevel` decays by 0.82 per 30 Hz audio tick. 0.5 ≈ three ticks (~100ms).
+    /// `flashLevel` decays by 0.82 per 30 Hz audio tick. Used for brightness pulse only.
     public static let beatFlashHold: Double = 0.5
 
     public static func screenShouldWriteBrightness(
@@ -928,19 +971,48 @@ public enum CombinedSyncMixer: Sendable {
         mode: LightBLEManager.SyncMode,
         flashLevel: Double
     ) -> Bool {
-        !(mode == .combined && flashLevel > beatFlashHold)
+        _ = flashLevel
+        switch mode {
+        case .video, .combined: return true
+        case .audio, .off: return false
+        }
+    }
+
+    public static func audioShouldWriteStreamingHue(
+        mode: LightBLEManager.SyncMode,
+        audioSyncMode: LightBLEManager.AudioSyncMode
+    ) -> Bool {
+        mode == .audio && audioSyncMode != .pulse
     }
 
     public static func shouldRestoreScreenHueAfterFlash(previousFlash: Double, nextFlash: Double) -> Bool {
-        previousFlash > beatFlashHold && nextFlash <= beatFlashHold
+        _ = previousFlash
+        _ = nextFlash
+        return false
     }
 
-    public static func combinedBeatColor(hue: Double, saturation: Double) -> [UInt8] {
-        Cmd.audioHue(hue, saturation: saturation)
+    /// Screen color stays visible at the user's brightness; beats lift toward full.
+    /// The old bass-only curve collapsed to ~4% between beats, so Combined looked off.
+    public static func combinedBrightness(
+        userBrightness: Double,
+        bass: Double,
+        rms: Double,
+        flashLevel: Double
+    ) -> Double {
+        let floor = min(1.0, max(0.15, userBrightness))
+        let pulse = min(1.0, max(0.0, flashLevel * 0.9 + bass * 0.35 + rms * 0.15))
+        return min(1.0, floor + (1.0 - floor) * pulse)
     }
 }
 
-/// Combined mixer needs Mac-side `FrequencyBands` (BC09 beats + BC05 brightness).
+/// Quiet passages and "I have not hit play yet" must not end Music or Combined.
+public enum SilenceAutoOffPolicy: Sendable {
+    public static func shouldTurnAudioSyncOff(silentFor: TimeInterval) -> Bool {
+        false
+    }
+}
+
+/// Combined mixer needs Mac-side `FrequencyBands` (BC05 brightness pulse).
 /// The audio-only picker persists `.mic` / `.stripMic`; using those in combined
 /// skips `setupAudioCallback` or re-arms the leftover sampler after teardown.
 public enum AudioInputSyncPolicy: Sendable {

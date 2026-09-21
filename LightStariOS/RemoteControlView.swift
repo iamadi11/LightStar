@@ -282,9 +282,22 @@ struct RemoteLightControlView: View {
                     connectionSection(state)
                     if state.isConnected {
                         powerSection(state)
-                        colorSection(state)
-                        syncSection(state)
-                        displaySection(state)
+                        let live = StripCommandPolicy.canSendStripCommands(
+                            isConnected: true, isOn: state.isOn
+                        )
+                        if !live {
+                            Section {
+                                Text("Turn the light on to change brightness, color, and sync.")
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        Group {
+                            brightnessSection
+                            colorSection(state)
+                            syncSection(state)
+                            displaySection(state)
+                        }
+                        .stripOutputEnabled(live)
                     }
                 } else {
                     Section {
@@ -335,7 +348,11 @@ struct RemoteLightControlView: View {
                     client.setPower($0)
                 }
             ))
-            
+        }
+    }
+
+    private var brightnessSection: some View {
+        Section("Brightness") {
             VStack(alignment: .leading) {
                 Text("Brightness \(Int(brightness * 100))%")
                     .font(.caption)

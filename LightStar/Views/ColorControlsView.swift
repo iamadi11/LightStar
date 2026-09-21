@@ -129,13 +129,11 @@ struct ColorControlView: View {
     }
 
     private func sendColor() {
-        ble.setSyncMode(.off)
         ble.circadianEnabled = false
         ble.setHue(hue, saturation: sat)
     }
 
     private func sendCCT() {
-        ble.setSyncMode(.off)
         ble.setColorTemperature(colorTemp)
     }
 }

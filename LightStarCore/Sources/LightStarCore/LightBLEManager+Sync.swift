@@ -41,11 +41,13 @@ public extension LightBLEManager {
 
     public func teardownSync() async {
         fadeTask?.cancel()
+        fadeTask = nil
         systemAudio.onBands = nil
         micAudio.onBands = nil
         screenSampler.onColor = nil
         flashLevel = 0
-        if audioInputSource == .stripMic { write(Cmd.stripMic(enabled: false)) }
+        syncColor = nil
+        write(Cmd.stripMic(enabled: false))
         await systemAudio.stop()
         await micAudio.stop()
         await screenSampler.stop()
@@ -96,7 +98,7 @@ public extension LightBLEManager {
             UserDefaults.standard.set(syncMode.rawValue, forKey: "lastSyncMode")
             restoreSyncOnReconnect = SyncReconnectPolicy.restoreFlagAfterSyncInterrupted(wasSyncing: true)
         }
-        if audioInputSource == .stripMic { write(Cmd.stripMic(enabled: false)) }
+        write(Cmd.stripMic(enabled: false))
         systemAudio.onBands = nil
         micAudio.onBands = nil
         screenSampler.onColor = nil
@@ -123,6 +125,8 @@ public extension LightBLEManager {
             fadeToSteadyState(from: previousMode)
 
         case .video:
+            seedScreenColorFromSteadyState()
+            write(Cmd.hue(lastScreenH, saturation: lastScreenS))
             setupScreenCallback()
             screenSampler.selectedDisplayID = selectedDisplayID
             syncMode = .video  // set before start so warm-up frames pass isSyncingVideo guard
@@ -157,6 +161,7 @@ public extension LightBLEManager {
                 write(Cmd.micSensitivity(Int(micSensitivity * 255)))
                 syncMode = .audio
             } else {
+                restoreSteadyState()
                 let useMic = audioInputSource == .mic
                 setupAudioCallback(useMic: useMic)
                 syncMode = .audio  // set before start so warm-up frames pass isSyncingAudio guard
@@ -183,6 +188,8 @@ public extension LightBLEManager {
             }
 
         case .combined:
+            seedScreenColorFromSteadyState()
+            write(Cmd.hue(lastScreenH, saturation: lastScreenS))
             setupScreenCallback()
             screenSampler.selectedDisplayID = selectedDisplayID
             syncMode = .combined  // set before start so warm-up frames pass guards
@@ -290,33 +297,9 @@ public extension LightBLEManager {
 
     public func setupAudioCallback(useMic: Bool = false) {
         var lastWrite: Double = 0
-        var silenceStart: Double = 0
         let callback: (FrequencyBands) -> Void = { [weak self] (bands: FrequencyBands) in
             guard let self, self.isSyncingAudio, self.isOn else { return }
             let now = CACurrentMediaTime()
-
-            if bands.rms < 0.01 {
-                if silenceStart == 0 { silenceStart = now }
-                // Silence auto-off is audio-only. Combined would kill screen sync
-                // during a quiet film scene, and must not clobber lastSyncMode.
-                if now - silenceStart >= 2.0 {
-                    silenceStart = 0
-                    Task { @MainActor [weak self] in
-                        guard let self, self.syncMode == .audio else { return }
-                        self.silenceTask?.cancel()
-                        self.silenceTask = Task { @MainActor [weak self] in
-                            guard let self, self.syncMode == .audio else { return }
-                            self.lastSyncMode = .audio
-                            UserDefaults.standard.set(SyncMode.audio.rawValue, forKey: "lastSyncMode")
-                            self.setSyncMode(.off)
-                        }
-                    }
-                    return
-                }
-            } else {
-                silenceStart = 0
-            }
-
             guard now - lastWrite >= 1.0 / 30.0 else { return }
             lastWrite = now
 
@@ -326,22 +309,16 @@ public extension LightBLEManager {
             if self.syncMode == .combined {
                 if isBeat {
                     self.flashLevel = 1.0
-                    self.write(CombinedSyncMixer.combinedBeatColor(
-                        hue: self.lastScreenH,
-                        saturation: min(1.0, self.lastScreenS * 1.3 + 0.15)
-                    ))
                 } else {
-                    let previousFlash = self.flashLevel
                     self.flashLevel = max(0.0, self.flashLevel * 0.82)
-                    if CombinedSyncMixer.shouldRestoreScreenHueAfterFlash(
-                        previousFlash: previousFlash, nextFlash: self.flashLevel
-                    ) {
-                        self.write(Cmd.hue(self.lastScreenH, saturation: self.lastScreenS))
-                    }
                 }
                 self.syncColor = Color(hue: self.lastScreenH, saturation: self.lastScreenS, brightness: 1)
-                let bri = min(1.0, max(0.04, bands.bass * 0.55 + bands.rms * 0.15 + self.flashLevel * 0.80))
-                self.write(Cmd.brightness(bri))
+                self.write(Cmd.brightness(CombinedSyncMixer.combinedBrightness(
+                    userBrightness: self.brightness,
+                    bass: bands.bass,
+                    rms: bands.rms,
+                    flashLevel: self.flashLevel
+                )))
                 return
             }
 
@@ -354,17 +331,24 @@ public extension LightBLEManager {
                 }
                 let rainbowS = min(1.0, 0.6 + bands.mid * 0.4)
                 self.syncColor = Color(hue: self.beatHue, saturation: rainbowS, brightness: 1)
-                self.write(Cmd.audioHue(self.beatHue, saturation: rainbowS))
+                if CombinedSyncMixer.audioShouldWriteStreamingHue(
+                    mode: self.syncMode, audioSyncMode: .rainbow
+                ) {
+                    self.write(Cmd.audioHue(self.beatHue, saturation: rainbowS))
+                }
                 self.write(Cmd.brightness(min(1.0, max(0.05, bands.bass * 1.3 + bands.rms * 0.3))))
             case .pulse:
                 self.syncColor = Color(hue: self.audioPulseH, saturation: 1.0, brightness: 1)
-                self.write(Cmd.audioHue(self.audioPulseH, saturation: min(1.0, 0.8 + bands.mid * 0.2)))
                 self.write(Cmd.brightness(min(1.0, max(0.03, bands.bass * 1.5 + bands.rms * 0.2))))
             case .frequency:
                 let hTotal = bands.mid + bands.high + 0.001
                 let h = (bands.mid * (120/360.0) + bands.high * (240/360.0)) / hTotal
                 self.syncColor = Color(hue: h, saturation: 1.0, brightness: 1)
-                self.write(Cmd.audioHue(h, saturation: 1.0))
+                if CombinedSyncMixer.audioShouldWriteStreamingHue(
+                    mode: self.syncMode, audioSyncMode: .frequency
+                ) {
+                    self.write(Cmd.audioHue(h, saturation: 1.0))
+                }
                 self.write(Cmd.brightness(min(1.0, max(0.05, (bands.bass + bands.mid + bands.high) / 3 * 1.5 + bands.rms * 0.2))))
             }
         }
@@ -406,6 +390,13 @@ public extension LightBLEManager {
         write(Cmd.brightness(brightness))
     }
 
+    /// First combined beats must not flash hue 0 (red) before a screen sample arrives.
+    func seedScreenColorFromSteadyState() {
+        let (h, s, _) = color.hsvComponents
+        lastScreenH = h
+        lastScreenS = max(0.35, s)
+    }
+
     public func fadeToSteadyState(from prevMode: SyncMode) {
         guard isOn else { return }
         let (targetH, targetS, _) = color.hsvComponents
@@ -435,7 +426,7 @@ public extension LightBLEManager {
         fadeTask = Task { @MainActor in
             let steps = 18
             for i in 1...steps {
-                guard !Task.isCancelled else { return }
+                guard !Task.isCancelled, self.syncMode == .off else { return }
                 let t = Double(i) / Double(steps)
                 let e = t < 0.5 ? 2*t*t : -1 + (4 - 2*t)*t
 
@@ -452,6 +443,7 @@ public extension LightBLEManager {
                 do { try await Task.sleep(nanoseconds: 16_700_000) }
                 catch { return }
             }
+            guard self.syncMode == .off else { return }
             self.restoreSteadyState()
         }
     }

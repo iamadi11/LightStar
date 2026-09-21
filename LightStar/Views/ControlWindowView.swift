@@ -35,16 +35,27 @@ struct ControlWindowView: View {
                             .buttonStyle(.borderedProminent)
                             .frame(maxWidth: .infinity)
                     } else {
-                        ColorControlView()
-                        brightnessSlider
-                        Divider()
-                        presetsBlock
-                        Divider()
-                        SyncControlView()
-                        Divider()
-                        EffectsView()
-                        Divider()
-                        AnimationsView()
+                        let live = StripCommandPolicy.canSendStripCommands(
+                            isConnected: true, isOn: ble.isOn
+                        )
+                        if !live {
+                            Text("Turn the light on to change color, sync, and effects. Schedules still run when the light is off.")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                        }
+                        Group {
+                            ColorControlView()
+                            brightnessSlider
+                            Divider()
+                            presetsBlock
+                            Divider()
+                            SyncControlView()
+                            Divider()
+                            EffectsView()
+                            Divider()
+                            AnimationsView()
+                        }
+                        .stripOutputEnabled(live)
                         Divider()
                         ScheduleView()
                     }

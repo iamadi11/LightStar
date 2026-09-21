@@ -115,10 +115,10 @@ struct SyncModePickerView: View {
             }
             switch ble.audioSyncMode {
             case .rainbow:   return "Beats → hue · treble → drift · bass → brightness"
-            case .pulse:     return "Bass → brightness · keeps current color"
+            case .pulse:     return "Keeps current color · bass and beats drive brightness"
             case .frequency: return "Bass → red · mid → green · treble → blue"
             }
-        case .combined: return "Screen → color · Mac audio beats → brightness"
+        case .combined: return "Screen drives color · music drives brightness and beat pulse"
         }
     }
 }
