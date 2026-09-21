@@ -519,25 +519,25 @@ struct SyncControlView: View {
                 }
                 .pickerStyle(.segmented)
                 .controlSize(.mini)
+            }
 
-                if ble.audioSyncMode == .rainbow || ble.syncMode == .combined {
-                    HStack {
-                        Text("Beat sensitivity")
-                            .font(.system(size: 9))
-                            .foregroundStyle(.secondary)
-                        Slider(value: Binding(
-                            get: { ble.beatSensitivity },
-                            set: { ble.beatSensitivity = $0 }
-                        ), in: 0...1)
-                        .controlSize(.mini)
-                        .accessibilityLabel("Beat Sensitivity")
-                        .accessibilityValue("\(Int(ble.beatSensitivity * 100))%")
-                        Text("\(Int(ble.beatSensitivity * 100))%")
-                            .font(.system(size: 9))
-                            .foregroundStyle(.secondary)
-                            .monospacedDigit()
-                            .frame(width: 28, alignment: .trailing)
-                    }
+            if (ble.syncMode == .audio && ble.audioSyncMode == .rainbow) || ble.syncMode == .combined {
+                HStack {
+                    Text("Beat sensitivity")
+                        .font(.system(size: 9))
+                        .foregroundStyle(.secondary)
+                    Slider(value: Binding(
+                        get: { ble.beatSensitivity },
+                        set: { ble.beatSensitivity = $0 }
+                    ), in: 0...1)
+                    .controlSize(.mini)
+                    .accessibilityLabel("Beat Sensitivity")
+                    .accessibilityValue("\(Int(ble.beatSensitivity * 100))%")
+                    Text("\(Int(ble.beatSensitivity * 100))%")
+                        .font(.system(size: 9))
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                        .frame(width: 28, alignment: .trailing)
                 }
             }
 
@@ -600,7 +600,7 @@ struct SyncControlView: View {
             case .pulse:     return "Bass pulses brightness, keeps current color"
             case .frequency: return "Bass → red · mids → green · treble → blue"
             }
-        case .combined: return "Screen sets color · music beats set brightness"
+        case .combined: return "Screen sets color · Mac audio beats set brightness"
         }
     }
 }

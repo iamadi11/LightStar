@@ -210,28 +210,24 @@ public extension LightBLEManager {
                 return
             }
 
-            if audioInputSource == .stripMic {
-                write(Cmd.stripMic(enabled: true))
-                write(Cmd.micStyle(UInt8(micStyle.rawValue)))
-                write(Cmd.micSensitivity(Int(micSensitivity * 255)))
-            } else {
-                let useMic = audioInputSource == .mic
-                setupAudioCallback(useMic: useMic)
-                do {
-                    if useMic { try await micAudio.start() } else { try await systemAudio.start() }
-                } catch {
-                    if useMic { micAudio.onBands = nil } else { systemAudio.onBands = nil }
-                    switch CaptureSessionPolicy.disposition(
-                        forStartError: error, transitionCancelled: Task.isCancelled
-                    ) {
-                    case .abortQuietTeardown:
-                        await haltCaptureSources()
-                        return
-                    case .continueWithoutSampler:
-                        audioSuperseded = true
-                    case .surfaceFailure:
-                        audioErr = error
-                    }
+            // Combined always uses Mac system audio. Leftover `.mic` / `.stripMic`
+            // from the audio-only picker skip the mixer (no FrequencyBands) or
+            // fight screen BC04 with firmware mic.
+            setupAudioCallback(useMic: false)
+            do {
+                try await systemAudio.start()
+            } catch {
+                systemAudio.onBands = nil
+                switch CaptureSessionPolicy.disposition(
+                    forStartError: error, transitionCancelled: Task.isCancelled
+                ) {
+                case .abortQuietTeardown:
+                    await haltCaptureSources()
+                    return
+                case .continueWithoutSampler:
+                    audioSuperseded = true
+                case .surfaceFailure:
+                    audioErr = error
                 }
             }
             if Task.isCancelled {
@@ -242,20 +238,10 @@ public extension LightBLEManager {
                 callbackInstalled: screenSampler.onColor != nil,
                 startWasSuperseded: screenSuperseded
             )
-            let audioOk: Bool
-            if audioInputSource == .stripMic {
-                audioOk = true
-            } else if audioInputSource == .mic {
-                audioOk = CaptureSessionPolicy.samplerAvailable(
-                    callbackInstalled: micAudio.onBands != nil,
-                    startWasSuperseded: audioSuperseded
-                )
-            } else {
-                audioOk = CaptureSessionPolicy.samplerAvailable(
-                    callbackInstalled: systemAudio.onBands != nil,
-                    startWasSuperseded: audioSuperseded
-                )
-            }
+            let audioOk = CaptureSessionPolicy.samplerAvailable(
+                callbackInstalled: systemAudio.onBands != nil,
+                startWasSuperseded: audioSuperseded
+            )
             syncMode = CombinedSyncAssembly.resolvedMode(screenAvailable: screenOk, audioAvailable: audioOk)
             if let e = screenErr ?? audioErr {
                 // When both fail syncMode == .off; save pendingSyncMode before setSyncError reads it.

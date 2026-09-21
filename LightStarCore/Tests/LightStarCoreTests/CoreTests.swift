@@ -1118,6 +1118,38 @@ final class ConnectAndSchedulePolicyTests: XCTestCase {
         XCTAssertEqual(beat, Cmd.audioHue(0.3, saturation: 0.9))
     }
 
+    func testCombinedIgnoresLeftoverMicAndDisablesStripMicOnSourceChange() {
+        XCTAssertEqual(
+            AudioInputSyncPolicy.effectiveSource(mode: .combined, selected: .mic),
+            .system
+        )
+        XCTAssertEqual(
+            AudioInputSyncPolicy.effectiveSource(mode: .combined, selected: .stripMic),
+            .system
+        )
+        XCTAssertEqual(
+            AudioInputSyncPolicy.effectiveSource(mode: .audio, selected: .mic),
+            .mic
+        )
+        XCTAssertEqual(
+            AudioInputSyncPolicy.effectiveSource(mode: .audio, selected: .stripMic),
+            .stripMic
+        )
+        XCTAssertTrue(AudioInputSyncPolicy.shouldRestartSync(
+            mode: .audio, previous: .stripMic, next: .system
+        ))
+        XCTAssertFalse(AudioInputSyncPolicy.shouldRestartSync(
+            mode: .combined, previous: .mic, next: .system
+        ), "combined already maps both to system — no extra teardown")
+        XCTAssertFalse(AudioInputSyncPolicy.shouldRestartSync(
+            mode: .video, previous: .mic, next: .system
+        ))
+        XCTAssertTrue(AudioInputSyncPolicy.shouldDisableStripMic(previous: .stripMic, next: .system))
+        XCTAssertTrue(AudioInputSyncPolicy.shouldDisableStripMic(previous: .stripMic, next: .mic))
+        XCTAssertFalse(AudioInputSyncPolicy.shouldDisableStripMic(previous: .system, next: .mic))
+        XCTAssertFalse(AudioInputSyncPolicy.shouldDisableStripMic(previous: .stripMic, next: .stripMic))
+    }
+
     func testRemoteBroadcastThrottlesSyncColorOnlyChanges() {
         let a = RemoteStateBroadcastPolicy.significantIdentity(
             isConnected: true, isOn: true, syncMode: "Video", brightness: 1, effectID: nil

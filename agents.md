@@ -156,6 +156,7 @@ iPhone requires:
 - User disconnect is `userInitiatedDisconnect`, not `reconnectAttempts == max`.
 - Pointer path stays off MainActor: iOS `PointerChannel` on the NW queue, Mac `MacPointerInjector` on the listener queue. TCP uses `noDelay` + `serviceClass = .signaling`. Pointer move/scroll uses 13-byte binary frames (`0xB1`) with `.idempotent` send; JSON stays for clicks and everything else.
 - Combined mixer: screen writes BC04 hue; beats write BC09 (same as audio-only). Screen must not write BC05 in combined — audio owns brightness. Skip screen hue while `flashLevel > CombinedSyncMixer.beatFlashHold`, then restore BC04 when the flash decays.
+- Combined always uses Mac system audio (`AudioInputSyncPolicy.effectiveSource`). Leftover `.mic` / `.stripMic` from the audio-only picker must not skip `setupAudioCallback` or re-enable firmware mic. Leaving `.stripMic` always sends `Cmd.stripMic(false)` even if `didSet` already changed the source.
 - Trackpad double-tap: first tap `clickCount` 1, second tap one down+up with `clickCount` 2 (`kCGMouseEventClickState`). Never emit extra singles for the second tap — YouTube/Safari ignore clickCount 1 storms.
 
 ---

@@ -118,7 +118,7 @@ struct SyncModePickerView: View {
             case .pulse:     return "Bass → brightness · keeps current color"
             case .frequency: return "Bass → red · mid → green · treble → blue"
             }
-        case .combined: return "Screen → color · audio beats → brightness · no mic needed"
+        case .combined: return "Screen → color · Mac audio beats → brightness"
         }
     }
 }

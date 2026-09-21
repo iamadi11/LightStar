@@ -73,8 +73,15 @@ public final class LightBLEManager: NSObject {
     }() {
         didSet {
             UserDefaults.standard.set(audioInputSource.rawValue, forKey: "audioInputSource")
-            guard syncMode == .audio, oldValue != audioInputSource else { return }
-            setSyncMode(.audio)
+            guard oldValue != audioInputSource else { return }
+            if AudioInputSyncPolicy.shouldDisableStripMic(previous: oldValue, next: audioInputSource) {
+                write(Cmd.stripMic(enabled: false))
+            }
+            if AudioInputSyncPolicy.shouldRestartSync(
+                mode: syncMode, previous: oldValue, next: audioInputSource
+            ) {
+                setSyncMode(syncMode)
+            }
         }
     }
     // Strip onboard mic settings (BC11 style, BC12 sensitivity)
@@ -930,5 +937,39 @@ public enum CombinedSyncMixer: Sendable {
 
     public static func combinedBeatColor(hue: Double, saturation: Double) -> [UInt8] {
         Cmd.audioHue(hue, saturation: saturation)
+    }
+}
+
+/// Combined mixer needs Mac-side `FrequencyBands` (BC09 beats + BC05 brightness).
+/// The audio-only picker persists `.mic` / `.stripMic`; using those in combined
+/// skips `setupAudioCallback` or re-arms the leftover sampler after teardown.
+public enum AudioInputSyncPolicy: Sendable {
+    public static func effectiveSource(
+        mode: LightBLEManager.SyncMode,
+        selected: LightBLEManager.AudioInputSource
+    ) -> LightBLEManager.AudioInputSource {
+        mode == .combined ? .system : selected
+    }
+
+    public static func shouldRestartSync(
+        mode: LightBLEManager.SyncMode,
+        previous: LightBLEManager.AudioInputSource,
+        next: LightBLEManager.AudioInputSource
+    ) -> Bool {
+        guard previous != next else { return false }
+        switch mode {
+        case .audio: return true
+        case .combined:
+            return effectiveSource(mode: .combined, selected: previous)
+                != effectiveSource(mode: .combined, selected: next)
+        default: return false
+        }
+    }
+
+    public static func shouldDisableStripMic(
+        previous: LightBLEManager.AudioInputSource,
+        next: LightBLEManager.AudioInputSource
+    ) -> Bool {
+        previous == .stripMic && next != .stripMic
     }
 }
