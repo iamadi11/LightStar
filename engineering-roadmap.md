@@ -1,26 +1,35 @@
 # Engineering Roadmap
 
 Date: 2026-09-21  
-Quality gate: Principal + Architect + Reliability + Security + Performance (this session)
+Quality gate: Principal + Architect + Reliability + Security + Performance (this session)  
+Last company reconcile: 2026-09-21 — EE-001–009 verified Implemented in tree + tracker
 
 ## Selected (implement this pass)
+
+_None._ All prior Selected items are **Implemented** (see below). Do not rediscover without a regression signal.
 
 Ordered by impact × evidence × small blast radius. Product behavior preserved (PD-001 / PD-002 stand).
 
 | ID | Title | Why this over others |
 |----|-------|----------------------|
-| EE-001 | Gate pointer injection on authentication | Confirmed auth bypass if pairing is enabled. One-line policy + call-site checks. No UX change while pairing stays off (hello already authenticates). |
-| EE-002 | Gyro deltas go straight to `PointerChannel` | Code shows a MainActor hop on a ~200 Hz path that is already `@Sendable` / `nonisolated`. Matches the existing injector design. |
-| EE-003 | Sampler `start()` throws when superseded | Silent return leaves `syncMode` on with no capture. Failure path already exists in `buildSync`. |
-| EE-004 | Client `.failed` uses `cleanupConnection()` | Orphan `NWBrowser` after a failed connect from discovery. |
-| EE-005 | Do not fan `syncColor` into widget writes; throttle remote broadcasts | 20–30 Hz Observation currently resets widget debounce and broadcasts full JSON snapshots. Menu-bar live icon remains. |
-| EE-006 | Mic sampler Sendable captures | Strict concurrency warnings on the audio tap / engine observer; tiny, local, CI-relevant. |
+
+## Implemented (this pass)
+
+| ID | Title | Evidence |
+|----|-------|----------|
+| EE-001 | Gate pointer injection on authentication | `RemotePointerAuthPolicy` + `RemoteControlServer` call-sites; `CoreTests` pointer auth |
+| EE-002 | Gyro deltas go straight to `PointerChannel` | `GyroPointerController.emit` → `RemoteControlClient.addMouseDelta` (nonisolated); no MainActor hop |
+| EE-003 | Sampler `start()` throws when superseded | `CaptureSessionPolicy.isSuperseded` in mic/system/screen samplers |
+| EE-004 | Client `.failed` uses `cleanupConnection()` | `RemoteControlClient.fail` → `cleanupConnection` / `stopBrowser` |
+| EE-005 | Do not fan `syncColor` into widget writes; throttle remote broadcasts | `LightStarApp` widget observation; `RemoteStateBroadcastPolicy` |
+| EE-006 | Mic sampler Sendable captures | `MicAudioSampler` MainActor observer + sample copy before queue |
+| EE-007 | Sync restore only if active at drop | Tracker + sync path |
+| EE-008 | Do not adopt extras as primary | Tracker + scan policy |
+| EE-009 | Combined/resume `CancellationError` wiring | `CaptureSessionPolicy.disposition` |
 
 ## Follow-up (this pass)
 
-| ID | Title | Why |
-|----|-------|-----|
-| EE-009 | Combined/resume `CancellationError` wiring | Independent review of EE-003: combined screen cancel skipped audio; wake resume called `stopSyncInline()`. |
+_None outstanding._ EE-009 completed with EE-003 wiring.
 
 ## Deferred
 
@@ -46,3 +55,4 @@ Ordered by impact × evidence × small blast radius. Product behavior preserved 
 - Unit tests for new policy helpers (pointer auth, capture superseded, broadcast throttle).
 - GitHub Actions: `swift test --package-path LightStarCore`, unsigned macOS + iOS builds.
 - Manual Mac/iPhone: **not available** on this agent.
+- Linux agents: never claim local `xcodebuild` success; cite CI when available.

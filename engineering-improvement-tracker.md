@@ -11,9 +11,9 @@ Base: `origin/main` @ `04527b6`
 | 0 Product understanding | Complete |
 | 1 Baseline | PR #12 CI success (150 tests); local Swift unavailable |
 | 2–4 Audit + quality gate | EE-001–006 selected; Metal/schedules/TLS rejected or deferred |
-| 6 Implementation | In progress |
-| 9 CI | After push |
-| 18 Merge | After CI green |
+| 6 Implementation | Complete (EE-001–009 Implemented) |
+| 9 CI | Prefer macos-15 Actions; Linux agents cite CI only |
+| 18 Merge | On main |
 
 ## Selected tasks
 

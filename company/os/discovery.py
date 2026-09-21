@@ -238,6 +238,21 @@ def _parse_roadmap_selected(text: str) -> list[dict[str, str]]:
     return rows
 
 
+def _implemented_ee_ids() -> set[str]:
+    """EE ids marked Implemented in the improvement tracker (defense in depth)."""
+    tracker = ROOT / "engineering-improvement-tracker.md"
+    if not tracker.exists():
+        return set()
+    found: set[str] = set()
+    for line in tracker.read_text(encoding="utf-8", errors="replace").splitlines():
+        if "Implemented" not in line:
+            continue
+        m = re.search(r"\b(EE-\d+)\b", line)
+        if m:
+            found.add(m.group(1))
+    return found
+
+
 def discover_engineering(cfg: dict[str, Any], pool: dict[str, Any]) -> list[dict[str, Any]]:
     if not cfg.get("discovery", {}).get("scan_engineering_docs", True):
         return []
@@ -246,10 +261,13 @@ def discover_engineering(cfg: dict[str, Any], pool: dict[str, Any]) -> list[dict
         return []
     text = roadmap.read_text(encoding="utf-8", errors="replace")
     items: list[dict[str, Any]] = []
+    done = _implemented_ee_ids()
 
     # Product delivery: Selected EE rows are evidence-backed implementables
     for row in _parse_roadmap_selected(text):
         ee_id = row["id"]
+        if ee_id in done:
+            continue
         title = f"{ee_id}: {row['title']}"
         typ = "fix" if re.search(r"\b(fix|gate|throttle|do not)\b", row["title"], re.I) else "feature"
         items.append(
