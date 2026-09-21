@@ -33,6 +33,8 @@ build/
 # Autonomous company transient files
 company/state/*.tmp
 company/state/**/*.tmp
+**/__pycache__/
+*.pyc
 
 # Leftover from the reverted Tauri/Next experiment
 node_modules/
