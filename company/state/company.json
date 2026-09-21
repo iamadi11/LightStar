@@ -1,18 +1,16 @@
 {
-  "cycle": 17,
-  "idle_streak": 1,
+  "cycle": 15,
+  "idle_streak": 0,
   "last_tick_summary": {
     "completed": [],
-    "cycle": 17,
-    "discovered": [
-      "W-0009"
-    ],
+    "cycle": 15,
+    "discovered": [],
     "followups": [],
-    "idle": true,
-    "value_class": "ONLY_SPECULATIVE_OR_DEFERRED"
+    "idle": false,
+    "value_class": "HIGH_VALUE_WORK_EXISTS"
   },
-  "mode": "IDLE_MONITORING",
-  "stop_reason": "ONLY_SPECULATIVE_OR_DEFERRED",
-  "updated_at": "2026-09-21T20:32:04+00:00",
+  "mode": "AUTONOMOUS",
+  "stop_reason": null,
+  "updated_at": "2026-09-21T20:37:37+00:00",
   "version": 1
 }

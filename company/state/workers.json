@@ -1,12 +1,12 @@
 {
-  "updated_at": "2026-09-21T20:32:04+00:00",
+  "updated_at": "2026-09-21T20:37:37+00:00",
   "version": 1,
   "workers": [
     {
       "completed_count": 0,
       "current_work_id": null,
       "id": "ops-1",
-      "last_heartbeat": "2026-09-21T20:32:04+00:00",
+      "last_heartbeat": "2026-09-21T20:14:21+00:00",
       "lease_expires_at": null,
       "role": "ops",
       "skills": [
@@ -32,7 +32,7 @@
       "completed_count": 0,
       "current_work_id": null,
       "id": "eng-1",
-      "last_heartbeat": "2026-09-21T20:06:38+00:00",
+      "last_heartbeat": "2026-09-21T20:37:37+00:00",
       "lease_expires_at": null,
       "role": "engineering",
       "skills": [
@@ -108,7 +108,7 @@
       "completed_count": 0,
       "current_work_id": null,
       "id": "review-1",
-      "last_heartbeat": "2026-09-21T20:06:38+00:00",
+      "last_heartbeat": "2026-09-21T20:37:37+00:00",
       "lease_expires_at": null,
       "role": "review",
       "skills": [
