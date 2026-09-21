@@ -214,17 +214,38 @@ class AdversarialTests(unittest.TestCase):
             "policy": {"require_evidence_for_tasks": True, "lock_product_decisions": ["PD-001", "PD-002"]},
             "discovery": {"scan_engineering_docs": False, "scan_todo_fixme": False},
         }
-        # Patch discovery to return nothing
-        with mock.patch("company.os.discovery.run_discovery", return_value=[]):
-            clock = CompanyClock(cfg)
-            # Ensure no READY items
-            pool = work_pool.load_pool()
-            for it in pool.get("items", []):
-                if it.get("status") == "READY":
-                    it["status"] = "DEFERRED"
-            work_pool.save_pool(pool)
-            result = clock.start(max_ticks=3)
-            self.assertEqual(result["company"].get("mode"), "IDLE_MONITORING")
+        # Isolate persistence — must not mutate live company/state/
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            import company.os.paths as paths_mod
+            import company.os.pool as pool_mod
+            import company.os.workers as workers_mod
+            import company.os.memory as memory_mod
+            import company.os.cadence as cadence_mod
+            import company.os.clock as clock_mod
+
+            state = tmp_path / "state"
+            state.mkdir()
+            from company.os.paths import write_json
+
+            write_json(state / "work_pool.json", {"version": 2, "items": [], "updated_at": "t"})
+            write_json(state / "company.json", {"version": 1, "mode": "STOPPED", "cycle": 0})
+            write_json(state / "workers.json", {"version": 1, "workers": []})
+            write_json(state / "memory.json", {"version": 1, "decisions": [], "rejects": [], "failures": [], "learnings": []})
+            write_json(state / "cadence.json", {"version": 1, "last_runs": {}})
+
+            with mock.patch.object(paths_mod, "STATE", state), mock.patch.object(
+                pool_mod, "POOL_PATH", state / "work_pool.json"
+            ), mock.patch.object(pool_mod, "LEGACY_POOL", state / "task_pool.json"), mock.patch.object(
+                workers_mod, "WORKERS_PATH", state / "workers.json"
+            ), mock.patch.object(memory_mod, "MEMORY_PATH", state / "memory.json"), mock.patch.object(
+                cadence_mod, "CADENCE_PATH", state / "cadence.json"
+            ), mock.patch.object(clock_mod, "COMPANY_PATH", state / "company.json"), mock.patch.object(
+                clock_mod, "STATE", state
+            ), mock.patch("company.os.discovery.run_discovery", return_value=[]):
+                clock = CompanyClock(cfg)
+                result = clock.start(max_ticks=3)
+                self.assertEqual(result["company"].get("mode"), "IDLE_MONITORING")
 
     def test_pd001_flip_rejected(self):
         item = work_pool.new_work_item(
@@ -259,6 +280,47 @@ class DiscoveryTests(unittest.TestCase):
         found = discovery_mod.run_discovery(cfg, pool)
         ids = [i["id"] for i in found]
         self.assertEqual(len(ids), len(set(ids)), f"duplicate ids: {ids}")
+
+    def test_ops_discovers_billing_ci_block(self):
+        from unittest import mock
+
+        from company.os import discovery as discovery_mod
+
+        fake = {
+            "conclusion": "failure",
+            "databaseId": 35651233844,
+            "displayTitle": "docs idle",
+            "url": "https://github.com/iamadi11/LightStar/actions/runs/35651233844",
+            "headSha": "2467d16",
+            "failure_kind": "billing_spend_limit",
+        }
+        with mock.patch.object(discovery_mod, "_latest_main_ci_failure", return_value=fake):
+            found = discovery_mod.discover_ops({}, {"items": []})
+        titles = [i["title"] for i in found]
+        self.assertTrue(any("billing" in t.lower() or "spend" in t.lower() for t in titles))
+        billing = next(i for i in found if "billing" in i["title"].lower() or "spend" in i["title"].lower())
+        self.assertEqual(billing["department"], "ops")
+        self.assertGreaterEqual(float(billing["confidence"]), 0.85)
+
+    def test_executor_blocks_billing_without_fake_fix(self):
+        from company.os import executors as ex
+
+        item = {
+            "id": "W-TEST",
+            "title": "Main CI blocked by GitHub Actions billing/spend limit",
+            "type": "process",
+            "department": "ops",
+            "status": "READY",
+            "evidence": [{"kind": "ci", "ref": "https://example/runs/1"}],
+            "decision_history": [],
+            "owner_worker": None,
+            "claim": None,
+        }
+        workers = {"workers": []}
+        out = ex.execute_item(item, workers)
+        self.assertEqual(out["status"], "BLOCKED")
+        self.assertIn("billing", (out.get("blocked_reason") or "").lower())
+        self.assertTrue(any("external" in e.lower() for e in out.get("completion_evidence", [])))
 
 
 class ConfigTests(unittest.TestCase):

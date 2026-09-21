@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import json
 import re
 import shutil
+import subprocess
 from pathlib import Path
 from typing import Any, Callable
 
@@ -16,6 +18,67 @@ DiscoveryFn = Callable[[dict[str, Any], dict[str, Any]], list[dict[str, Any]]]
 
 def _swift_available() -> bool:
     return shutil.which("swift") is not None and shutil.which("xcodebuild") is not None
+
+
+def _gh_available() -> bool:
+    return shutil.which("gh") is not None
+
+
+def _latest_main_ci_failure() -> dict[str, Any] | None:
+    """Return latest failed main CI run metadata, or None if green/unavailable."""
+    if not _gh_available():
+        return None
+    try:
+        proc = subprocess.run(
+            [
+                "gh",
+                "run",
+                "list",
+                "--branch",
+                "main",
+                "--workflow",
+                "CI",
+                "--limit",
+                "1",
+                "--json",
+                "conclusion,databaseId,displayTitle,url,headSha",
+            ],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if proc.returncode != 0 or not (proc.stdout or "").strip():
+        return None
+    try:
+        rows = json.loads(proc.stdout)
+    except json.JSONDecodeError:
+        return None
+    if not rows or rows[0].get("conclusion") != "failure":
+        return None
+    run = rows[0]
+    reason = "unknown"
+    try:
+        view = subprocess.run(
+            ["gh", "run", "view", str(run["databaseId"])],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        text = (view.stdout or "") + (view.stderr or "")
+        if "spending limit" in text.lower() or "account payments have failed" in text.lower():
+            reason = "billing_spend_limit"
+        elif "ANNOTATIONS" in text:
+            reason = "ci_annotation_failure"
+        else:
+            reason = "ci_job_failure"
+    except (OSError, subprocess.TimeoutExpired):
+        reason = "ci_job_failure"
+    run["failure_kind"] = reason
+    return run
 
 
 def discover_ops(cfg: dict[str, Any], pool: dict[str, Any]) -> list[dict[str, Any]]:
@@ -32,6 +95,49 @@ def discover_ops(cfg: dict[str, Any], pool: dict[str, Any]) -> list[dict[str, An
                 desired_outcome="python3 -m unittest discover -s company/tests -v exits 0",
                 priority_rationale="Tooling integrity gates all other autonomy",
                 acceptance=["unittest suite exits 0"],
+                confidence=0.9,
+                estimated_effort="S",
+                status="DISCOVERED",
+                pool_items=pool.get("items", []),
+            )
+        )
+
+    ci_fail = _latest_main_ci_failure()
+    if ci_fail:
+        run_id = ci_fail.get("databaseId")
+        kind = ci_fail.get("failure_kind", "ci_job_failure")
+        if kind == "billing_spend_limit":
+            title = "Main CI blocked by GitHub Actions billing/spend limit"
+            problem = (
+                "Latest main CI did not start: GitHub Actions billing/spend limit — "
+                "not a LightStar code regression"
+            )
+            outcome = "Human raises Actions spend limit or fixes billing; do not invent product work"
+            acceptance = [
+                "Record run URL + billing annotation in completion_evidence",
+                "Do not claim Swift validation fixed CI",
+            ]
+        else:
+            title = f"Investigate main CI failure run {run_id}"
+            problem = "Latest main CI conclusion=failure; needs root-cause before product work"
+            outcome = "Identify failing job cause with log evidence or defer honestly"
+            acceptance = ["completion_evidence includes run URL and failure summary"]
+        items.append(
+            work_pool.new_work_item(
+                title=title,
+                department="ops",
+                type_="process",
+                problem=problem,
+                evidence=[
+                    {
+                        "kind": "ci",
+                        "ref": ci_fail.get("url") or f"run:{run_id}",
+                        "note": f"conclusion=failure kind={kind} sha={ci_fail.get('headSha')}",
+                    }
+                ],
+                desired_outcome=outcome,
+                priority_rationale="Broken CI or billing blocks evidence-based autonomy",
+                acceptance=acceptance,
                 confidence=0.9,
                 estimated_effort="S",
                 status="DISCOVERED",
