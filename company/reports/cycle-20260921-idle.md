@@ -1,6 +1,7 @@
 # Autonomous company cycle — idle
 
-Date: 2026-09-21T19:40Z
+Date: 2026-09-21T19:41Z  
+Cycle: 6
 
 ## Conclusion
 
@@ -10,18 +11,30 @@ Date: 2026-09-21T19:40Z
 
 | Source | Finding |
 |--------|---------|
-| `./scripts/autonomous-company cycle` | No new accepted tasks; pool unchanged in substance |
+| `./scripts/autonomous-company cycle` | No new accepted tasks |
 | Self-tests | 7/7 OK |
 | Task pool | T-0001/T-0002 done; T-0003 deferred; T-0004 rejected |
-| CI | Prior main green; latest push `3a36659` still **in_progress** at cycle time |
+| EE-001–009 | Tracker marks Implemented; code present (`RemotePointerAuthPolicy`, `CaptureSessionPolicy`, etc.) |
+| Deferred roadmap | Metal/schedules/extras/TLS — still no new measurements |
+| CI | `5d015bf` (main) success; PR branch `5d2d1f4` success |
 | Host | No Swift/Xcode; no BLE/Echo hardware |
+
+## Anti-slop (why not invent work)
+
+- What problem? None with fresh evidence.
+- Evidence? Discovery + tracker + CI history; no failing tests or device reports.
+- Why this implementation? N/A — no implementation.
+- What could break? Task-farming would dilute the company model.
+- How verify? Self-tests + CI watch for HEAD.
+- Reject if? A red CI on main/HEAD, or a hardware/user bug report with repro.
 
 ## Decisions
 
 - Do **not** promote T-0003 without new measurements.
-- Do **not** invent USB-neon BLE driver or product features.
+- Do **not** re-implement EE-001–009.
+- Do **not** invent USB-neon BLE driver or Alexa hardware claims.
 - Do **not** flip PD-001/PD-002.
-- Monitor CI for `3a36659` separately; failure would reopen process work.
+- CI for HEAD and cycle-6 branch both green; no process reopen.
 
 ## Strategy
 
