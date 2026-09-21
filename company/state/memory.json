@@ -5,6 +5,12 @@
       "confidence": 0.9,
       "decision": "repair:work_pool_ids+selftest",
       "rationale": "Company found data integrity + stale block; repaired with evidence"
+    },
+    {
+      "at": "2026-09-21T20:44:47+00:00",
+      "confidence": 0.95,
+      "decision": "reconcile:EE-001-006",
+      "rationale": "Selected EE items already Implemented; cleared roadmap Selected; completed W-0009\u2013W-0014 with code+tracker evidence"
     }
   ],
   "failures": [
@@ -32,6 +38,11 @@
       "at": "2026-09-21T20:37:37+00:00",
       "detail": "Requires Cursor agent / engineering worker (LLM) \u2014 implement Selected roadmap item",
       "work_id": "W-0012"
+    },
+    {
+      "at": "2026-09-21T20:45:28+00:00",
+      "detail": "GitHub Actions billing/spend limit \u2014 blocked on human account billing, not code",
+      "work_id": "W-0015"
     }
   ],
   "learnings": [
@@ -46,6 +57,10 @@
     {
       "at": "2026-09-21T20:32:04+00:00",
       "learning": "Main CI failure can be GitHub Actions billing/spend limit \u2014 surface as BLOCKED external, not product work."
+    },
+    {
+      "at": "2026-09-21T20:44:47+00:00",
+      "learning": "Stale Selected table causes false HIGH_VALUE_WORK. Keep engineering-roadmap Selected in sync with tracker Implemented."
     }
   ],
   "rejects": [],
@@ -54,6 +69,6 @@
     "Honor PD-001 / PD-002",
     "Prefer evidence over task count"
   ],
-  "updated_at": "2026-09-21T20:37:37+00:00",
+  "updated_at": "2026-09-21T20:45:28+00:00",
   "version": 1
 }

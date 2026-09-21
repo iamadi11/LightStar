@@ -1,37 +1,42 @@
 {
   "company": {
-    "cycle": 15,
-    "idle_streak": 0,
+    "cycle": 16,
+    "idle_streak": 1,
     "last_tick_summary": {
       "completed": [],
-      "cycle": 15,
-      "discovered": [],
+      "cycle": 16,
+      "discovered": [
+        "W-0015"
+      ],
       "followups": [],
-      "idle": false,
-      "value_class": "HIGH_VALUE_WORK_EXISTS"
+      "idle": true,
+      "value_class": "ONLY_SPECULATIVE_OR_DEFERRED"
     },
-    "mode": "AUTONOMOUS",
-    "stop_reason": null,
-    "updated_at": "2026-09-21T20:37:37+00:00",
+    "mode": "IDLE_MONITORING",
+    "stop_reason": "ONLY_SPECULATIVE_OR_DEFERRED",
+    "updated_at": "2026-09-21T20:45:28+00:00",
     "version": 1
   },
-  "generated_at": "2026-09-21T20:37:37+00:00",
+  "generated_at": "2026-09-21T20:45:28+00:00",
   "summary": {
     "blocked": [
-      "W-0011",
-      "W-0012"
+      "W-0015"
     ],
     "completed": [],
-    "cycle": 15,
+    "cycle": 16,
     "deliberations": [],
-    "discovered": [],
+    "discovered": [
+      "W-0015"
+    ],
     "feedback": [],
     "followups": [],
-    "idle": false,
+    "idle": true,
     "recovered": [],
     "triaged_deferred": [],
-    "triaged_ready": [],
+    "triaged_ready": [
+      "W-0015"
+    ],
     "triaged_rejected": [],
-    "value_class": "HIGH_VALUE_WORK_EXISTS"
+    "value_class": "ONLY_SPECULATIVE_OR_DEFERRED"
   }
 }

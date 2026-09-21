@@ -433,9 +433,15 @@
         "Unit tests or focused assertions where applicable",
         "CI macos-15 evidence for Swift (never fake local xcodebuild on Linux)"
       ],
-      "blocked_reason": "Requires Cursor agent / engineering worker (LLM) \u2014 implement Selected roadmap item",
+      "blocked_reason": null,
       "claim": null,
-      "completion_evidence": [],
+      "completion_evidence": [
+        "code: RemotePointerAuthPolicy in RemoteProtocol.swift",
+        "code: RemoteControlServer onPointer/onMessage gates",
+        "test: CoreTests pointer auth assertions",
+        "tracker: engineering-improvement-tracker.md EE-001 Implemented",
+        "swift_available=false; prior CI green on main for package tests"
+      ],
       "confidence": 0.85,
       "created_at": "2026-09-21T20:37:37+00:00",
       "decision_history": [
@@ -468,6 +474,12 @@
           "by": "executor",
           "event": "blocked",
           "note": "Requires Cursor agent / engineering worker (LLM) \u2014 implement Selected roadmap item"
+        },
+        {
+          "at": "2026-09-21T20:44:47+00:00",
+          "by": "engineering-cursor",
+          "event": "completed",
+          "note": "Verified already implemented in tree; roadmap Selected cleared"
         }
       ],
       "department": "engineering",
@@ -489,10 +501,10 @@
       "related_work": [],
       "reviewer_worker": null,
       "risks": [],
-      "status": "BLOCKED",
+      "status": "COMPLETED",
       "title": "EE-001: Gate pointer injection on authentication",
       "type": "fix",
-      "updated_at": "2026-09-21T20:37:37+00:00",
+      "updated_at": "2026-09-21T20:44:47+00:00",
       "validation_requirements": [
         "EE-001 behavior matches roadmap intent",
         "Unit tests or focused assertions where applicable",
@@ -505,9 +517,13 @@
         "Unit tests or focused assertions where applicable",
         "CI macos-15 evidence for Swift (never fake local xcodebuild on Linux)"
       ],
-      "blocked_reason": "Requires Cursor agent / engineering worker (LLM) \u2014 implement Selected roadmap item",
+      "blocked_reason": null,
       "claim": null,
-      "completion_evidence": [],
+      "completion_evidence": [
+        "code: GyroPointerController.emit \u2192 client.addMouseDelta nonisolated",
+        "code: RemoteControlClient.addMouseDelta \u2192 pointerChannel (no MainActor)",
+        "tracker: EE-002 Implemented"
+      ],
       "confidence": 0.85,
       "created_at": "2026-09-21T20:37:37+00:00",
       "decision_history": [
@@ -540,6 +556,12 @@
           "by": "executor",
           "event": "blocked",
           "note": "Requires Cursor agent / engineering worker (LLM) \u2014 implement Selected roadmap item"
+        },
+        {
+          "at": "2026-09-21T20:44:47+00:00",
+          "by": "engineering-cursor",
+          "event": "completed",
+          "note": "Verified already implemented in tree; roadmap Selected cleared"
         }
       ],
       "department": "engineering",
@@ -561,10 +583,10 @@
       "related_work": [],
       "reviewer_worker": null,
       "risks": [],
-      "status": "BLOCKED",
+      "status": "COMPLETED",
       "title": "EE-002: Gyro deltas go straight to `PointerChannel`",
       "type": "feature",
-      "updated_at": "2026-09-21T20:37:37+00:00",
+      "updated_at": "2026-09-21T20:44:47+00:00",
       "validation_requirements": [
         "EE-002 behavior matches roadmap intent",
         "Unit tests or focused assertions where applicable",
@@ -577,9 +599,13 @@
         "Unit tests or focused assertions where applicable",
         "CI macos-15 evidence for Swift (never fake local xcodebuild on Linux)"
       ],
-      "blocked_reason": "Requires Cursor agent / engineering worker (LLM) \u2014 implement Selected roadmap item",
+      "blocked_reason": null,
       "claim": null,
-      "completion_evidence": [],
+      "completion_evidence": [
+        "code: CaptureSessionPolicy.isSuperseded in Mic/System/Screen samplers",
+        "test: CoreTests CaptureSessionPolicy",
+        "tracker: EE-003 Implemented (+ EE-009 wiring)"
+      ],
       "confidence": 0.85,
       "created_at": "2026-09-21T20:37:37+00:00",
       "decision_history": [
@@ -612,6 +638,12 @@
           "by": "executor",
           "event": "blocked",
           "note": "Requires Cursor agent / engineering worker (LLM) \u2014 implement Selected roadmap item"
+        },
+        {
+          "at": "2026-09-21T20:44:47+00:00",
+          "by": "engineering-cursor",
+          "event": "completed",
+          "note": "Verified already implemented in tree; roadmap Selected cleared"
         }
       ],
       "department": "engineering",
@@ -633,10 +665,10 @@
       "related_work": [],
       "reviewer_worker": null,
       "risks": [],
-      "status": "BLOCKED",
+      "status": "COMPLETED",
       "title": "EE-003: Sampler `start()` throws when superseded",
       "type": "feature",
-      "updated_at": "2026-09-21T20:37:37+00:00",
+      "updated_at": "2026-09-21T20:44:47+00:00",
       "validation_requirements": [
         "EE-003 behavior matches roadmap intent",
         "Unit tests or focused assertions where applicable",
@@ -649,9 +681,12 @@
         "Unit tests or focused assertions where applicable",
         "CI macos-15 evidence for Swift (never fake local xcodebuild on Linux)"
       ],
-      "blocked_reason": "Requires Cursor agent / engineering worker (LLM) \u2014 implement Selected roadmap item",
+      "blocked_reason": null,
       "claim": null,
-      "completion_evidence": [],
+      "completion_evidence": [
+        "code: RemoteControlClient.fail \u2192 cleanupConnection/stopBrowser",
+        "tracker: EE-004 Implemented"
+      ],
       "confidence": 0.85,
       "created_at": "2026-09-21T20:37:37+00:00",
       "decision_history": [
@@ -684,6 +719,12 @@
           "by": "executor",
           "event": "blocked",
           "note": "Requires Cursor agent / engineering worker (LLM) \u2014 implement Selected roadmap item"
+        },
+        {
+          "at": "2026-09-21T20:44:47+00:00",
+          "by": "engineering-cursor",
+          "event": "completed",
+          "note": "Verified already implemented in tree; roadmap Selected cleared"
         }
       ],
       "department": "engineering",
@@ -705,10 +746,10 @@
       "related_work": [],
       "reviewer_worker": null,
       "risks": [],
-      "status": "BLOCKED",
+      "status": "COMPLETED",
       "title": "EE-004: Client `.failed` uses `cleanupConnection()`",
       "type": "feature",
-      "updated_at": "2026-09-21T20:37:37+00:00",
+      "updated_at": "2026-09-21T20:44:47+00:00",
       "validation_requirements": [
         "EE-004 behavior matches roadmap intent",
         "Unit tests or focused assertions where applicable",
@@ -723,7 +764,12 @@
       ],
       "blocked_reason": null,
       "claim": null,
-      "completion_evidence": [],
+      "completion_evidence": [
+        "code: LightStarApp widget observation excludes syncColor",
+        "code: RemoteStateBroadcastPolicy throttle",
+        "test: CoreTests RemoteStateBroadcastPolicy",
+        "tracker: EE-005 Implemented"
+      ],
       "confidence": 0.85,
       "created_at": "2026-09-21T20:37:37+00:00",
       "decision_history": [
@@ -738,6 +784,12 @@
           "by": "triage",
           "event": "triage_ready",
           "note": "passed quality gate"
+        },
+        {
+          "at": "2026-09-21T20:44:47+00:00",
+          "by": "engineering-cursor",
+          "event": "completed",
+          "note": "Verified already implemented in tree; roadmap Selected cleared"
         }
       ],
       "department": "engineering",
@@ -759,10 +811,10 @@
       "related_work": [],
       "reviewer_worker": null,
       "risks": [],
-      "status": "READY",
+      "status": "COMPLETED",
       "title": "EE-005: Do not fan `syncColor` into widget writes; throttle remote broadcasts",
       "type": "fix",
-      "updated_at": "2026-09-21T20:37:37+00:00",
+      "updated_at": "2026-09-21T20:44:47+00:00",
       "validation_requirements": [
         "EE-005 behavior matches roadmap intent",
         "Unit tests or focused assertions where applicable",
@@ -777,7 +829,10 @@
       ],
       "blocked_reason": null,
       "claim": null,
-      "completion_evidence": [],
+      "completion_evidence": [
+        "code: MicAudioSampler MainActor observer + sample copy before queue",
+        "tracker: EE-006 Implemented"
+      ],
       "confidence": 0.85,
       "created_at": "2026-09-21T20:37:37+00:00",
       "decision_history": [
@@ -792,6 +847,12 @@
           "by": "triage",
           "event": "triage_ready",
           "note": "passed quality gate"
+        },
+        {
+          "at": "2026-09-21T20:44:47+00:00",
+          "by": "engineering-cursor",
+          "event": "completed",
+          "note": "Verified already implemented in tree; roadmap Selected cleared"
         }
       ],
       "department": "engineering",
@@ -813,18 +874,92 @@
       "related_work": [],
       "reviewer_worker": null,
       "risks": [],
-      "status": "READY",
+      "status": "COMPLETED",
       "title": "EE-006: Mic sampler Sendable captures",
       "type": "feature",
-      "updated_at": "2026-09-21T20:37:37+00:00",
+      "updated_at": "2026-09-21T20:44:47+00:00",
       "validation_requirements": [
         "EE-006 behavior matches roadmap intent",
         "Unit tests or focused assertions where applicable",
         "CI macos-15 evidence for Swift (never fake local xcodebuild on Linux)"
       ]
+    },
+    {
+      "acceptance": [
+        "Record run URL + billing annotation in completion_evidence",
+        "Do not claim Swift validation fixed CI"
+      ],
+      "blocked_reason": "GitHub Actions billing/spend limit \u2014 blocked on human account billing, not code",
+      "claim": null,
+      "completion_evidence": [
+        "external: GitHub Actions billing/spend limit \u2014 cannot fix in-repo",
+        "ci_ref:https://github.com/iamadi11/LightStar/actions/runs/35652589895",
+        "action_required: human must raise Actions spend limit or fix account billing"
+      ],
+      "confidence": 0.9,
+      "created_at": "2026-09-21T20:45:28+00:00",
+      "decision_history": [
+        {
+          "at": "2026-09-21T20:45:28+00:00",
+          "by": "ops",
+          "event": "created",
+          "note": "discovered"
+        },
+        {
+          "at": "2026-09-21T20:45:28+00:00",
+          "by": "triage",
+          "event": "triage_ready",
+          "note": "passed quality gate"
+        },
+        {
+          "at": "2026-09-21T20:45:28+00:00",
+          "by": "ops-1",
+          "event": "claimed",
+          "note": "lease acquired"
+        },
+        {
+          "at": "2026-09-21T20:45:28+00:00",
+          "by": "ops-1",
+          "event": "execute_start",
+          "note": "begin"
+        },
+        {
+          "at": "2026-09-21T20:45:28+00:00",
+          "by": "executor",
+          "event": "blocked",
+          "note": "GitHub Actions billing/spend limit \u2014 blocked on human account billing, not code"
+        }
+      ],
+      "department": "ops",
+      "dependencies": [],
+      "desired_outcome": "Human raises Actions spend limit or fixes billing; do not invent product work",
+      "estimated_effort": "S",
+      "evidence": [
+        {
+          "kind": "ci",
+          "note": "conclusion=failure kind=billing_spend_limit sha=add4841938c4d2d7a02d42c1fa44241798c9eac4",
+          "ref": "https://github.com/iamadi11/LightStar/actions/runs/35652589895"
+        }
+      ],
+      "fingerprint": "3bf547fb05fd724c",
+      "id": "W-0015",
+      "owner_worker": "ops-1",
+      "priority_rationale": "Broken CI or billing blocks evidence-based autonomy",
+      "problem": "Latest main CI did not start: GitHub Actions billing/spend limit \u2014 not a LightStar code regression",
+      "related_work": [],
+      "reviewer_worker": null,
+      "risks": [],
+      "status": "BLOCKED",
+      "title": "Main CI blocked by GitHub Actions billing/spend limit",
+      "type": "process",
+      "updated_at": "2026-09-21T20:45:28+00:00",
+      "validation_requirements": [
+        "Record run URL + billing annotation in completion_evidence",
+        "Do not claim Swift validation fixed CI"
+      ]
     }
   ],
   "migrated_from": "task_pool.json",
-  "updated_at": "2026-09-21T20:37:37+00:00",
+  "updated_at": "2026-09-21T20:45:28+00:00",
   "version": 2
 }

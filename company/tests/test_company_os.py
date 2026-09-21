@@ -325,16 +325,30 @@ class DiscoveryTests(unittest.TestCase):
     def test_engineering_discovers_selected_ee_rows(self):
         from company.os import discovery as discovery_mod
 
+        # Live roadmap Selected is empty once EE-001–009 are Implemented.
         found = discovery_mod.discover_engineering(
             {"discovery": {"scan_engineering_docs": True}},
             {"items": []},
         )
         ee = [i for i in found if (i.get("title") or "").startswith("EE-")]
-        self.assertGreaterEqual(len(ee), 1, "Selected roadmap EE rows must become work items")
-        self.assertTrue(all(i["department"] == "engineering" for i in ee))
-        self.assertTrue(all(float(i["confidence"]) >= 0.8 for i in ee))
-        # Deferred review may still exist but must not be the only engineering output
-        self.assertTrue(any("EE-001" in (i.get("title") or "") for i in ee))
+        self.assertEqual(ee, [], "Implemented Selected must not re-enter the pool")
+
+    def test_implemented_tracker_skips_selected_rows(self):
+        from company.os import discovery as discovery_mod
+
+        selected = [
+            {"id": "EE-001", "title": "Gate pointer", "why": "auth"},
+            {"id": "EE-099", "title": "Brand new selected item", "why": "fresh"},
+        ]
+        with mock.patch.object(discovery_mod, "_parse_roadmap_selected", return_value=selected):
+            with mock.patch.object(discovery_mod, "_implemented_ee_ids", return_value={"EE-001"}):
+                found = discovery_mod.discover_engineering(
+                    {"discovery": {"scan_engineering_docs": True}},
+                    {"items": []},
+                )
+        titles = [i["title"] for i in found if (i.get("title") or "").startswith("EE-")]
+        self.assertTrue(any("EE-099" in t for t in titles))
+        self.assertFalse(any(t.startswith("EE-001:") for t in titles))
 
     def test_parse_roadmap_selected_ignores_header(self):
         from company.os import discovery as discovery_mod
