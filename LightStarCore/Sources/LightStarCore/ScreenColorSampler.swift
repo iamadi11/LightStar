@@ -12,6 +12,16 @@ public final class ScreenColorSampler: NSObject {
     /// Legacy callback for color updates (H, S, V in 0-1 range).
     public var onColor: ((Double, Double, Double) -> Void)?
     
+    public var onAudioBands: ((FrequencyBands) -> Void)? {
+        get { provider.onAudioBands }
+        set { provider.onAudioBands = newValue }
+    }
+    
+    public var capturesAudio: Bool {
+        get { provider.capturesAudio }
+        set { provider.capturesAudio = newValue }
+    }
+    
     /// Called when protected content is detected (persistent black regions).
     public var onProtectedContentDetected: (() -> Void)?
     

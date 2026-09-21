@@ -991,17 +991,36 @@ public enum CombinedSyncMixer: Sendable {
         return false
     }
 
-    /// Screen color stays visible at the user's brightness; beats lift toward full.
-    /// The old bass-only curve collapsed to ~4% between beats, so Combined looked off.
+    /// Slider is the ceiling. Quiet drops to `pulseFloor` of that ceiling.
+    /// Combined used to add pulse *above* the slider, which is a no-op at 100%.
+    public static let pulseFloor: Double = 0.08
+
     public static func combinedBrightness(
         userBrightness: Double,
         bass: Double,
         rms: Double,
         flashLevel: Double
     ) -> Double {
-        let floor = min(1.0, max(0.15, userBrightness))
-        let pulse = min(1.0, max(0.0, flashLevel * 0.9 + bass * 0.35 + rms * 0.15))
-        return min(1.0, floor + (1.0 - floor) * pulse)
+        let ceiling = min(1.0, max(0.20, userBrightness))
+        let energy = min(1.0, max(0.0, bass * 1.6 + rms * 0.50 + flashLevel * 0.85))
+        return ceiling * (pulseFloor + (1.0 - pulseFloor) * energy)
+    }
+
+    /// Same screen hue; beats punch saturation so Combined is not "Screen with a dimmer".
+    public static func combinedSaturation(screenSaturation: Double, flashLevel: Double) -> Double {
+        min(1.0, screenSaturation * (1.0 + 0.70 * flashLevel) + 0.18 * flashLevel)
+    }
+}
+
+/// Combined must not open a second SCStream. macOS often delivers screen
+/// frames and starves the audio-only stream, so Both looked like Screen.
+public enum CombinedCapturePolicy: Sendable {
+    public static func shouldCaptureAudioOnScreenStream(mode: LightBLEManager.SyncMode) -> Bool {
+        mode == .combined
+    }
+
+    public static func shouldStartStandaloneSystemAudio(mode: LightBLEManager.SyncMode) -> Bool {
+        mode == .audio
     }
 }
 

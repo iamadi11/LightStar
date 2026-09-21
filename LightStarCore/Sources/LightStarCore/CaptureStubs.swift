@@ -58,6 +58,8 @@ public struct CaptureProviderDiagnostics: Sendable {
 @MainActor
 public final class ScreenColorSampler: NSObject {
     public var onColor: ((Double, Double, Double) -> Void)?
+    public var onAudioBands: ((FrequencyBands) -> Void)?
+    public var capturesAudio = false
     public var onProtectedContentDetected: (() -> Void)?
     public var onFrameAnalysis: ((FrameAnalysis) -> Void)?
     public var selectedDisplayID: CGDirectDisplayID?

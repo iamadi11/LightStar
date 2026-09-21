@@ -10,6 +10,10 @@ import AppKit
 public final class ScreenCaptureKitProvider: NSObject, ScreenFrameProvider {
     
     public var onFrame: ((FrameAnalysis) -> Void)?
+    public var onAudioBands: ((FrequencyBands) -> Void)?
+    /// Combined capture: same SCStream as the screen so macOS actually delivers
+    /// system-audio buffers. A second audio-only SCStream is often silent.
+    public var capturesAudio = false
     public var selectedDisplayID: CGDirectDisplayID?
     
     /// Whether to use GPU-accelerated analysis (Metal). Defaults to true when available.
@@ -19,6 +23,8 @@ public final class ScreenCaptureKitProvider: NSObject, ScreenFrameProvider {
     
     private var stream: SCStream?
     private let queue = DispatchQueue(label: "screen.capture.kit", qos: .userInteractive)
+    private let audioQueue = DispatchQueue(label: "screen.capture.audio", qos: .userInteractive)
+    private let audioEngine = AudioFFTEngine()
     private var generation = 0
     
     // Metal analyzer for GPU acceleration
@@ -64,12 +70,20 @@ public final class ScreenCaptureKitProvider: NSObject, ScreenFrameProvider {
         cfg.height = 27
         cfg.pixelFormat = kCVPixelFormatType_32BGRA
         cfg.minimumFrameInterval = CMTime(value: 1, timescale: 60)
-        cfg.capturesAudio = false
+        cfg.capturesAudio = capturesAudio
         cfg.showsCursor = false
+        if capturesAudio {
+            cfg.sampleRate = 44100
+            cfg.channelCount = 2
+        }
         
         let filter = SCContentFilter(display: display, excludingWindows: [])
         let s = SCStream(filter: filter, configuration: cfg, delegate: nil)
         try s.addStreamOutput(self, type: .screen, sampleHandlerQueue: queue)
+        if capturesAudio {
+            audioEngine.prepare()
+            try s.addStreamOutput(self, type: .audio, sampleHandlerQueue: audioQueue)
+        }
         try await s.startCapture()
         
         guard !CaptureSessionPolicy.isSuperseded(startGeneration: gen, currentGeneration: generation) else {
@@ -89,6 +103,13 @@ public final class ScreenCaptureKitProvider: NSObject, ScreenFrameProvider {
         try? await stream?.stopCapture()
         stream = nil
         isRunning = false
+        onAudioBands = nil
+        await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+            audioQueue.async {
+                self.audioEngine.reset()
+                cont.resume()
+            }
+        }
     }
     
     /// Get current diagnostics for the capture session.
@@ -114,6 +135,12 @@ extension ScreenCaptureKitProvider: SCStreamOutput {
     public nonisolated func stream(_ stream: SCStream,
                                    didOutputSampleBuffer sb: CMSampleBuffer,
                                    of type: SCStreamOutputType) {
+        if type == .audio {
+            audioEngine.ingest(sb) { bands in
+                DispatchQueue.main.async { [weak self] in self?.onAudioBands?(bands) }
+            }
+            return
+        }
         guard type == .screen else { return }
         guard let pb = sb.imageBuffer else { return }
         

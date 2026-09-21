@@ -118,7 +118,7 @@ struct SyncModePickerView: View {
             case .pulse:     return "Keeps current color · bass and beats drive brightness"
             case .frequency: return "Bass → red · mid → green · treble → blue"
             }
-        case .combined: return "Screen drives color · music drives brightness and beat pulse"
+        case .combined: return "Screen color · music pulses brightness and saturation on the beat"
         }
     }
 }

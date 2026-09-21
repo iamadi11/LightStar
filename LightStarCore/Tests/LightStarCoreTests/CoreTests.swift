@@ -1146,11 +1146,35 @@ final class ConnectAndSchedulePolicyTests: XCTestCase {
         let quiet = CombinedSyncMixer.combinedBrightness(
             userBrightness: 0.5, bass: 0, rms: 0, flashLevel: 0
         )
-        XCTAssertEqual(quiet, 0.5, accuracy: 0.001, "quiet combined must keep the user's brightness")
-        let flash = CombinedSyncMixer.combinedBrightness(
-            userBrightness: 0.5, bass: 0, rms: 0, flashLevel: 1
+        XCTAssertEqual(quiet, 0.5 * CombinedSyncMixer.pulseFloor, accuracy: 0.001,
+                       "quiet combined must dim below the slider so beats have room")
+        let peak = CombinedSyncMixer.combinedBrightness(
+            userBrightness: 0.5, bass: 1, rms: 0.3, flashLevel: 1
         )
-        XCTAssertGreaterThan(flash, 0.9)
+        XCTAssertGreaterThan(peak, quiet)
+        XCTAssertEqual(peak, 0.5, accuracy: 0.02, "loud beats reach the slider ceiling")
+        let quietFull = CombinedSyncMixer.combinedBrightness(
+            userBrightness: 1, bass: 0, rms: 0, flashLevel: 0
+        )
+        let loudFull = CombinedSyncMixer.combinedBrightness(
+            userBrightness: 1, bass: 1, rms: 0.4, flashLevel: 1
+        )
+        XCTAssertLessThan(quietFull, 0.35, "full slider must still dim on quiet")
+        XCTAssertGreaterThan(loudFull, 0.85, "full slider must still hit near-max on beats")
+        XCTAssertGreaterThan(loudFull - quietFull, 0.5,
+                             "Both must pulse brightness even when the slider is at 100%")
+        XCTAssertEqual(
+            CombinedSyncMixer.combinedSaturation(screenSaturation: 0.5, flashLevel: 0),
+            0.5, accuracy: 0.001
+        )
+        XCTAssertGreaterThan(
+            CombinedSyncMixer.combinedSaturation(screenSaturation: 0.5, flashLevel: 1),
+            0.85
+        )
+        XCTAssertTrue(CombinedCapturePolicy.shouldCaptureAudioOnScreenStream(mode: .combined))
+        XCTAssertFalse(CombinedCapturePolicy.shouldCaptureAudioOnScreenStream(mode: .video))
+        XCTAssertTrue(CombinedCapturePolicy.shouldStartStandaloneSystemAudio(mode: .audio))
+        XCTAssertFalse(CombinedCapturePolicy.shouldStartStandaloneSystemAudio(mode: .combined))
         XCTAssertFalse(SilenceAutoOffPolicy.shouldTurnAudioSyncOff(silentFor: 2))
         XCTAssertFalse(SilenceAutoOffPolicy.shouldTurnAudioSyncOff(silentFor: 120))
     }

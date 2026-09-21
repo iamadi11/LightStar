@@ -45,6 +45,8 @@ public extension LightBLEManager {
         systemAudio.onBands = nil
         micAudio.onBands = nil
         screenSampler.onColor = nil
+        screenSampler.onAudioBands = nil
+        screenSampler.capturesAudio = false
         flashLevel = 0
         syncColor = nil
         write(Cmd.stripMic(enabled: false))
@@ -58,28 +60,33 @@ public extension LightBLEManager {
     public func pauseScreenSync() {
         guard isSyncingVideo else { return }
         screenSampler.onColor = nil
+        screenSampler.onAudioBands = nil
         Task { await self.screenSampler.stop() }
     }
 
     public func resumeScreenSync() {
         guard isSyncingVideo else { return }
-        Task { [weak self] in
+        Task { @MainActor [weak self] in
             guard let self else { return }
             do {
-                try await self.screenSampler.start()
-                await MainActor.run { self.setupScreenCallback() }
-            } catch {
-                await MainActor.run {
-                    guard CaptureSessionPolicy.shouldStopSyncAfterResumeError(error) else { return }
-                    self.setSyncError(error)  // capture pendingSyncMode while mode is still .video/.combined
-                    self.stopSyncInline()     // stops audio engine, saves lastSyncMode, sets syncMode = .off
+                if CombinedCapturePolicy.shouldCaptureAudioOnScreenStream(mode: self.syncMode) {
+                    self.screenSampler.capturesAudio = true
+                    self.setupAudioCallback(useMic: false, screenAudio: true)
                 }
+                self.setupScreenCallback()
+                try await self.screenSampler.start()
+            } catch {
+                guard CaptureSessionPolicy.shouldStopSyncAfterResumeError(error) else { return }
+                self.setSyncError(error)
+                self.stopSyncInline()
             }
         }
     }
 
     private func haltCaptureSources() async {
         screenSampler.onColor = nil
+        screenSampler.onAudioBands = nil
+        screenSampler.capturesAudio = false
         micAudio.onBands = nil
         systemAudio.onBands = nil
         await screenSampler.stop()
@@ -102,6 +109,8 @@ public extension LightBLEManager {
         systemAudio.onBands = nil
         micAudio.onBands = nil
         screenSampler.onColor = nil
+        screenSampler.onAudioBands = nil
+        screenSampler.capturesAudio = false
         flashLevel = 0
         syncMode = .off
         syncColor = nil
@@ -127,6 +136,7 @@ public extension LightBLEManager {
         case .video:
             seedScreenColorFromSteadyState()
             write(Cmd.hue(lastScreenH, saturation: lastScreenS))
+            screenSampler.capturesAudio = false
             setupScreenCallback()
             screenSampler.selectedDisplayID = selectedDisplayID
             syncMode = .video  // set before start so warm-up frames pass isSyncingVideo guard
@@ -190,41 +200,20 @@ public extension LightBLEManager {
         case .combined:
             seedScreenColorFromSteadyState()
             write(Cmd.hue(lastScreenH, saturation: lastScreenS))
-            setupScreenCallback()
+            screenSampler.capturesAudio = CombinedCapturePolicy.shouldCaptureAudioOnScreenStream(mode: .combined)
             screenSampler.selectedDisplayID = selectedDisplayID
-            syncMode = .combined  // set before start so warm-up frames pass guards
-            var screenErr: Error? = nil
-            var audioErr:  Error? = nil
-            var screenSuperseded = false
-            var audioSuperseded = false
-            async let screenStart: () = screenSampler.start()
-            do { try await screenStart } catch {
-                screenSampler.onColor = nil
-                switch CaptureSessionPolicy.disposition(
-                    forStartError: error, transitionCancelled: Task.isCancelled
-                ) {
-                case .abortQuietTeardown:
-                    await haltCaptureSources()
-                    return
-                case .continueWithoutSampler:
-                    screenSuperseded = true
-                case .surfaceFailure:
-                    screenErr = error
-                }
-            }
-            if Task.isCancelled {
-                await haltCaptureSources()
-                return
-            }
-
-            // Combined always uses Mac system audio. Leftover `.mic` / `.stripMic`
-            // from the audio-only picker skip the mixer (no FrequencyBands) or
-            // fight screen BC04 with firmware mic.
-            setupAudioCallback(useMic: false)
+            setupScreenCallback()
+            setupAudioCallback(useMic: false, screenAudio: true)
+            syncMode = .combined
             do {
-                try await systemAudio.start()
+                try await screenSampler.start()
+                if Task.isCancelled {
+                    await haltCaptureSources()
+                    return
+                }
             } catch {
-                systemAudio.onBands = nil
+                screenSampler.onColor = nil
+                screenSampler.onAudioBands = nil
                 switch CaptureSessionPolicy.disposition(
                     forStartError: error, transitionCancelled: Task.isCancelled
                 ) {
@@ -232,30 +221,15 @@ public extension LightBLEManager {
                     await haltCaptureSources()
                     return
                 case .continueWithoutSampler:
-                    audioSuperseded = true
+                    break
                 case .surfaceFailure:
-                    audioErr = error
+                    setSyncError(error)
+                    syncMode = CombinedSyncAssembly.resolvedMode(
+                        screenAvailable: false, audioAvailable: false
+                    )
+                    if syncMode == .off { restoreSteadyState() }
                 }
             }
-            if Task.isCancelled {
-                await haltCaptureSources()
-                return
-            }
-            let screenOk = CaptureSessionPolicy.samplerAvailable(
-                callbackInstalled: screenSampler.onColor != nil,
-                startWasSuperseded: screenSuperseded
-            )
-            let audioOk = CaptureSessionPolicy.samplerAvailable(
-                callbackInstalled: systemAudio.onBands != nil,
-                startWasSuperseded: audioSuperseded
-            )
-            syncMode = CombinedSyncAssembly.resolvedMode(screenAvailable: screenOk, audioAvailable: audioOk)
-            if let e = screenErr ?? audioErr {
-                // When both fail syncMode == .off; save pendingSyncMode before setSyncError reads it.
-                if syncMode == .off { pendingSyncMode = .combined }
-                setSyncError(e)
-            }
-            if syncMode == .off { restoreSteadyState() }
         }
     }
 
@@ -278,14 +252,18 @@ public extension LightBLEManager {
             smoothS = smoothS + (s - smoothS) * α
             smoothV = smoothV + (v - smoothV) * 0.15
             let hueDelta = min(abs(smoothH - (self.lastScreenH)), 1 - abs(smoothH - self.lastScreenH))
-            guard hueDelta > 0.008 || now - lastWrite > 0.5 else { return }
             let boostedS = smoothS < 0.3 ? min(1.0, smoothS * 3.0) : min(1.0, smoothS * 1.5)
             self.lastScreenH = smoothH
             self.lastScreenS = boostedS
-            self.syncColor = Color(hue: smoothH, saturation: boostedS, brightness: 1)
+            let writeS = CombinedSyncMixer.combinedSaturation(
+                screenSaturation: boostedS, flashLevel: self.flashLevel
+            )
+            self.syncColor = Color(hue: smoothH, saturation: writeS, brightness: 1)
+            let beatActive = self.flashLevel > 0.12
+            guard hueDelta > 0.008 || beatActive || now - lastWrite > 0.5 else { return }
             if CombinedSyncMixer.screenShouldWriteHue(mode: self.syncMode, flashLevel: self.flashLevel) {
                 lastWrite = now
-                self.write(Cmd.hue(smoothH, saturation: boostedS))
+                self.write(Cmd.hue(smoothH, saturation: writeS))
             }
             if CombinedSyncMixer.screenShouldWriteBrightness(
                 mode: self.syncMode, videoSyncBrightness: self.videoSyncBrightness
@@ -295,7 +273,7 @@ public extension LightBLEManager {
         }
     }
 
-    public func setupAudioCallback(useMic: Bool = false) {
+    public func setupAudioCallback(useMic: Bool = false, screenAudio: Bool = false) {
         var lastWrite: Double = 0
         let callback: (FrequencyBands) -> Void = { [weak self] (bands: FrequencyBands) in
             guard let self, self.isSyncingAudio, self.isOn else { return }
@@ -312,7 +290,11 @@ public extension LightBLEManager {
                 } else {
                     self.flashLevel = max(0.0, self.flashLevel * 0.82)
                 }
-                self.syncColor = Color(hue: self.lastScreenH, saturation: self.lastScreenS, brightness: 1)
+                let sat = CombinedSyncMixer.combinedSaturation(
+                    screenSaturation: self.lastScreenS, flashLevel: self.flashLevel
+                )
+                self.syncColor = Color(hue: self.lastScreenH, saturation: sat, brightness: 1)
+                self.write(Cmd.hue(self.lastScreenH, saturation: sat))
                 self.write(Cmd.brightness(CombinedSyncMixer.combinedBrightness(
                     userBrightness: self.brightness,
                     bass: bands.bass,
@@ -352,7 +334,13 @@ public extension LightBLEManager {
                 self.write(Cmd.brightness(min(1.0, max(0.05, (bands.bass + bands.mid + bands.high) / 3 * 1.5 + bands.rms * 0.2))))
             }
         }
-        if useMic { micAudio.onBands = callback } else { systemAudio.onBands = callback }
+        if useMic {
+            micAudio.onBands = callback
+        } else if screenAudio {
+            screenSampler.onAudioBands = callback
+        } else {
+            systemAudio.onBands = callback
+        }
     }
 
     public func setSyncError(_ error: Error) {
