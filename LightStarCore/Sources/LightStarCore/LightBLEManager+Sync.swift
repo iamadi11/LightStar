@@ -36,6 +36,7 @@ public extension LightBLEManager {
             }
             await self.buildSync(mode, previousMode: prevMode)
             if !Task.isCancelled { self.syncTransitioning = false }
+            self.reconcileBrowserHardwareAcceleration(syncMode: mode)
         }
     }
 
@@ -46,9 +47,12 @@ public extension LightBLEManager {
         micAudio.onBands = nil
         screenSampler.onColor = nil
         screenSampler.onAudioBands = nil
+        screenSampler.onFrameAnalysis = nil
+        screenSampler.onDiagnosticsUpdate = nil
         screenSampler.capturesAudio = false
         flashLevel = 0
         syncColor = nil
+        protectedContentBanner = nil
         write(Cmd.stripMic(enabled: false))
         await systemAudio.stop()
         await micAudio.stop()
@@ -61,6 +65,9 @@ public extension LightBLEManager {
         guard isSyncingVideo else { return }
         screenSampler.onColor = nil
         screenSampler.onAudioBands = nil
+        screenSampler.onFrameAnalysis = nil
+        screenSampler.onDiagnosticsUpdate = nil
+        protectedContentBanner = nil
         Task { await self.screenSampler.stop() }
     }
 
@@ -89,9 +96,12 @@ public extension LightBLEManager {
     private func haltCaptureSources() async {
         screenSampler.onColor = nil
         screenSampler.onAudioBands = nil
+        screenSampler.onFrameAnalysis = nil
+        screenSampler.onDiagnosticsUpdate = nil
         screenSampler.capturesAudio = false
         micAudio.onBands = nil
         systemAudio.onBands = nil
+        protectedContentBanner = nil
         await screenSampler.stop()
         await micAudio.stop()
         await systemAudio.stop()
@@ -113,11 +123,15 @@ public extension LightBLEManager {
         micAudio.onBands = nil
         screenSampler.onColor = nil
         screenSampler.onAudioBands = nil
+        screenSampler.onFrameAnalysis = nil
+        screenSampler.onDiagnosticsUpdate = nil
         screenSampler.capturesAudio = false
         flashLevel = 0
         syncMode = .off
         syncColor = nil
+        protectedContentBanner = nil
         syncCleanupTask = Task { await self.systemAudio.stop(); await self.micAudio.stop(); await self.screenSampler.stop() }
+        reconcileBrowserHardwareAcceleration(syncMode: .off)
     }
 
     public func buildSync(_ mode: SyncMode, previousMode: SyncMode = .off) async {
@@ -266,6 +280,13 @@ public extension LightBLEManager {
         var smoothS: Double = 0
         var smoothV: Double = -1
         var lastWrite: Double = 0
+        screenSampler.onDiagnosticsUpdate = { [weak self] banner in
+            self?.protectedContentBanner = banner
+#if os(macOS)
+            guard let self, banner != nil, !self.browserHWAccel.appliedThisSession else { return }
+            self.reconcileBrowserHardwareAcceleration()
+#endif
+        }
         screenSampler.onColor = { [weak self] h, s, v in
             guard let self, self.isSyncingVideo, self.isOn else { return }
             guard v > 0.04 else { return }
@@ -462,5 +483,28 @@ public extension LightBLEManager {
             let displays = await ScreenColorSampler.availableDisplays()
             await MainActor.run { self.availableDisplays = displays }
         }
+    }
+
+    func reconcileBrowserHardwareAcceleration(syncMode: SyncMode? = nil) {
+#if os(macOS)
+        let mode = syncMode ?? self.syncMode
+        let want = BrowserHardwareAccelerationPolicy.shouldDisable(
+            isOn: isOn,
+            isSyncingVideo: mode == .video || mode == .combined,
+            alreadyAppliedThisSession: browserHWAccel.appliedThisSession,
+            protectedContentDetected: screenSampler.protectedContentDetected || protectedContentBanner != nil
+        )
+        browserHWAccel.reconcile(
+            wantDisabled: want,
+            detectedBundleID: screenSampler.diagnostics.detectedBrowser?.bundleID
+        )
+#endif
+    }
+
+    public func restoreBrowserHardwareAccelerationForTermination() async {
+#if os(macOS)
+        await browserHWAccel.restoreForTermination()
+        browserAccelerationMessage = browserHWAccel.statusMessage
+#endif
     }
 }

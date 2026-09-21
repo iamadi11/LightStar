@@ -35,7 +35,7 @@
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>LightStar advertises itself on the local network so the iPhone remote can reach this Mac.</string>
 	<key>NSAppleEventsUsageDescription</key>
-	<string>LightStar sends play, next, and previous to Music or Spotify when you press those buttons on the iPhone remote.</string>
+	<string>LightStar quits Chrome, Edge, or Brave to toggle hardware acceleration for Screen sync, and sends play, next, and previous to Music or Spotify from the iPhone remote.</string>
 	<key>NSBonjourServices</key>
 	<array>
 		<string>_lightstar._tcp</string>

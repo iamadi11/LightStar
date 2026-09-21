@@ -11,8 +11,8 @@ public final class ScreenCaptureKitProvider: NSObject, ScreenFrameProvider {
     
     public var onFrame: ((FrameAnalysis) -> Void)?
     public var onAudioBands: ((FrequencyBands) -> Void)?
-    /// Combined capture: same SCStream as the screen so macOS actually delivers
-    /// system-audio buffers. A second audio-only SCStream is often silent.
+    /// Combined must not set this. Both uses a video-only screen stream plus
+    /// standalone SystemAudioSampler (see CombinedCapturePolicy).
     public var capturesAudio = false
     public var selectedDisplayID: CGDirectDisplayID?
     
@@ -33,8 +33,7 @@ public final class ScreenCaptureKitProvider: NSObject, ScreenFrameProvider {
     // Diagnostics
     private var frameCount = 0
     private var lastFrameTime: Double = 0
-    private var recentBlackPercentages: [Double] = []
-    private let blackPercentageWindowSize = 30
+    private var lastBlackPercentage: Double = 0
     private var usingMetal = false
     
     @MainActor
@@ -94,7 +93,7 @@ public final class ScreenCaptureKitProvider: NSObject, ScreenFrameProvider {
         stream = s
         isRunning = true
         frameCount = 0
-        recentBlackPercentages = []
+        lastBlackPercentage = 0
     }
     
     public func stop() async {
@@ -114,14 +113,13 @@ public final class ScreenCaptureKitProvider: NSObject, ScreenFrameProvider {
     
     /// Get current diagnostics for the capture session.
     public func getDiagnostics() -> CaptureProviderDiagnostics {
-        let avgBlackPercentage = recentBlackPercentages.isEmpty ? 0 : recentBlackPercentages.reduce(0, +) / Double(recentBlackPercentages.count)
-        return CaptureProviderDiagnostics(
+        CaptureProviderDiagnostics(
             providerName: usingMetal ? "ScreenCaptureKit (Metal GPU)" : "ScreenCaptureKit (CPU)",
             frameRate: frameCount > 1 ? Double(frameCount - 1) / max(0.001, CACurrentMediaTime() - lastFrameTime) : 0,
             resolution: (48, 27),
             captureLatencyMs: 0,
-            protectedContentDetected: avgBlackPercentage > 0.6,
-            blackFramePercentage: avgBlackPercentage
+            protectedContentDetected: false,
+            blackFramePercentage: lastBlackPercentage
         )
     }
     
@@ -162,12 +160,7 @@ extension ScreenCaptureKitProvider: SCStreamOutput {
             self.frameCount += 1
             self.usingMetal = usedMetal
             if self.frameCount == 1 { self.lastFrameTime = CACurrentMediaTime() }
-            
-            self.recentBlackPercentages.append(analysis.blackPixelPercentage)
-            if self.recentBlackPercentages.count > self.blackPercentageWindowSize {
-                self.recentBlackPercentages.removeFirst()
-            }
-            
+            self.lastBlackPercentage = analysis.blackPixelPercentage
             self.onFrame?(analysis)
         }
     }

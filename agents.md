@@ -62,8 +62,10 @@ LightStarCore/          Swift package, macOS + iOS
   
   # Screen capture provider architecture
   ScreenFrameProvider.swift     Provider protocol + analysis types
-  ScreenCaptureKitProvider.swift  SCK implementation with protected content detection
-  ScreenColorSampler.swift      Wrapper with legacy HSV callback API
+  ProtectedContentPolicy.swift  DRM hold-last-color + guide-after-N tracker
+  ScreenCaptureKitProvider.swift  SCK implementation (video frames only)
+  ScreenColorSampler.swift      HSV callback; holds last color on protected frames
+  CaptureDiagnostics.swift      Browser + HW-accel-off copy (timer only while capturing)
   
   # iPhone <-> Mac remote control
   RemoteProtocol.swift          Versioned binary protocol (JSON payloads)
@@ -206,7 +208,16 @@ See `docs/display-capture-research.md` for full research. Summary:
 | Netflix | Chrome | OFF | ✅ Yes (1080p max) |
 | Netflix | Safari | N/A | ❌ Always black |
 
-**Recommended approach**: Detect black regions, show user-friendly diagnostic suggesting Chrome hardware acceleration off.
+**Product path** (do not attempt WindowServer/IOSurface/private APIs, virtual displays, or HDCP bypass):
+
+1. Persistent rectangular black frames (`ProtectedContentPolicy`) **hold last good HSV + brightness**. They must not write near-black to the strip. Combined still pulses brightness from the Music audio sampler.
+2. After `confirmationFrameCount` consecutive protected frames, the Mac popover shows the hardware-acceleration-off guide (Chrome/Edge/Brave). Safari / native apps / HW-on Chrome stay black — say so. Dark IDE chrome (VS Code) is not a DRM rectangle and must not trip the guide.
+3. One tracker: `ProtectedContentTracker` in `ScreenColorSampler`. `CaptureDiagnostics` only supplies browser + copy. Do not start its 2s frontmost-app Timer unless Screen/Both is running. No `print()`.
+4. **Chromium Local State toggle** (user-requested): when the strip is on, Screen/Both is running, and protected frames are detected, LightStar **Apple-Event quits** Chrome/Edge/Brave (never `forceTerminate` — that drops tabs), waits for session files, patches only `hardware_acceleration_mode.enabled` in `Local State` (do not JSON-round-trip the whole file), then relaunches with `--restore-last-session`. Restore the previous value when leaving Screen/Both, powering off, or quitting LightStar. Do this once per Screen session (no relaunch loop). Safari is not touched. Skip all process control under XCTest.
+
+**DRM-impossible (do not loop on this):** Widevine L1 / FairPlay with hardware acceleration on never puts movie pixels in ScreenCaptureKit. Software-rendered L3 (HW accel off) is the only capturable Chromium path; Safari has none. LightStar automates the Chromium pref + relaunch; it does not patch Widevine or bypass `preventsCapture`.
+
+A GPU/HDMI/DisplayPort **driver** also cannot see those pixels (DCP + WindowServer + HDCP). Background scripts still need Screen Recording. Do not wire `Experimental/DirectCapture/` into the app (`ENABLED=0`, not in `project.yml`).
 
 ---
 

@@ -58,6 +58,7 @@ public final class LightBLEManager: NSObject {
     public var syncMode: SyncMode = .off
     public var syncColor: Color? = nil          // live color during sync; nil when sync is off
     public var syncError: String?
+    public var protectedContentBanner: ProtectedContentBanner?
     public var syncNeedsPermission = false   // true when syncError is a Screen Recording denial
     public var pendingSyncMode: SyncMode?  // mode to retry when permission is granted
     public var syncTransitioning = false
@@ -256,6 +257,10 @@ public final class LightBLEManager: NSObject {
     public var lastScreenS: Double = 1
     public var audioPulseH: Double = 0   // cached hue for pulse mode — avoids 30Hz hsvComponents
     public let screenSampler = ScreenColorSampler()
+#if os(macOS)
+    public let browserHWAccel = BrowserHardwareAccelerationController()
+    public var browserAccelerationMessage: String?
+#endif
 #if os(iOS)
     public let remoteClient = RemoteControlClient()
     var wantsMacStripConnection = false
@@ -280,6 +285,12 @@ public final class LightBLEManager: NSObject {
             },
             isConnected: { [weak self] in self?.connectionState == .connected }
         )
+        browserHWAccel.onStatusChange = { [weak self] message in
+            self?.browserAccelerationMessage = message
+        }
+        Task { @MainActor in
+            self.reconcileBrowserHardwareAcceleration()
+        }
 #endif
     }
 
@@ -411,6 +422,7 @@ public final class LightBLEManager: NSObject {
         } else {
             writeNow(Cmd.powerOn)
         }
+        reconcileBrowserHardwareAcceleration()
     }
 
     // MARK: - Private helpers

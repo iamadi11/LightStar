@@ -598,6 +598,16 @@ struct SyncControlView: View {
                     .toggleStyle(.checkbox)
                     .help("Strip brightness tracks average screen brightness (not available in Combined — audio drives brightness there)")
                 }
+
+                if let banner = ble.protectedContentBanner {
+                    ProtectedContentGuideView(banner: banner)
+                }
+                if let msg = ble.browserAccelerationMessage {
+                    Text(msg)
+                        .font(.system(size: 10))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
         }
     }
@@ -614,6 +624,44 @@ struct SyncControlView: View {
             }
         case .combined: return "Screen color · music pulses brightness like Music Pulse"
         }
+    }
+}
+
+private struct ProtectedContentGuideView: View {
+    let banner: ProtectedContentBanner
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .top, spacing: 4) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.orange)
+                Text(banner.message)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .font(.system(size: 10))
+            ForEach(Array(banner.steps.enumerated()), id: \.offset) { _, step in
+                Text(step)
+                    .font(.system(size: 9))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            ForEach(Array(banner.notes.enumerated()), id: \.offset) { _, note in
+                Text(note)
+                    .font(.system(size: 9))
+                    .foregroundStyle(.tertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            if let url = banner.settingsURL, let title = banner.openSettingsTitle {
+                Button(title) {
+                    NSWorkspace.shared.open(url)
+                }
+                .font(.system(size: 10))
+                .buttonStyle(.link)
+            }
+        }
+        .padding(6)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 6))
     }
 }
 

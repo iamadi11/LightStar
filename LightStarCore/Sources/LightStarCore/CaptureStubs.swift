@@ -62,9 +62,11 @@ public final class ScreenColorSampler: NSObject {
     public var capturesAudio = false
     public var onProtectedContentDetected: (() -> Void)?
     public var onFrameAnalysis: ((FrameAnalysis) -> Void)?
+    public var onDiagnosticsUpdate: ((ProtectedContentBanner?) -> Void)?
     public var selectedDisplayID: CGDirectDisplayID?
     public var responsiveness: Double = 1.0
     public var protectedContentDetected: Bool { false }
+    public var protectedContentBanner: ProtectedContentBanner? { nil }
     
     public func start() async throws {
         throw NSError(domain: "ScreenCapture", code: -1,

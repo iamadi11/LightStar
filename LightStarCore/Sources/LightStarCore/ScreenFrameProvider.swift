@@ -12,7 +12,7 @@ public struct FrameAnalysis: Sendable {
     public let hasRectangularBlackRegion: Bool
     
     public var suspectedProtectedContent: Bool {
-        blackPixelPercentage > 0.6 && hasRectangularBlackRegion
+        ProtectedContentPolicy.isProtectedFrame(self)
     }
     
     public init(

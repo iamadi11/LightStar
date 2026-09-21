@@ -179,6 +179,15 @@ public extension FrameAnalysis {
         blackPixelPercentage: 0.1,
         hasRectangularBlackRegion: false
     )
+
+    /// Dark IDE chrome (VS Code-like). High-ish black share, no DRM rectangle.
+    static let darkCodeEditor = FrameAnalysis(
+        dominantHue: 0.55,
+        dominantSaturation: 0.35,
+        dominantBrightness: 0.42,
+        blackPixelPercentage: 0.48,
+        hasRectangularBlackRegion: false
+    )
     
     /// Create a custom frame.
     static func custom(hue: Double, saturation: Double, brightness: Double, blackPercent: Double = 0, hasBlackRegion: Bool = false) -> FrameAnalysis {

@@ -44,6 +44,13 @@ final class FrameAnalysisTests: XCTestCase {
         let frame = FrameAnalysis.normalDesktop
         XCTAssertFalse(frame.suspectedProtectedContent)
     }
+
+    func testDarkCodeEditorDoesNotLookLikeDRM() {
+        let frame = FrameAnalysis.darkCodeEditor
+        XCTAssertFalse(frame.suspectedProtectedContent)
+        XCTAssertFalse(frame.hasRectangularBlackRegion)
+        XCTAssertLessThan(frame.blackPixelPercentage, ProtectedContentPolicy.blackPixelThreshold)
+    }
     
     /// TEST_ID: F004
     /// Tests pure color frames (high saturation, no black).

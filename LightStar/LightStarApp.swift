@@ -427,9 +427,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         ble.retryBluetoothPermission()
     }
 
-    func applicationWillTerminate(_ notification: Notification) {
-        if let ref = hotKeyRef { UnregisterEventHotKey(ref) }
-        if let ref = hotKeyRef2 { UnregisterEventHotKey(ref) }
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        if let ref = hotKeyRef { UnregisterEventHotKey(ref); hotKeyRef = nil }
+        if let ref = hotKeyRef2 { UnregisterEventHotKey(ref); hotKeyRef2 = nil }
+        Task { @MainActor in
+            await ble.restoreBrowserHardwareAccelerationForTermination()
+            NSApp.reply(toApplicationShouldTerminate: true)
+        }
+        return .terminateLater
     }
 
     // MARK: - Sleep / Wake reconnect
