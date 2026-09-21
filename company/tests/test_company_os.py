@@ -214,17 +214,38 @@ class AdversarialTests(unittest.TestCase):
             "policy": {"require_evidence_for_tasks": True, "lock_product_decisions": ["PD-001", "PD-002"]},
             "discovery": {"scan_engineering_docs": False, "scan_todo_fixme": False},
         }
-        # Patch discovery to return nothing
-        with mock.patch("company.os.discovery.run_discovery", return_value=[]):
-            clock = CompanyClock(cfg)
-            # Ensure no READY items
-            pool = work_pool.load_pool()
-            for it in pool.get("items", []):
-                if it.get("status") == "READY":
-                    it["status"] = "DEFERRED"
-            work_pool.save_pool(pool)
-            result = clock.start(max_ticks=3)
-            self.assertEqual(result["company"].get("mode"), "IDLE_MONITORING")
+        # Isolate persistence — must not mutate live company/state/
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            import company.os.paths as paths_mod
+            import company.os.pool as pool_mod
+            import company.os.workers as workers_mod
+            import company.os.memory as memory_mod
+            import company.os.cadence as cadence_mod
+            import company.os.clock as clock_mod
+
+            state = tmp_path / "state"
+            state.mkdir()
+            from company.os.paths import write_json
+
+            write_json(state / "work_pool.json", {"version": 2, "items": [], "updated_at": "t"})
+            write_json(state / "company.json", {"version": 1, "mode": "STOPPED", "cycle": 0})
+            write_json(state / "workers.json", {"version": 1, "workers": []})
+            write_json(state / "memory.json", {"version": 1, "decisions": [], "rejects": [], "failures": [], "learnings": []})
+            write_json(state / "cadence.json", {"version": 1, "last_runs": {}})
+
+            with mock.patch.object(paths_mod, "STATE", state), mock.patch.object(
+                pool_mod, "POOL_PATH", state / "work_pool.json"
+            ), mock.patch.object(pool_mod, "LEGACY_POOL", state / "task_pool.json"), mock.patch.object(
+                workers_mod, "WORKERS_PATH", state / "workers.json"
+            ), mock.patch.object(memory_mod, "MEMORY_PATH", state / "memory.json"), mock.patch.object(
+                cadence_mod, "CADENCE_PATH", state / "cadence.json"
+            ), mock.patch.object(clock_mod, "COMPANY_PATH", state / "company.json"), mock.patch.object(
+                clock_mod, "STATE", state
+            ), mock.patch("company.os.discovery.run_discovery", return_value=[]):
+                clock = CompanyClock(cfg)
+                result = clock.start(max_ticks=3)
+                self.assertEqual(result["company"].get("mode"), "IDLE_MONITORING")
 
     def test_pd001_flip_rejected(self):
         item = work_pool.new_work_item(

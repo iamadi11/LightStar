@@ -5,6 +5,12 @@
       "confidence": 0.9,
       "decision": "repair:work_pool_ids+selftest",
       "rationale": "Company found data integrity + stale block; repaired with evidence"
+    },
+    {
+      "at": "2026-09-21T20:32:45+00:00",
+      "confidence": 0.95,
+      "decision": "idle:after-W-0009",
+      "rationale": "Discovered CI billing block; parked as BLOCKED; remaining pool only deferred hardware/Alexa \u2014 IDLE_MONITORING"
     }
   ],
   "failures": [
@@ -12,6 +18,11 @@
       "at": "2026-09-21T20:14:21+00:00",
       "detail": "self-tests failed",
       "work_id": "W-0006"
+    },
+    {
+      "at": "2026-09-21T20:32:04+00:00",
+      "detail": "GitHub Actions billing/spend limit \u2014 blocked on human account billing, not code",
+      "work_id": "W-0009"
     }
   ],
   "learnings": [
@@ -22,6 +33,10 @@
     {
       "at": "2026-09-21T20:25:33+00:00",
       "learning": "Duplicate W-0006 IDs from batch discovery; fixed run_discovery ID assignment. Self-test BLOCKED was timeout from nested MultiCycle."
+    },
+    {
+      "at": "2026-09-21T20:32:45+00:00",
+      "learning": "Cycle ~17: main CI failure run 35651233844 is GitHub Actions billing/spend limit \u2014 not a code regression. Surfaced as W-0009 BLOCKED (human billing). No product work invented."
     }
   ],
   "rejects": [],
@@ -30,6 +45,6 @@
     "Honor PD-001 / PD-002",
     "Prefer evidence over task count"
   ],
-  "updated_at": "2026-09-21T20:27:42+00:00",
+  "updated_at": "2026-09-21T20:32:45+00:00",
   "version": 1
 }

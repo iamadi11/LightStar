@@ -426,9 +426,83 @@
       "validation_requirements": [
         "Document deferral with hardware dependency"
       ]
+    },
+    {
+      "acceptance": [
+        "Record run URL + billing annotation in completion_evidence",
+        "Do not claim Swift validation fixed CI"
+      ],
+      "blocked_reason": "GitHub Actions billing/spend limit \u2014 blocked on human account billing, not code",
+      "claim": null,
+      "completion_evidence": [
+        "external: GitHub Actions billing/spend limit \u2014 cannot fix in-repo",
+        "ci_ref:https://github.com/iamadi11/LightStar/actions/runs/35651233844",
+        "action_required: human must raise Actions spend limit or fix account billing"
+      ],
+      "confidence": 0.9,
+      "created_at": "2026-09-21T20:32:04+00:00",
+      "decision_history": [
+        {
+          "at": "2026-09-21T20:32:04+00:00",
+          "by": "ops",
+          "event": "created",
+          "note": "discovered"
+        },
+        {
+          "at": "2026-09-21T20:32:04+00:00",
+          "by": "triage",
+          "event": "triage_ready",
+          "note": "passed quality gate"
+        },
+        {
+          "at": "2026-09-21T20:32:04+00:00",
+          "by": "ops-1",
+          "event": "claimed",
+          "note": "lease acquired"
+        },
+        {
+          "at": "2026-09-21T20:32:04+00:00",
+          "by": "ops-1",
+          "event": "execute_start",
+          "note": "begin"
+        },
+        {
+          "at": "2026-09-21T20:32:04+00:00",
+          "by": "executor",
+          "event": "blocked",
+          "note": "GitHub Actions billing/spend limit \u2014 blocked on human account billing, not code"
+        }
+      ],
+      "department": "ops",
+      "dependencies": [],
+      "desired_outcome": "Human raises Actions spend limit or fixes billing; do not invent product work",
+      "estimated_effort": "S",
+      "evidence": [
+        {
+          "kind": "ci",
+          "note": "conclusion=failure kind=billing_spend_limit sha=2467d16530a7a18bff13e98bef1110b6c98fde02",
+          "ref": "https://github.com/iamadi11/LightStar/actions/runs/35651233844"
+        }
+      ],
+      "fingerprint": "3bf547fb05fd724c",
+      "id": "W-0009",
+      "owner_worker": "ops-1",
+      "priority_rationale": "Broken CI or billing blocks evidence-based autonomy",
+      "problem": "Latest main CI did not start: GitHub Actions billing/spend limit \u2014 not a LightStar code regression",
+      "related_work": [],
+      "reviewer_worker": null,
+      "risks": [],
+      "status": "BLOCKED",
+      "title": "Main CI blocked by GitHub Actions billing/spend limit",
+      "type": "process",
+      "updated_at": "2026-09-21T20:32:04+00:00",
+      "validation_requirements": [
+        "Record run URL + billing annotation in completion_evidence",
+        "Do not claim Swift validation fixed CI"
+      ]
     }
   ],
   "migrated_from": "task_pool.json",
-  "updated_at": "2026-09-21T20:27:42+00:00",
+  "updated_at": "2026-09-21T20:32:04+00:00",
   "version": 2
 }
