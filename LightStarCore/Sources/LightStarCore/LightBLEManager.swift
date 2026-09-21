@@ -888,3 +888,16 @@ public enum SyncReconnectPolicy: Sendable {
 
     public static func restoreFlagAfterSyncInterrupted(wasSyncing: Bool) -> Bool { wasSyncing }
 }
+
+/// Combined sync keeps `.combined` when screen start was paused/superseded so
+/// display-wake `resumeScreenSync` still sees `isSyncingVideo`.
+public enum CombinedSyncAssembly: Sendable {
+    public static func resolvedMode(screenAvailable: Bool, audioAvailable: Bool) -> LightBLEManager.SyncMode {
+        switch (screenAvailable, audioAvailable) {
+        case (true, true): return .combined
+        case (true, false): return .video
+        case (false, true): return .audio
+        case (false, false): return .off
+        }
+    }
+}

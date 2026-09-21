@@ -75,5 +75,14 @@ Base: `a7de2c9` (ENG-001–034 already on main)
 - **Evidence:** After a primary drop, extras stay in `extraLights`. `didDiscover` assigned an extra as `self.peripheral`; GATT discovery then hit `extraLightIndex` and never started the connect sequence.
 - **Fix:** `shouldAdoptAdvertisementAsPrimary(isAlreadyExtra:)` rejects extras on the primary path.
 
+## Independent verification (f18a67e / 04527b6)
+
+[Independent excellence diff review](bc-a8560d8f-42d1-5ab1-967b-8fc607773ce5) of EE-001–006. EE-001/002/004/005 hold. EE-003 wiring was wrong after merge:
+
+### EE-009 — Combined/resume `CancellationError` must not kill or stall sync
+
+- **Classification:** Bug fix (EE-003 incomplete)
+- **Evidence:** Combined screen `CancellationError` returned immediately with `.combined` on, audio never started, and no sibling `stop()`. `resumeScreenSync` called `setSyncError` + `stopSyncInline()` on any throw, so a pause/start race on wake killed the session.
+- **Fix:** `CaptureSessionPolicy.disposition` continues combined (and keeps `.combined` when screen start was superseded) unless the transition task is cancelled. Resume ignores `CancellationError`. Samplers call `isSuperseded`.
 
 See `engineering-roadmap.md`. Metal GPU blocking, schedule persist off-main, TLS, and LightBLEManager splits were not implemented.

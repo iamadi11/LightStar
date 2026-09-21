@@ -51,7 +51,7 @@ public final class SystemAudioSampler: NSObject {
         try s.addStreamOutput(self, type: .audio, sampleHandlerQueue: queue)
         try await s.startCapture()
 
-        guard generation == gen else {
+        guard !CaptureSessionPolicy.isSuperseded(startGeneration: gen, currentGeneration: generation) else {
             // stop() ran while startCapture was pending — discard and clean up
             try? await s.stopCapture()
             throw CancellationError()

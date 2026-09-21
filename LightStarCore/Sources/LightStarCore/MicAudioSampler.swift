@@ -43,7 +43,7 @@ public final class MicAudioSampler {
             }
             if !granted { throw Self.micDeniedError }
         }
-        guard generation == gen else { throw CancellationError() }
+        guard !CaptureSessionPolicy.isSuperseded(startGeneration: gen, currentGeneration: generation) else { throw CancellationError() }
 
         #if os(iOS)
         let session = AVAudioSession.sharedInstance()
@@ -115,7 +115,7 @@ public final class MicAudioSampler {
             #endif
             throw error
         }
-        guard generation == gen else {
+        guard !CaptureSessionPolicy.isSuperseded(startGeneration: gen, currentGeneration: generation) else {
             input.removeTap(onBus: 0)
             eng.stop()
             if let s = fftSetup { vDSP_DFT_DestroySetup(s); fftSetup = nil }

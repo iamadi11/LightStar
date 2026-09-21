@@ -1,8 +1,8 @@
 # Engineering Improvement Tracker
 
 Last updated: 2026-09-21
-Branch: `cursor/engineering-excellence-audit-6022`
-Base: `origin/main` @ `a7de2c9`
+Branch: `cursor/ee003-capture-cancel-6022`
+Base: `origin/main` @ `04527b6`
 
 ## Status
 
@@ -27,6 +27,7 @@ Base: `origin/main` @ `a7de2c9`
 | EE-006 Mic Sendable captures | Implemented |
 | EE-007 Sync restore only if active at drop | Implemented |
 | EE-008 Do not adopt extras as primary | Implemented |
+| EE-009 Combined/resume CancellationError | Implemented |
 
 ## Product decisions
 
