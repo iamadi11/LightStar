@@ -72,6 +72,9 @@ public extension LightBLEManager {
                 if CombinedCapturePolicy.shouldCaptureAudioOnScreenStream(mode: self.syncMode) {
                     self.screenSampler.capturesAudio = true
                     self.setupAudioCallback(useMic: false, screenAudio: true)
+                } else if CombinedCapturePolicy.shouldStartStandaloneSystemAudio(mode: self.syncMode),
+                          self.systemAudio.onBands == nil {
+                    self.setupAudioCallback(useMic: false, screenAudio: false)
                 }
                 self.setupScreenCallback()
                 try await self.screenSampler.start()
@@ -203,8 +206,33 @@ public extension LightBLEManager {
             screenSampler.capturesAudio = CombinedCapturePolicy.shouldCaptureAudioOnScreenStream(mode: .combined)
             screenSampler.selectedDisplayID = selectedDisplayID
             setupScreenCallback()
-            setupAudioCallback(useMic: false, screenAudio: true)
+            setupAudioCallback(useMic: false, screenAudio: false)
             syncMode = .combined
+            // Audio-only SCStream first — that is the path Music Pulse already
+            // proves. Screen stays video-only so a static VS Code window can
+            // keep hue still while bass still drives brightness.
+            if CombinedCapturePolicy.shouldStartStandaloneSystemAudio(mode: .combined) {
+                do {
+                    try await systemAudio.start()
+                    if Task.isCancelled {
+                        await haltCaptureSources()
+                        return
+                    }
+                } catch {
+                    systemAudio.onBands = nil
+                    switch CaptureSessionPolicy.disposition(
+                        forStartError: error, transitionCancelled: Task.isCancelled
+                    ) {
+                    case .abortQuietTeardown:
+                        await haltCaptureSources()
+                        return
+                    case .continueWithoutSampler:
+                        break
+                    case .surfaceFailure:
+                        setSyncError(error)
+                    }
+                }
+            }
             do {
                 try await screenSampler.start()
                 if Task.isCancelled {
@@ -213,7 +241,6 @@ public extension LightBLEManager {
                 }
             } catch {
                 screenSampler.onColor = nil
-                screenSampler.onAudioBands = nil
                 switch CaptureSessionPolicy.disposition(
                     forStartError: error, transitionCancelled: Task.isCancelled
                 ) {
@@ -225,7 +252,8 @@ public extension LightBLEManager {
                 case .surfaceFailure:
                     setSyncError(error)
                     syncMode = CombinedSyncAssembly.resolvedMode(
-                        screenAvailable: false, audioAvailable: false
+                        screenAvailable: false,
+                        audioAvailable: systemAudio.onBands != nil
                     )
                     if syncMode == .off { restoreSteadyState() }
                 }
@@ -255,15 +283,11 @@ public extension LightBLEManager {
             let boostedS = smoothS < 0.3 ? min(1.0, smoothS * 3.0) : min(1.0, smoothS * 1.5)
             self.lastScreenH = smoothH
             self.lastScreenS = boostedS
-            let writeS = CombinedSyncMixer.combinedSaturation(
-                screenSaturation: boostedS, flashLevel: self.flashLevel
-            )
-            self.syncColor = Color(hue: smoothH, saturation: writeS, brightness: 1)
-            let beatActive = self.flashLevel > 0.12
-            guard hueDelta > 0.008 || beatActive || now - lastWrite > 0.5 else { return }
+            self.syncColor = Color(hue: smoothH, saturation: boostedS, brightness: 1)
+            guard hueDelta > 0.008 || now - lastWrite > 0.5 else { return }
             if CombinedSyncMixer.screenShouldWriteHue(mode: self.syncMode, flashLevel: self.flashLevel) {
                 lastWrite = now
-                self.write(Cmd.hue(smoothH, saturation: writeS))
+                self.write(Cmd.hue(smoothH, saturation: boostedS))
             }
             if CombinedSyncMixer.screenShouldWriteBrightness(
                 mode: self.syncMode, videoSyncBrightness: self.videoSyncBrightness
@@ -290,11 +314,8 @@ public extension LightBLEManager {
                 } else {
                     self.flashLevel = max(0.0, self.flashLevel * 0.82)
                 }
-                let sat = CombinedSyncMixer.combinedSaturation(
-                    screenSaturation: self.lastScreenS, flashLevel: self.flashLevel
-                )
-                self.syncColor = Color(hue: self.lastScreenH, saturation: sat, brightness: 1)
-                self.write(Cmd.hue(self.lastScreenH, saturation: sat))
+                // Hue stays with the screen sampler. Audio only writes BC05,
+                // same as Music Pulse, so a static window can keep color still.
                 self.write(Cmd.brightness(CombinedSyncMixer.combinedBrightness(
                     userBrightness: self.brightness,
                     bass: bands.bass,

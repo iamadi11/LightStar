@@ -2,8 +2,8 @@ import Accelerate
 import CoreMedia
 import Foundation
 
-/// Shared FFT + spectral-flux analyzer for system-audio taps (standalone
-/// SCStream or the audio output on the Combined screen stream).
+/// Shared FFT + spectral-flux analyzer for the audio-only SCStream used by
+/// Music and Combined.
 final class AudioFFTEngine: @unchecked Sendable {
     private let fftN = 512
     private var fftSetup: vDSP_DFT_Setup?

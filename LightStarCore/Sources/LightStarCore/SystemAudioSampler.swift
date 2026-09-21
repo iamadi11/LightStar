@@ -3,8 +3,8 @@ import ScreenCaptureKit
 import CoreMedia
 
 // Captures system audio mix via SCStream (requires Screen Recording permission).
-// Music-only path. Combined attaches this same FFT to the screen SCStream instead
-// of opening a second stream, which macOS often starves of audio buffers.
+// Music and Combined both use this audio-only stream. Combined's screen sampler
+// stays video-only — tapping audio on the video stream was silent.
 @MainActor
 public final class SystemAudioSampler: NSObject {
 

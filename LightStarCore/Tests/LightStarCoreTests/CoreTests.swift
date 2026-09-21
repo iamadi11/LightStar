@@ -1163,6 +1163,11 @@ final class ConnectAndSchedulePolicyTests: XCTestCase {
         XCTAssertGreaterThan(loudFull, 0.85, "full slider must still hit near-max on beats")
         XCTAssertGreaterThan(loudFull - quietFull, 0.5,
                              "Both must pulse brightness even when the slider is at 100%")
+        XCTAssertGreaterThan(
+            CombinedSyncMixer.combinedEnergy(bass: 0.8, rms: 0.2, flashLevel: 0),
+            0.8,
+            "Both must pulse from bass even when beat detection misses"
+        )
         XCTAssertEqual(
             CombinedSyncMixer.combinedSaturation(screenSaturation: 0.5, flashLevel: 0),
             0.5, accuracy: 0.001
@@ -1171,10 +1176,11 @@ final class ConnectAndSchedulePolicyTests: XCTestCase {
             CombinedSyncMixer.combinedSaturation(screenSaturation: 0.5, flashLevel: 1),
             0.85
         )
-        XCTAssertTrue(CombinedCapturePolicy.shouldCaptureAudioOnScreenStream(mode: .combined))
+        XCTAssertFalse(CombinedCapturePolicy.shouldCaptureAudioOnScreenStream(mode: .combined))
         XCTAssertFalse(CombinedCapturePolicy.shouldCaptureAudioOnScreenStream(mode: .video))
         XCTAssertTrue(CombinedCapturePolicy.shouldStartStandaloneSystemAudio(mode: .audio))
-        XCTAssertFalse(CombinedCapturePolicy.shouldStartStandaloneSystemAudio(mode: .combined))
+        XCTAssertTrue(CombinedCapturePolicy.shouldStartStandaloneSystemAudio(mode: .combined),
+                      "Both reuses the Music audio-only SCStream")
         XCTAssertFalse(SilenceAutoOffPolicy.shouldTurnAudioSyncOff(silentFor: 2))
         XCTAssertFalse(SilenceAutoOffPolicy.shouldTurnAudioSyncOff(silentFor: 120))
     }

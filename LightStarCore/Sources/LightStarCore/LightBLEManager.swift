@@ -991,9 +991,9 @@ public enum CombinedSyncMixer: Sendable {
         return false
     }
 
-    /// Slider is the ceiling. Quiet drops to `pulseFloor` of that ceiling.
-    /// Combined used to add pulse *above* the slider, which is a no-op at 100%.
-    public static let pulseFloor: Double = 0.08
+    /// Same response curve as Music Pulse, scaled by the slider. A static
+    /// VS Code window must still breathe with bass — flash/beat gating is extra.
+    public static let pulseFloor: Double = 0.03
 
     public static func combinedBrightness(
         userBrightness: Double,
@@ -1001,26 +1001,35 @@ public enum CombinedSyncMixer: Sendable {
         rms: Double,
         flashLevel: Double
     ) -> Double {
-        let ceiling = min(1.0, max(0.20, userBrightness))
-        let energy = min(1.0, max(0.0, bass * 1.6 + rms * 0.50 + flashLevel * 0.85))
-        return ceiling * (pulseFloor + (1.0 - pulseFloor) * energy)
+        let ceiling = min(1.0, max(0.15, userBrightness))
+        let pulse = min(1.0, max(pulseFloor, bass * 1.5 + rms * 0.25 + flashLevel * 0.35))
+        return ceiling * pulse
     }
 
-    /// Same screen hue; beats punch saturation so Combined is not "Screen with a dimmer".
+    /// Energy used for saturation punch; follows bass continuously, not just beats.
+    public static func combinedEnergy(bass: Double, rms: Double, flashLevel: Double) -> Double {
+        min(1.0, max(0.0, bass * 1.5 + rms * 0.25 + flashLevel * 0.35))
+    }
+
+    /// Same screen hue; music energy punches saturation.
     public static func combinedSaturation(screenSaturation: Double, flashLevel: Double) -> Double {
-        min(1.0, screenSaturation * (1.0 + 0.70 * flashLevel) + 0.18 * flashLevel)
+        min(1.0, screenSaturation * (1.0 + 0.65 * flashLevel) + 0.12 * flashLevel)
     }
 }
 
-/// Combined must not open a second SCStream. macOS often delivers screen
-/// frames and starves the audio-only stream, so Both looked like Screen.
+/// Combined must not tap audio on the screen SCStream. Music already works
+/// via a dedicated audio-only stream; Both reuses that sampler and keeps
+/// the screen stream video-only so hue can stay still on a static window.
 public enum CombinedCapturePolicy: Sendable {
     public static func shouldCaptureAudioOnScreenStream(mode: LightBLEManager.SyncMode) -> Bool {
-        mode == .combined
+        switch mode {
+        case .combined, .video, .audio, .off:
+            return false
+        }
     }
 
     public static func shouldStartStandaloneSystemAudio(mode: LightBLEManager.SyncMode) -> Bool {
-        mode == .audio
+        mode == .audio || mode == .combined
     }
 }
 

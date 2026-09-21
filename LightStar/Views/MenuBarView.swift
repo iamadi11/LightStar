@@ -612,7 +612,7 @@ struct SyncControlView: View {
             case .pulse:     return "Keeps current color · bass and beats drive brightness"
             case .frequency: return "Bass → red · mids → green · treble → blue"
             }
-        case .combined: return "Screen color · music pulses brightness and saturation on the beat"
+        case .combined: return "Screen color · music pulses brightness like Music Pulse"
         }
     }
 }
