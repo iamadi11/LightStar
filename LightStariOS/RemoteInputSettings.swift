@@ -53,7 +53,14 @@ final class RemoteInputSettings: ObservableObject {
         threeFingerHorizSwipe = d.object(forKey: Keys.threeFingerHorizSwipe) as? Bool ?? true
         threeFingerVertSwipe = d.object(forKey: Keys.threeFingerVertSwipe) as? Bool ?? true
         hapticClicks = d.object(forKey: Keys.hapticClicks) as? Bool ?? true
-        showScrollWheel = d.object(forKey: Keys.showScrollWheel) as? Bool ?? false
+        // The first ship wrote `false` on launch, so a missing migration flag
+        // means the user never chose to hide the wheel.
+        if d.object(forKey: Keys.scrollWheelDefaultedOn) == nil {
+            showScrollWheel = true
+            d.set(true, forKey: Keys.scrollWheelDefaultedOn)
+        } else {
+            showScrollWheel = d.object(forKey: Keys.showScrollWheel) as? Bool ?? true
+        }
         doubleClickThreshold = d.object(forKey: Keys.doubleClick) as? Double ?? 0.5
         gyroSensitivity = d.object(forKey: Keys.gyroSensitivity) as? Double ?? 1.0
     }
@@ -83,6 +90,7 @@ final class RemoteInputSettings: ObservableObject {
         static let threeFingerVertSwipe = "remoteThreeFingerVertSwipe"
         static let hapticClicks = "remoteHapticClicks"
         static let showScrollWheel = "remoteShowScrollWheel"
+        static let scrollWheelDefaultedOn = "remoteScrollWheelDefaultedOn"
         static let doubleClick = "remoteDoubleClickThreshold"
         static let gyroSensitivity = "remoteGyroSensitivity"
     }

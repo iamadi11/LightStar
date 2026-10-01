@@ -142,6 +142,8 @@ Messages are length-prefixed (4-byte big-endian) JSON:
 
 Two-finger scroll sends raw UIKit finger deltas. `MacInputController` maps them with `RemoteScrollMapping`: Natural scrolling ON (Mac default) posts the same polarity as the physical trackpad; Natural OFF inverts once. Do not invert again on iOS.
 
+The on-screen wheel sits beside the trackpad, not on top of it. It sends a continuous pixel stream (`ScrollWheelTracking`: a slow drag stays precise, a flick raises the gain, then a short coast). Ridges spin with that speed. Camera Control cannot drive it: iOS only delivers those events to an app that is actively using the camera, and LightStar does not start a camera session to read the button.
+
 Air pointer (iPhone gyro) reuses `mouseMove` deltas. Math lives in `GyroPointerMath.swift`. Add `NSMotionUsageDescription` on iOS.
 
 ### Alexa Echo (Hue bridge emulation)

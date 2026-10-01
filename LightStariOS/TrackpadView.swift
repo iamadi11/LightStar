@@ -31,6 +31,10 @@ struct TrackpadView: View {
                     HStack(spacing: 0) {
                         trackpadCanvas
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        if settings.showScrollWheel && !keyboardOpen {
+                            scrollWheel
+                                .padding(.leading, 8)
+                        }
                         if !keyboardOpen {
                             landscapeSideBar
                         }
@@ -39,10 +43,15 @@ struct TrackpadView: View {
                     .padding(.vertical, 8)
                 } else {
                     VStack(spacing: 0) {
-                        trackpadCanvas
-                            .padding(.horizontal, 12)
-                            .padding(.top, 8)
-                            .padding(.bottom, 4)
+                        HStack(alignment: .center, spacing: 8) {
+                            trackpadCanvas
+                            if settings.showScrollWheel && !keyboardOpen {
+                                scrollWheel
+                            }
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.top, 8)
+                        .padding(.bottom, 4)
                         if !keyboardOpen {
                             playbackBar
                                 .padding(.horizontal, 16)
@@ -61,6 +70,7 @@ struct TrackpadView: View {
                     }
                 }
             }
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: settings.showScrollWheel)
             .background(Color(uiColor: .systemGroupedBackground))
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 if keyboardOpen {
@@ -190,19 +200,6 @@ struct TrackpadView: View {
                         .padding(.top, 12)
                 }
             }
-            .overlay(alignment: .trailing) {
-                if settings.showScrollWheel {
-                    MouseScrollWheel(hapticsEnabled: settings.hapticClicks) { notches in
-                        client.sendScroll(
-                            deltaX: 0,
-                            deltaY: Double(notches) * ScrollWheelDetent.scrollPerNotch
-                        )
-                    }
-                    .padding(.trailing, 10)
-                    .padding(.vertical, 20)
-                    .transition(.opacity)
-                }
-            }
             .overlay {
                 if mediaHUD.visible {
                     RemoteLevelHUD(icon: mediaHUD.icon, title: mediaHUD.title, level: mediaHUD.level)
@@ -210,7 +207,13 @@ struct TrackpadView: View {
                 }
             }
             .animation(.easeOut(duration: 0.12), value: mediaHUD.visible)
-            .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: settings.showScrollWheel)
+    }
+
+    private var scrollWheel: some View {
+        MouseScrollWheel(hapticsEnabled: settings.hapticClicks) { pixels in
+            client.sendScroll(deltaX: 0, deltaY: pixels)
+        }
+        .transition(.opacity)
     }
 
     private var landscapeSideBar: some View {

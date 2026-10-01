@@ -896,6 +896,24 @@ final class ConnectAndSchedulePolicyTests: XCTestCase {
         XCTAssertEqual(up.remainder, 0, accuracy: 0.001)
     }
 
+    func testScrollWheelFlickOutrunsASlowDrag() {
+        let slow = ScrollWheelTracking.pixels(deltaPoints: 10, pointsPerSecond: 40)
+        let flick = ScrollWheelTracking.pixels(deltaPoints: 10, pointsPerSecond: 1400)
+        XCTAssertEqual(slow, 50, accuracy: 0.01)
+        XCTAssertEqual(flick, 280, accuracy: 0.01)
+        XCTAssertEqual(ScrollWheelTracking.visualTravel(deltaPoints: 10, pointsPerSecond: 40), 10, accuracy: 0.01)
+        XCTAssertGreaterThan(ScrollWheelTracking.visualTravel(deltaPoints: 10, pointsPerSecond: 1400), 20)
+        XCTAssertEqual(ScrollWheelTracking.pixels(deltaPoints: .nan, pointsPerSecond: 100), 0)
+        let coast = ScrollWheelTracking.coastVelocity(pointsPerSecond: 5000)
+        XCTAssertEqual(coast, ScrollWheelTracking.maxCoastPixelsPerSecond, accuracy: 0.01)
+        let step = ScrollWheelTracking.coast(velocityPixelsPerSecond: 1000, dt: 0.016)
+        XCTAssertGreaterThan(abs(step.delta), 0)
+        XCTAssertLessThan(abs(step.velocity), 1000)
+        let stop = ScrollWheelTracking.coast(velocityPixelsPerSecond: 50, dt: 0.016)
+        XCTAssertEqual(stop.delta, 0)
+        XCTAssertEqual(stop.velocity, 0)
+    }
+
     func testSystemLevelStepsFromLiveValueNotHalfScale() {
         let fromQuiet = SystemLevelStep.next(current: 0.25, delta: SystemLevelStep.notch)
         let fromHalf = SystemLevelStep.next(current: 0.5, delta: SystemLevelStep.notch)

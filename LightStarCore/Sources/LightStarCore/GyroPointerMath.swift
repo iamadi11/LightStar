@@ -202,6 +202,59 @@ public enum ScrollWheelDetent {
     }
 }
 
+/// On-screen wheel as a trackpad flick: every finger point scrolls immediately,
+/// a faster drag multiplies that, and lifting the finger coasts briefly.
+/// Ridge spacing stays visual. It does not quantize the pixel stream.
+public enum ScrollWheelTracking {
+    public static let slowGain: Double = 5
+    public static let fastGain: Double = 28
+    public static let maxCoastPixelsPerSecond: Double = 9000
+    public static let coastDecay: Double = 4.2
+    public static let coastStop: Double = 80
+
+    public static func gain(pointsPerSecond: Double) -> Double {
+        guard pointsPerSecond.isFinite else { return slowGain }
+        let speed = min(1800, abs(pointsPerSecond))
+        if speed < 80 { return slowGain }
+        if speed < 500 {
+            return slowGain + (speed - 80) / 420 * 9
+        }
+        if speed < 1200 {
+            return 14 + (speed - 500) / 700 * (fastGain - 14)
+        }
+        return fastGain
+    }
+
+    /// Ridge travel. A slow drag turns the wheel with the finger. A flick spins it faster.
+    public static func visualTravel(deltaPoints: Double, pointsPerSecond: Double) -> Double {
+        guard deltaPoints.isFinite else { return 0 }
+        let span = fastGain - slowGain
+        let t = min(1, max(0, (gain(pointsPerSecond: pointsPerSecond) - slowGain) / span))
+        return deltaPoints * (1 + t * 1.4)
+    }
+
+    public static func pixels(deltaPoints: Double, pointsPerSecond: Double) -> Double {
+        guard deltaPoints.isFinite else { return 0 }
+        return deltaPoints * gain(pointsPerSecond: pointsPerSecond)
+    }
+
+    public static func coastVelocity(pointsPerSecond: Double) -> Double {
+        guard pointsPerSecond.isFinite else { return 0 }
+        let raw = pointsPerSecond * gain(pointsPerSecond: pointsPerSecond)
+        return min(maxCoastPixelsPerSecond, max(-maxCoastPixelsPerSecond, raw))
+    }
+
+    /// Exponential decay over `dt` seconds. A crawl returns zero so the coast ends.
+    public static func coast(velocityPixelsPerSecond: Double, dt: Double) -> (delta: Double, velocity: Double) {
+        guard velocityPixelsPerSecond.isFinite, dt.isFinite, dt > 0, dt < 0.1 else {
+            return (0, 0)
+        }
+        let decayed = velocityPixelsPerSecond * exp(-coastDecay * dt)
+        if abs(decayed) < coastStop { return (0, 0) }
+        return (decayed * dt, decayed)
+    }
+}
+
 /// Finger deltas from UIKit (swipe up → negative dy) to CGEvent wheel units.
 /// Natural ON matches the physical Mac trackpad: do not invert. Natural OFF inverts once.
 public enum RemoteScrollMapping {

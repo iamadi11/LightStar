@@ -606,13 +606,15 @@ private final class PointerChannel: @unchecked Sendable {
         attach(nil)
     }
 
-    private static let maxAccumulated = 500.0
+    private static let maxMove = 500.0
+    /// A flick can move a screen of pixels in one frame. The wire format holds ±3276.
+    private static let maxScroll = 3000.0
 
     func addMove(deltaX: Double, deltaY: Double) {
         guard deltaX.isFinite, deltaY.isFinite else { return }
         lock.lock()
-        moveX = min(max(moveX + deltaX, -Self.maxAccumulated), Self.maxAccumulated)
-        moveY = min(max(moveY + deltaY, -Self.maxAccumulated), Self.maxAccumulated)
+        moveX = min(max(moveX + deltaX, -Self.maxMove), Self.maxMove)
+        moveY = min(max(moveY + deltaY, -Self.maxMove), Self.maxMove)
         let shouldFlush = !flushQueued
         if shouldFlush { flushQueued = true }
         lock.unlock()
@@ -622,8 +624,8 @@ private final class PointerChannel: @unchecked Sendable {
     func addScroll(deltaX: Double, deltaY: Double) {
         guard deltaX.isFinite, deltaY.isFinite else { return }
         lock.lock()
-        scrollX = min(max(scrollX + deltaX, -Self.maxAccumulated), Self.maxAccumulated)
-        scrollY = min(max(scrollY + deltaY, -Self.maxAccumulated), Self.maxAccumulated)
+        scrollX = min(max(scrollX + deltaX, -Self.maxScroll), Self.maxScroll)
+        scrollY = min(max(scrollY + deltaY, -Self.maxScroll), Self.maxScroll)
         let shouldFlush = !flushQueued
         if shouldFlush { flushQueued = true }
         lock.unlock()
