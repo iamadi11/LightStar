@@ -186,6 +186,28 @@ public enum RemoteTrackpadSwipe: Equatable, Sendable {
     }
 }
 
+/// One three-finger slide, one desktop or Exposé change. A second sample of the same slide does not repeat it.
+public enum RemoteSwipeCommit {
+    public static func action(
+        dx: Double,
+        dy: Double,
+        alreadyCommitted: Bool,
+        allowHorizontal: Bool,
+        allowVertical: Bool,
+        threshold: Double = 36
+    ) -> MacSystemAction? {
+        guard !alreadyCommitted, dx.isFinite, dy.isFinite else { return nil }
+        guard let swipe = RemoteTrackpadSwipe.from(dx: dx, dy: dy, threshold: threshold) else { return nil }
+        switch swipe {
+        case .left, .right:
+            guard allowHorizontal else { return nil }
+        case .up, .down:
+            guard allowVertical else { return nil }
+        }
+        return swipe.macAction
+    }
+}
+
 /// Notched wheel: drag accumulates until it crosses one notch, then that
 /// notch is a single scroll tick. Remainder stays so the wheel doesn't jump.
 public enum ScrollWheelDetent {

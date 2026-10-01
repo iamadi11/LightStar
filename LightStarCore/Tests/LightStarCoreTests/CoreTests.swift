@@ -627,6 +627,16 @@ final class RemoteProtocolTests: XCTestCase {
         XCTAssertEqual(RemoteTrackpadSwipe.from(dx: 12, dy: -80), .up)
         XCTAssertEqual(RemoteTrackpadSwipe.from(dx: 12, dy: -80)?.macAction, .missionControl)
         XCTAssertNil(RemoteTrackpadSwipe.from(dx: 20, dy: -20))
+        XCTAssertEqual(
+            RemoteSwipeCommit.action(dx: -50, dy: 8, alreadyCommitted: false, allowHorizontal: true, allowVertical: true),
+            .spaceRight
+        )
+        XCTAssertNil(
+            RemoteSwipeCommit.action(dx: -50, dy: 8, alreadyCommitted: true, allowHorizontal: true, allowVertical: true)
+        )
+        XCTAssertNil(
+            RemoteSwipeCommit.action(dx: -50, dy: 8, alreadyCommitted: false, allowHorizontal: false, allowVertical: true)
+        )
 
         let portrait = RemotePointerOrientation.portrait.mapPointer(dx: 10, dy: 4)
         XCTAssertEqual(portrait.0, 10)

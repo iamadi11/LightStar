@@ -527,6 +527,7 @@ struct MacTrackpadSurface: UIViewRepresentable {
     func updateUIView(_ uiView: MacTrackpadUIView, context: Context) {
         uiView.client = client
         uiView.settings = settings
+        uiView.swipePan.isEnabled = settings.threeFingerDrag == false
     }
 }
 
@@ -552,6 +553,9 @@ final class MacTrackpadUIView: UIView {
     private var lastScrollVX: CGFloat = 0
     private var lastScrollVY: CGFloat = 0
     private var velocityEMA = 0.0
+    private var swipeCommitted = false
+    private var swipeLatched = false
+    fileprivate let swipePan = UIPanGestureRecognizer()
     private let haptic = UIImpactFeedbackGenerator(style: .light)
     private let tapSlop: CGFloat = 10
     private var lastAspectLandscape: Bool?
@@ -562,6 +566,13 @@ final class MacTrackpadUIView: UIView {
         isMultipleTouchEnabled = true
         isExclusiveTouch = true
         isOpaque = false
+        swipePan.minimumNumberOfTouches = 3
+        swipePan.maximumNumberOfTouches = 4
+        swipePan.cancelsTouchesInView = false
+        swipePan.delaysTouchesBegan = false
+        swipePan.addTarget(self, action: #selector(swipePanned(_:)))
+        swipePan.delegate = self
+        addGestureRecognizer(swipePan)
         backgroundColor = UIColor.secondarySystemGroupedBackground
         layer.cornerRadius = 20
         layer.cornerCurve = .continuous
@@ -573,6 +584,24 @@ final class MacTrackpadUIView: UIView {
     }
 
     required init?(coder: NSCoder) { nil }
+
+    override var editingInteractionConfiguration: UIEditingInteractionConfiguration {
+        .none
+    }
+
+    @objc private func swipePanned(_ pan: UIPanGestureRecognizer) {
+        guard settings?.threeFingerDrag != true else { return }
+        let translation = pan.translation(in: self)
+        switch pan.state {
+        case .began:
+            swipeLatched = true
+            cancelMomentum()
+        case .changed, .ended, .cancelled:
+            commitSwipe(dx: translation.x, dy: translation.y)
+        default:
+            break
+        }
+    }
 
     override func layoutSubviews() {
         super.layoutSubviews()
@@ -611,6 +640,10 @@ final class MacTrackpadUIView: UIView {
             showFingerDot(id, at: loc)
         }
         peakFingerCount = max(peakFingerCount, activeIDs.count)
+        if activeIDs.count >= 3, settings?.threeFingerDrag != true {
+            swipeLatched = true
+            cancelMomentum()
+        }
         if activeIDs.count == 1 {
             scheduleLongPress()
         } else {
@@ -666,6 +699,12 @@ final class MacTrackpadUIView: UIView {
             if activeIDs.count == 1 { cancelLongPress() }
         }
 
+        if swipeLatched, settings?.threeFingerDrag != true {
+            handleThreeFingerMove(dx: dx, dy: dy, dt: dt)
+            commitSwipe(dx: threeFingerTravel.width, dy: threeFingerTravel.height)
+            return
+        }
+
         switch RemoteTrackpadMoveKind.kind(fingerCount: activeIDs.count, isClickDrag: isClickDrag) {
         case .pointer:
             sendPointer(dx: dx, dy: dy, dt: dt)
@@ -710,7 +749,7 @@ final class MacTrackpadUIView: UIView {
         }
         if activeIDs.isEmpty {
             let duration = ProcessInfo.processInfo.systemUptime - touchBeganAt
-            if !cancelled {
+            if !cancelled || swipeLatched {
                 finishGesture(duration: duration)
             } else if isClickDrag {
                 client?.sendMouseUp()
@@ -736,25 +775,9 @@ final class MacTrackpadUIView: UIView {
             return
         }
 
-        if peakFingerCount >= 3, maxTravel >= 70 {
-            let swipe = RemoteTrackpadSwipe.from(
-                dx: Double(threeFingerTravel.width),
-                dy: Double(threeFingerTravel.height)
-            )
-            if let swipe {
-                let allowHoriz = settings?.threeFingerHorizSwipe != false
-                let allowVert = settings?.threeFingerVertSwipe != false
-                let allowed: Bool
-                switch swipe {
-                case .left, .right: allowed = allowHoriz
-                case .up, .down: allowed = allowVert
-                }
-                if allowed {
-                    client?.sendMacAction(swipe.macAction)
-                    clickHaptic()
-                    return
-                }
-            }
+        if swipeLatched || peakFingerCount >= 3 {
+            commitSwipe(dx: threeFingerTravel.width, dy: threeFingerTravel.height)
+            if swipeCommitted { return }
         }
 
         if peakFingerCount <= 1,
@@ -791,6 +814,8 @@ final class MacTrackpadUIView: UIView {
         peakFingerCount = 0
         maxTravel = 0
         threeFingerTravel = .zero
+        swipeCommitted = false
+        swipeLatched = false
         isClickDrag = false
         lastLocation.removeAll()
         startLocation.removeAll()
@@ -888,10 +913,32 @@ final class MacTrackpadUIView: UIView {
         fingerDots.removeAll()
     }
 
+    private func commitSwipe(dx: CGFloat, dy: CGFloat) {
+        guard let action = RemoteSwipeCommit.action(
+            dx: Double(dx),
+            dy: Double(dy),
+            alreadyCommitted: swipeCommitted,
+            allowHorizontal: settings?.threeFingerHorizSwipe != false,
+            allowVertical: settings?.threeFingerVertSwipe != false
+        ) else { return }
+        swipeCommitted = true
+        client?.sendMacAction(action)
+        clickHaptic()
+    }
+
     private func clickHaptic() {
         guard settings?.hapticClicks != false else { return }
         haptic.impactOccurred()
         haptic.prepare()
+    }
+}
+
+extension MacTrackpadUIView: UIGestureRecognizerDelegate {
+    func gestureRecognizer(
+        _ gestureRecognizer: UIGestureRecognizer,
+        shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
+    ) -> Bool {
+        gestureRecognizer === swipePan
     }
 }
 

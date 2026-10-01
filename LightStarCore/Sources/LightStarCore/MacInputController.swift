@@ -145,7 +145,7 @@ public final class MacInputController: ObservableObject {
                 pressHotkey(keyCode: 0x7E, modifiers: .maskControl)
             }
         case .applicationWindows:
-            pressHotkey(keyCode: 0x7D, modifiers: .maskControl)
+            postHeldChord(keyCode: 0x7D, modifiers: .maskControl)
         case .desktop:
             if functionKeysAreStandard {
                 pressHotkey(keyCode: 0x67)
@@ -175,14 +175,59 @@ public final class MacInputController: ObservableObject {
         case .screenshotSelection:
             pressHotkey(keyCode: 0x15, modifiers: [.maskCommand, .maskShift])
         case .spaceLeft:
-            pressHotkey(keyCode: 0x7B, modifiers: .maskControl)
+            postHeldChord(keyCode: 0x7B, modifiers: .maskControl)
         case .spaceRight:
-            pressHotkey(keyCode: 0x7C, modifiers: .maskControl)
+            postHeldChord(keyCode: 0x7C, modifiers: .maskControl)
         case .centerPointer:
             pointerInjector.centerOnCurrentDisplay()
         case .wakeDisplay:
             wakeDisplay()
         }
+    }
+
+    /// Control+arrow is how macOS changes Spaces and App Exposé. The shortcut matcher
+    /// drops the chord when every event shares one timestamp, so each step is stamped later.
+    private func postHeldChord(keyCode: UInt16, modifiers: CGEventFlags) {
+        guard ensureAccessibility() else { return }
+        let steps = chordEvents(keyCode: keyCode, modifiers: modifiers)
+        let gap: UInt64 = 20_000_000
+        let start = clock_gettime_nsec_np(CLOCK_UPTIME_RAW) &- gap * UInt64(max(steps.count - 1, 0))
+        for (index, step) in steps.enumerated() {
+            step.event.flags = step.flags
+            step.event.timestamp = start &+ gap * UInt64(index)
+            step.event.post(tap: .cghidEventTap)
+        }
+    }
+
+    private func chordEvents(keyCode: UInt16, modifiers: CGEventFlags) -> [(event: CGEvent, flags: CGEventFlags)] {
+        let modifierKeys: [(CGEventFlags, UInt16)] = [
+            (.maskCommand, 0x37),
+            (.maskShift, 0x38),
+            (.maskAlternate, 0x3A),
+            (.maskControl, 0x3B),
+            (.maskSecondaryFn, 0x3F),
+        ]
+        let active = modifierKeys.filter { modifiers.contains($0.0) }
+        var steps: [(event: CGEvent, flags: CGEventFlags)] = []
+        for (_, code) in active {
+            if let event = CGEvent(keyboardEventSource: eventSource, virtualKey: code, keyDown: true) {
+                steps.append((event, modifiers))
+            }
+        }
+        if let down = CGEvent(keyboardEventSource: eventSource, virtualKey: keyCode, keyDown: true) {
+            steps.append((down, modifiers))
+        }
+        if let up = CGEvent(keyboardEventSource: eventSource, virtualKey: keyCode, keyDown: false) {
+            steps.append((up, modifiers))
+        }
+        var remaining = modifiers
+        for (flag, code) in active.reversed() {
+            remaining.remove(flag)
+            if let event = CGEvent(keyboardEventSource: eventSource, virtualKey: code, keyDown: false) {
+                steps.append((event, remaining))
+            }
+        }
+        return steps
     }
 
     public func pressHotkey(keyCode: UInt16, modifiers: CGEventFlags = []) {
