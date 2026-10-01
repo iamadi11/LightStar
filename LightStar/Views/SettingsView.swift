@@ -10,48 +10,6 @@ struct SettingsView: View {
     @AppStorage("launchAtLogin") private var launchAtLogin = false
     @AppStorage("autoConnectOnLaunch") private var autoConnectOnLaunch = true
     @AppStorage(AlexaHueBridge.enabledDefaultsKey) private var alexaBridgeEnabled = false
-    @AppStorage(YeelightLampController.enabledDefaultsKey) private var yeelightMirrorEnabled = false
-    @Environment(YeelightLampController.self) private var yeelight
-    @Environment(HomeKitLampController.self) private var homeKitLamp
-    @State private var lampSetupCode = ""
-
-    private var isLampCodeEntry: Bool {
-        switch homeKitLamp.state {
-        case .needsCode, .failed, .pairing: return true
-        default: return false
-        }
-    }
-
-    private var lampStatusText: String {
-        switch homeKitLamp.state {
-        case .following(let name): return "Following with \(name)"
-        case .needsCode: return "Enter the code on the lamp base"
-        case .pairing: return "Connecting…"
-        case .failed(let message): return message
-        case .searching where yeelightMirrorEnabled: return "Looking for the lamp…"
-        default:
-            break
-        }
-        switch yeelight.state {
-        case .stopped: return "Off"
-        case .searching: return "Looking on the network…"
-        case .connecting(let name): return "Connecting to \(name)…"
-        case .following(let name): return "Following with \(name)"
-        case .notFound: return "Not found"
-        case .failed(let message): return message
-        }
-    }
-
-    private var yeelightStatusText: String {
-        switch yeelight.state {
-        case .stopped: return "Off"
-        case .searching: return "Looking on the network…"
-        case .connecting(let name): return "Connecting to \(name)…"
-        case .following(let name): return "Following with \(name)"
-        case .notFound: return "Not found"
-        case .failed(let message): return message
-        }
-    }
 
     private var alexaBridgeStatusText: String? {
         guard let bridge = (NSApp.delegate as? AppDelegate)?.alexaBridge else { return nil }
@@ -131,26 +89,11 @@ struct SettingsView: View {
                 }
             }
 
-            Section("Mi Bedside Lamp") {
-                Toggle("Follow the light bar", isOn: $yeelightMirrorEnabled)
-                    .onChange(of: yeelightMirrorEnabled) { _, enabled in
-                        (NSApp.delegate as? AppDelegate)?.setYeelightMirrorEnabled(enabled)
-                    }
-                Text("Same colour, brightness, and power as the Bluetooth bar. The bar’s commands are not changed. Screen and music sync follow along.")
+            Section("Lights") {
+                LightTargetSection()
+                Text("LED strip is the Bluetooth bar. Mi lamp is the bedside lamp. Both sends the same colour, brightness, and power to each.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                Text("This lamp has no LAN Control switch. Xiaomi removed it. LightStar uses the 8-digit HomeKit code on the bottom of the lamp, and in the little booklet.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                LabeledContent("Lamp", value: lampStatusText)
-                if yeelightMirrorEnabled && isLampCodeEntry {
-                    TextField("Code on the lamp base", text: $lampSetupCode)
-                        .monospacedDigit()
-                    Button("Connect lamp") {
-                        homeKitLamp.connect(setupCode: lampSetupCode)
-                    }
-                    .disabled(lampSetupCode.filter(\.isNumber).count != 8)
-                }
             }
 
             Section("Alexa") {

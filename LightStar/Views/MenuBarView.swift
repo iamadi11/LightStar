@@ -6,6 +6,7 @@ import ServiceManagement
 
 struct MenuBarView: View {
     @Environment(LightBLEManager.self) private var ble
+    @Environment(HomeKitLampController.self) private var homeKitLamp
     @Environment(PresetStore.self) private var presets
     @Environment(ScheduleStore.self) private var schedules
     @State private var selectedTab = 0
@@ -91,7 +92,9 @@ struct MenuBarView: View {
                 .buttonStyle(.plain)
                 .help("Settings (⌘,)")
                 .accessibilityLabel("Settings")
-                connectionButton
+                if ble.outputTarget.sendsToStrip {
+                    connectionButton
+                }
             }
         }
         .padding(.horizontal, 16)
@@ -99,13 +102,25 @@ struct MenuBarView: View {
         .padding(.bottom, 8)
     }
 
+    private var lampReady: Bool {
+        if case .following = homeKitLamp.state { return true }
+        return false
+    }
+
+    private var outputReachable: Bool {
+        let strip = ble.outputTarget.sendsToStrip && ble.connectionState == .connected
+        let lamp = ble.outputTarget.sendsToLamp && lampReady
+        return strip || lamp
+    }
+
     @ViewBuilder
     private var contentView: some View {
-        if ble.connectionState == .connected {
+        LightTargetSection()
+            .padding(.horizontal, 16)
+            .padding(.top, 4)
+            .padding(.bottom, 8)
+        if outputReachable {
             controlsSection
-                .transition(.opacity.combined(with: .offset(y: 6)))
-        } else {
-            statusSection
                 .transition(.opacity.combined(with: .offset(y: 6)))
         }
     }
@@ -120,12 +135,32 @@ struct MenuBarView: View {
     }
 
     private var statusLine: String {
-        if let err = ble.connectionError { return err }
+        switch ble.outputTarget {
+        case .strip:
+            return stripStatusLine
+        case .lamp:
+            return lampStatusLine
+        case .both:
+            return "\(stripStatusLine) · \(lampStatusLine)"
+        }
+    }
+
+    private var stripStatusLine: String {
+        if let err = ble.connectionError, ble.outputTarget == .strip { return err }
         switch ble.connectionState {
-        case .connected:    return ble.isOn ? "Connected · On" : "Connected · Off"
-        case .scanning:     return "Scanning for device…"
-        case .connecting:   return "Connecting…"
-        case .disconnected: return "Not connected"
+        case .connected: return ble.isOn ? "Strip on" : "Strip off"
+        case .scanning: return "Finding strip"
+        case .connecting: return "Connecting strip"
+        case .disconnected: return "Strip off"
+        }
+    }
+
+    private var lampStatusLine: String {
+        switch homeKitLamp.state {
+        case .following: return ble.isOn ? "Lamp on" : "Lamp off"
+        case .pairing, .searching: return "Finding lamp"
+        case .needsCode, .failed: return "Lamp needs code"
+        case .stopped: return "Lamp off"
         }
     }
 
@@ -153,52 +188,6 @@ struct MenuBarView: View {
 
     // MARK: - Sections
 
-    private var statusSection: some View {
-        VStack(spacing: 12) {
-            if ble.connectionState == .scanning || ble.connectionState == .connecting {
-                ProgressView()
-                    .controlSize(.large)
-                    .padding(.bottom, 4)
-                Text(stateLabel)
-                    .foregroundStyle(.secondary)
-                    .font(.subheadline)
-                Button("Cancel") { ble.disconnect() }
-                    .buttonStyle(.bordered)
-                    .controlSize(.regular)
-            } else {
-                Image(systemName: stateIcon)
-                    .font(.system(size: 40))
-                    .foregroundStyle(.tertiary)
-                    .padding(.bottom, 4)
-                if let err = ble.connectionError {
-                    Text(err)
-                        .font(.system(size: 11))
-                        .foregroundStyle(.red)
-                        .multilineTextAlignment(.center)
-                        .fixedSize(horizontal: false, vertical: true)
-                } else {
-                    Text("No light bar connected")
-                        .foregroundStyle(.secondary)
-                        .font(.subheadline)
-                }
-                if ble.bleNeedsPermission {
-                    Button("Open Bluetooth Settings") {
-                        NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Bluetooth")!)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.regular)
-                } else {
-                    Button("Connect to Light Bar") { ble.connect() }
-                        .buttonStyle(.borderedProminent)
-                        .controlSize(.large)
-                }
-            }
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 28)
-        .padding(.horizontal, 16)
-    }
-
     private var controlsSection: some View {
         VStack(spacing: 16) {
             HStack(spacing: 12) {
@@ -218,9 +207,7 @@ struct MenuBarView: View {
                     .help("Global shortcut: ⌘⇧L toggles power")
             }
 
-            let live = StripCommandPolicy.canSendStripCommands(
-                isConnected: true, isOn: ble.isOn
-            )
+            let live = ble.isOn && outputReachable
             if !live {
                 Text("Turn the light on to use color, presets, and sync.")
                     .font(.system(size: 11))
@@ -701,24 +688,6 @@ private extension MenuBarView {
                        blue: Double(b), brightness: ble.brightness)
         presets.presets.append(p)
         presets.save()
-    }
-
-    var stateIcon: String {
-        switch ble.connectionState {
-        case .disconnected: return "wifi.slash"
-        case .scanning:     return "antenna.radiowaves.left.and.right"
-        case .connecting:   return "arrow.triangle.2.circlepath"
-        case .connected:    return "checkmark.circle"
-        }
-    }
-
-    var stateLabel: String {
-        switch ble.connectionState {
-        case .disconnected: return "Not connected"
-        case .scanning:     return "Scanning…"
-        case .connecting:   return "Connecting…"
-        case .connected:    return "Connected"
-        }
     }
 
     var connectionButtonLabel: String {

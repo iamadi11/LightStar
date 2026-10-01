@@ -97,7 +97,8 @@ struct HomeKitSRPClient {
 
     private func hNxorHg() -> Data {
         let n = Data(SHA512.hash(data: HomeKitSRP.pad(HomeKitSRP.modulus)))
-        let g = Data(SHA512.hash(data: HomeKitSRP.pad(HomeKitSRP.generator)))
+        // HomeKit hashes g as its minimal bytes. Padding it to N makes the proof fail.
+        let g = Data(SHA512.hash(data: Data([UInt8(HomeKitSRP.generator)])))
         return Data(zip(n, g).map { $0 ^ $1 })
     }
 

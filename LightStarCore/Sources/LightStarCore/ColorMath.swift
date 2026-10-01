@@ -17,6 +17,25 @@ public enum ColorMath {
         (305, 351), (310, 353), (320, 355), (330, 357), (340, 358), (360, 360)
     ]
 
+    /// Hue of the winning histogram bin, shifted toward the heavier neighbour.
+    /// A flat 10° bin centre is up to 5° off the pixels that actually voted.
+    public static func screenHue(histogram: [Double], peak: Int) -> Double {
+        let n = histogram.count
+        guard n > 0, histogram.indices.contains(peak), histogram[peak] > 0 else { return 0 }
+        let left = histogram[(peak - 1 + n) % n]
+        let right = histogram[(peak + 1) % n]
+        let center = histogram[peak]
+        let denom = left - 2 * center + right
+        var delta = 0.0
+        if abs(denom) > 1e-9 {
+            delta = min(0.5, max(-0.5, 0.5 * (left - right) / denom))
+        }
+        var hue = (Double(peak) + 0.5 + delta) / Double(n)
+        if hue < 0 { hue += 1 }
+        if hue >= 1 { hue -= 1 }
+        return hue
+    }
+
     public static func correctedHueDeg(_ h: Double) -> Double {
         let deg = (h * 360).truncatingRemainder(dividingBy: 360)
         for i in 0..<hueLUT.count - 1 {

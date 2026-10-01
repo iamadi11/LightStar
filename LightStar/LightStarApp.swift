@@ -97,9 +97,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             alexaBridge.start()
         }
         configureYeelight()
-        if UserDefaults.standard.object(forKey: YeelightLampController.enabledDefaultsKey) as? Bool ?? false {
-            yeelight.start()
-            homeKitLamp.start()
+        ble.onOutputTargetChange = { [weak self] target in
+            self?.applyLampFollow(target.sendsToLamp)
+        }
+        if ble.outputTarget.sendsToLamp {
+            applyLampFollow(true)
         }
     }
 
@@ -164,6 +166,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func setYeelightMirrorEnabled(_ enabled: Bool) {
+        ble.outputTarget = enabled ? .both : .strip
+    }
+
+    private func applyLampFollow(_ enabled: Bool) {
         UserDefaults.standard.set(enabled, forKey: YeelightLampController.enabledDefaultsKey)
         if enabled {
             configureYeelight()
@@ -204,6 +210,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let hosting = NSHostingController(
             rootView: MenuBarView()
                 .environment(ble)
+                .environment(homeKitLamp)
                 .environment(presets)
                 .environment(schedules)
         )
@@ -456,6 +463,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         let root = ControlWindowView()
             .environment(ble)
+            .environment(homeKitLamp)
             .environment(presets)
             .environment(schedules)
         let vc = NSHostingController(rootView: root)

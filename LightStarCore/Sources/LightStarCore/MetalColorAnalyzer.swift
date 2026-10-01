@@ -220,7 +220,10 @@ public final class MetalColorAnalyzer: @unchecked Sendable {
         let hasRectangularBlackRegion = Int(darkRowCount) > height / 3 || Int(darkColCount) > width / 3
         
         if maxVote > 0 && binCount[maxBin] > 0 {
-            let hue = (Double(maxBin) + 0.5) / Double(histogramBins)
+            let hue = ColorMath.screenHue(
+                histogram: (0..<histogramBins).map { Double(histogram[$0]) },
+                peak: maxBin
+            )
             let count = Double(binCount[maxBin])
             let sat = Double(binSatSum[maxBin]) / count / 10000.0
             let val = Double(binValSum[maxBin]) / count / 10000.0
@@ -309,7 +312,7 @@ public final class MetalColorAnalyzer: @unchecked Sendable {
         
         if let maxBin = histogram.indices.max(by: { histogram[$0] < histogram[$1] }),
            histogram[maxBin] > 0, binCount[maxBin] > 0 {
-            let hue = (Double(maxBin) + 0.5) / Double(histogramBins)
+            let hue = ColorMath.screenHue(histogram: histogram, peak: maxBin)
             let n = Double(binCount[maxBin])
             return FrameAnalysis(
                 dominantHue: hue,

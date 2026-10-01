@@ -4,6 +4,7 @@ import LightStarCore
 /// Full-size control surface — the answer to the 320pt popover being too cramped.
 struct ControlWindowView: View {
     @Environment(LightBLEManager.self) private var ble
+    @Environment(HomeKitLampController.self) private var homeKitLamp
     @Environment(PresetStore.self) private var presets
 
     var body: some View {
@@ -15,7 +16,7 @@ struct ControlWindowView: View {
                         get: { ble.isOn },
                         set: { ble.setPower(on: $0) }
                     ))
-                    .disabled(ble.connectionState != .connected)
+                    .disabled(!outputReachable)
                     Text("Effects, animations, and schedules live here. The menu-bar popover stays on power, color, presets, and sync.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
@@ -25,19 +26,15 @@ struct ControlWindowView: View {
         } detail: {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
-                    if ble.connectionState != .connected {
-                        ContentUnavailableView(
-                            ble.connectionError ?? "Not connected",
-                            systemImage: "lightbulb.slash",
-                            description: Text("Use Connect in the menu bar, or tap below.")
-                        )
-                        Button("Connect") { ble.connect() }
-                            .buttonStyle(.borderedProminent)
-                            .frame(maxWidth: .infinity)
+                    LightTargetSection()
+                    if !outputReachable {
+                        Text(ble.outputTarget == .lamp
+                             ? "Connect the Mi lamp above. Colour and power go to the lamp."
+                             : "Connect a light above to change colour, brightness, and power.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
                     } else {
-                        let live = StripCommandPolicy.canSendStripCommands(
-                            isConnected: true, isOn: ble.isOn
-                        )
+                        let live = ble.isOn && outputReachable
                         if !live {
                             Text("Turn the light on to change color, sync, and effects. Schedules still run when the light is off.")
                                 .font(.footnote)
@@ -50,10 +47,12 @@ struct ControlWindowView: View {
                             presetsBlock
                             Divider()
                             SyncControlView()
-                            Divider()
-                            EffectsView()
-                            Divider()
-                            AnimationsView()
+                            if ble.outputTarget.sendsToStrip {
+                                Divider()
+                                EffectsView()
+                                Divider()
+                                AnimationsView()
+                            }
                         }
                         .stripOutputEnabled(live)
                         Divider()
@@ -70,6 +69,17 @@ struct ControlWindowView: View {
         }
         .tint(ble.stripAccent)
         .frame(minWidth: 640, minHeight: 520)
+    }
+
+    private var lampReady: Bool {
+        if case .following = homeKitLamp.state { return true }
+        return false
+    }
+
+    private var outputReachable: Bool {
+        let strip = ble.outputTarget.sendsToStrip && ble.connectionState == .connected
+        let lamp = ble.outputTarget.sendsToLamp && lampReady
+        return strip || lamp
     }
 
     private var statusText: String {

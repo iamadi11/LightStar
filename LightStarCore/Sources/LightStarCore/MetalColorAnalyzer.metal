@@ -58,9 +58,8 @@ kernel void computeHistogram(
         atomic_fetch_add_explicit(blackCount, 1, memory_order_relaxed);
     }
     
-    // Edge weighting: 3x weight for edge pixels
-    bool isEdge = (gid.x == 0 || gid.x == width - 1 || gid.y == 0 || gid.y == height - 1);
-    float weight = isEdge ? 3.0 : 1.0;
+    // Equal weight. A 3x border was letting window chrome outvote the picture.
+    float weight = 1.0;
     
     // Only contribute to histogram if pixel is colorful enough
     if (v > 0.12 && s > 0.15) {

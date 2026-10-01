@@ -74,6 +74,7 @@ public final class HomeKitLampController {
             state = .failed("Enter the 8-digit code from the base of the lamp")
             return
         }
+        UserDefaults.standard.set(String(code.filter(\.isNumber)), forKey: "homekitLampSetupCode")
         state = .pairing
         engine.pair(code: code)
     }
@@ -94,6 +95,7 @@ private enum HomeKitLampEvent: Sendable {
 private struct HomeKitLampTarget: Sendable {
     var name: String
     var endpoint: NWEndpoint
+    var interface: NWInterface?
     var deviceID: String
     var unpaired: Bool
 }
@@ -114,6 +116,7 @@ private final class HomeKitLampEngine: @unchecked Sendable {
     private var sent = YeelightMirrorState()
     private var flushScheduled = false
     private var generation = 0
+    private var pairAttempted = false
 
     func setHandler(_ handler: @escaping @Sendable (HomeKitLampEvent) -> Void) {
         queue.async { self.handler = handler }
@@ -172,16 +175,19 @@ private final class HomeKitLampEngine: @unchecked Sendable {
     private func consider(_ results: Set<NWBrowser.Result>) {
         guard running else { return }
         let lamps = results.compactMap { result -> HomeKitLampTarget? in
-            guard case .bonjour(let txt) = result.metadata else { return nil }
-            let model = txt["md"] ?? ""
-            let name = result.endpoint.debugDescription
+            let txt: NWTXTRecord? = {
+                if case .bonjour(let record) = result.metadata { return record }
+                return nil
+            }()
+            let model = txt?["md"] ?? ""
             let instance = endpointName(result.endpoint)
             guard model == "MJCTD02YL" || instance.hasPrefix("MiBedsideLamp") else { return nil }
             return HomeKitLampTarget(
                 name: instance.isEmpty ? "Mi Bedside Lamp" : instance,
                 endpoint: result.endpoint,
-                deviceID: txt["id"] ?? instance,
-                unpaired: (txt["sf"] ?? "1") == "1"
+                interface: result.interfaces.first,
+                deviceID: txt?["id"] ?? instance,
+                unpaired: (txt?["sf"] ?? "1") == "1"
             )
         }
         guard let lamp = lamps.first else { return }
@@ -189,7 +195,13 @@ private final class HomeKitLampEngine: @unchecked Sendable {
         target = lamp
         guard changed || link == nil else { return }
         if lamp.unpaired, storedPairing()?.accessoryID != lamp.deviceID {
-            emit(.needsCode)
+            if let code = storedSetupCode(), !pairAttempted {
+                pairAttempted = true
+                emit(.pairing)
+                openSession(setupCode: code)
+            } else if storedSetupCode() == nil {
+                emit(.needsCode)
+            }
         } else if link == nil {
             openSession(setupCode: nil)
         }
@@ -211,11 +223,11 @@ private final class HomeKitLampEngine: @unchecked Sendable {
         }
         link?.cancel()
         let session = generation
-        let link = HomeKitLink(endpoint: target.endpoint)
+        let link = HomeKitLink(endpoint: target.endpoint, interface: target.interface)
         self.link = link
-        link.start(queue: queue) { [weak self] in
+        link.start(queue: queue) { [weak self] state in
             self?.queue.async {
-                guard let self, self.running, self.generation == session else { return }
+                guard let self, case .ready = state, self.running, self.generation == session else { return }
                 self.establish(link, target: target, setupCode: setupCode, session: session)
             }
         }
@@ -284,7 +296,7 @@ private final class HomeKitLampEngine: @unchecked Sendable {
 
     private func flush() {
         guard link?.encrypted == true else { return }
-        guard Date().timeIntervalSince(lastFlush) >= 0.15 || lastFlush == .distantPast else { return }
+        guard Date().timeIntervalSince(lastFlush) >= 0.06 || lastFlush == .distantPast else { return }
         var writes: [[String: Any]] = []
         if let power = desired.power, power != sent.power, let iid = onIID {
             writes.append(["aid": accessoryID, "iid": iid, "value": power])
@@ -321,12 +333,17 @@ private final class HomeKitLampEngine: @unchecked Sendable {
         guard !flushScheduled else { return }
         flushScheduled = true
         let session = generation
-        queue.asyncAfter(deadline: .now() + 0.16) { [weak self] in
+        queue.asyncAfter(deadline: .now() + 0.07) { [weak self] in
             guard let self else { return }
             self.flushScheduled = false
             guard self.running, self.generation == session else { return }
             self.flush()
         }
+    }
+
+    private func storedSetupCode() -> String? {
+        let raw = UserDefaults.standard.string(forKey: "homekitLampSetupCode") ?? ""
+        return HomeKitSRP.setupCode(raw)
     }
 
     private func storedPairing() -> HomeKitPairingRecord? {
@@ -466,24 +483,40 @@ private final class HomeKitLink: @unchecked Sendable {
     private var readKey: SymmetricKey?
     private var writeCount: UInt64 = 0
     private var readCount: UInt64 = 0
+    private var receiving = false
     private let lock = NSLock()
     var encrypted: Bool { writeKey != nil }
 
-    init(endpoint: NWEndpoint) {
+    private let interface: NWInterface?
+
+    init(endpoint: NWEndpoint, interface: NWInterface?) {
         self.endpoint = endpoint
+        self.interface = interface
     }
 
-    func start(queue: DispatchQueue, ready: @escaping @Sendable () -> Void) {
-        let connection = NWConnection(to: endpoint, using: .tcp)
+    func start(queue: DispatchQueue, onState: @escaping @Sendable (NWConnection.State) -> Void) {
+        let parameters = NWParameters.tcp
+        parameters.requiredInterface = interface
+        let connection = NWConnection(to: endpoint, using: parameters)
         self.connection = connection
         connection.stateUpdateHandler = { state in
-            if case .ready = state { ready() }
+            onState(state)
+            if case .ready = state {
+                self.beginReceive()
+            }
             if case .failed = state {
                 self.fail(HomeKitLampError.unreachable)
             }
         }
         connection.start(queue: queue)
-        receive()
+    }
+
+    private func beginReceive() {
+        lock.lock()
+        let already = receiving
+        receiving = true
+        lock.unlock()
+        if !already { receive() }
     }
 
     func installEncryption(write: SymmetricKey, read: SymmetricKey) {
@@ -566,29 +599,79 @@ private final class HomeKitLink: @unchecked Sendable {
         } else {
             plainBuffer.append(data)
         }
-        deliverLocked()
+        let deliveries = drainLocked()
         lock.unlock()
-    }
-
-    private func deliverLocked() {
-        while !waiters.isEmpty, let message = takeMessage() {
-            let waiter = waiters.removeFirst()
+        for (waiter, message) in deliveries {
             waiter(.success(message))
         }
     }
 
+    private func drainLocked() -> [((Result<Data, Error>) -> Void, Data)] {
+        var ready: [((Result<Data, Error>) -> Void, Data)] = []
+        while !waiters.isEmpty, let message = takeMessage() {
+            ready.append((waiters.removeFirst(), message))
+        }
+        return ready
+    }
+
     private func takeMessage() -> Data? {
-        guard let headerEnd = plainBuffer.range(of: Data("\r\n\r\n".utf8)) else { return nil }
-        let header = plainBuffer[..<headerEnd.lowerBound]
-        let contentLength = headerText(Data(header))
-            .split(separator: "\r\n")
-            .first { $0.lowercased().hasPrefix("content-length:") }
-            .flatMap { Int($0.split(separator: ":", maxSplits: 1).last?.trimmingCharacters(in: .whitespaces) ?? "") } ?? 0
-        let total = plainBuffer.distance(from: plainBuffer.startIndex, to: headerEnd.upperBound) + contentLength
+        let headerEnd: Range<Data.Index>
+        if let range = plainBuffer.range(of: Data("\r\n\r\n".utf8)) {
+            headerEnd = range
+        } else if let range = plainBuffer.range(of: Data("\n\n".utf8)) {
+            headerEnd = range
+        } else {
+            return nil
+        }
+        let header = headerText(Data(plainBuffer[..<headerEnd.lowerBound]))
+        let lines = header.split(whereSeparator: \.isNewline).map(String.init)
+        let contentLength = lines.first { $0.lowercased().hasPrefix("content-length:") }
+            .flatMap { Int($0.split(separator: ":", maxSplits: 1).last?.trimmingCharacters(in: .whitespaces) ?? "") }
+        let chunked = lines.contains { line in
+            let lower = line.lowercased()
+            return lower.hasPrefix("transfer-encoding:") && lower.contains("chunked")
+        }
+        let bodyStart = headerEnd.upperBound
+        if chunked {
+            guard let decoded = decodeChunks(from: bodyStart) else { return nil }
+            var message = Data(plainBuffer[..<bodyStart])
+            message.append(decoded.body)
+            let consumed = plainBuffer.distance(from: plainBuffer.startIndex, to: decoded.end)
+            plainBuffer.removeFirst(consumed)
+            return message
+        }
+        let length = contentLength ?? 0
+        let total = plainBuffer.distance(from: plainBuffer.startIndex, to: bodyStart) + length
         guard plainBuffer.count >= total else { return nil }
         let message = plainBuffer.prefix(total)
         plainBuffer.removeFirst(total)
         return Data(message)
+    }
+
+    private func decodeChunks(from bodyStart: Data.Index) -> (body: Data, end: Data.Index)? {
+        var body = Data()
+        var index = bodyStart
+        while index < plainBuffer.endIndex {
+            let newline = chunkLineEnd(from: index)
+            guard let newline else { return nil }
+            let sizeText = headerText(Data(plainBuffer[index..<newline.lowerBound]))
+                .trimmingCharacters(in: .whitespaces)
+                .split(separator: ";").first.map(String.init) ?? ""
+            guard let size = Int(sizeText, radix: 16) else { return nil }
+            let dataStart = newline.upperBound
+            guard let dataEnd = plainBuffer.index(dataStart, offsetBy: size, limitedBy: plainBuffer.endIndex) else { return nil }
+            guard let afterNewline = chunkLineEnd(from: dataEnd), afterNewline.lowerBound == dataEnd else { return nil }
+            if size == 0 { return (body, afterNewline.upperBound) }
+            body.append(plainBuffer[dataStart..<dataEnd])
+            index = afterNewline.upperBound
+        }
+        return nil
+    }
+
+    private func chunkLineEnd(from index: Data.Index) -> Range<Data.Index>? {
+        let region = index..<plainBuffer.endIndex
+        if let range = plainBuffer.range(of: Data("\r\n".utf8), in: region) { return range }
+        return plainBuffer.range(of: Data("\n".utf8), in: region)
     }
 
     private func headerText(_ data: Data) -> String {
@@ -596,7 +679,8 @@ private final class HomeKitLink: @unchecked Sendable {
     }
 
     private func httpBody(_ response: Data) throws -> Data {
-        guard let headerEnd = response.range(of: Data("\r\n\r\n".utf8)) else { throw HomeKitLampError.protocolError }
+        let headerEnd = response.range(of: Data("\r\n\r\n".utf8)) ?? response.range(of: Data("\n\n".utf8))
+        guard let headerEnd else { throw HomeKitLampError.protocolError }
         let status = headerText(response.prefix(through: min(response.index(response.startIndex, offsetBy: 12), response.endIndex)))
         if status.contains(" 470") { throw HomeKitLampError.alreadyPaired }
         return response.suffix(from: headerEnd.upperBound)

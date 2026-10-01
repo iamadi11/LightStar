@@ -67,6 +67,15 @@ public final class LightBLEManager: NSObject {
     /// Copy of an accepted colour, brightness, or power change for the Wi-Fi lamp.
     /// Must return immediately and must not call back into the strip.
     public var onLampMirror: ((YeelightMirrorUpdate) -> Void)?
+    /// Starts or stops the bedside lamp when the user picks Strip, Lamp, or Both.
+    public var onOutputTargetChange: ((LightOutputTarget) -> Void)?
+    public var outputTarget: LightOutputTarget = .stored {
+        didSet {
+            guard outputTarget != oldValue else { return }
+            UserDefaults.standard.set(outputTarget.rawValue, forKey: LightOutputTarget.defaultsKey)
+            onOutputTargetChange?(outputTarget)
+        }
+    }
     public enum AudioSyncMode: String, CaseIterable { case rainbow = "Rainbow"; case pulse = "Pulse"; case frequency = "Frequency" }
     public var audioSyncMode: AudioSyncMode = .pulse
     public enum AudioInputSource: String, CaseIterable { case system = "System Audio"; case mic = "Microphone"; case stripMic = "Strip Mic" }
@@ -429,7 +438,9 @@ public final class LightBLEManager: NSObject {
             writeNow(Cmd.powerOn)
             write(Cmd.pixelCount(ledPixelCount))
         }
-        onLampMirror?(.power(on))
+        if outputTarget.sendsToLamp {
+            onLampMirror?(.power(on))
+        }
         reconcileBrowserHardwareAcceleration()
     }
 
@@ -446,6 +457,7 @@ public final class LightBLEManager: NSObject {
     }
 
     private func mirrorIfAccepted(_ command: UInt8, _ update: YeelightMirrorUpdate) {
+        guard outputTarget.sendsToLamp else { return }
         guard StripPowerWritePolicy.shouldEnqueue(isOn: isOn, commandByte: command) else { return }
         onLampMirror?(update)
     }
@@ -537,12 +549,14 @@ public final class LightBLEManager: NSObject {
     // (withoutResponse); Write Request stalls when the firmware never ACKs.
     public func write(_ bytes: [UInt8]) {
         guard bytes.count >= 2 else { return }
+        guard outputTarget.sendsToStrip else { return }
         guard StripPowerWritePolicy.shouldEnqueue(isOn: isOn, commandByte: bytes[1]) else { return }
         coalescer.enqueue(bytes)
     }
 
     func writeNow(_ bytes: [UInt8]) {
         guard bytes.count >= 2 else { return }
+        guard outputTarget.sendsToStrip else { return }
         guard StripPowerWritePolicy.shouldEnqueue(isOn: isOn, commandByte: bytes[1]) else { return }
         coalescer.sendNow(bytes)
     }

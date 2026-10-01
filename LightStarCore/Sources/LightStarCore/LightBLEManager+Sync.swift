@@ -150,7 +150,7 @@ public extension LightBLEManager {
         syncCleanupTask = nil
         guard !Task.isCancelled else { return }
         effectModeActive = false
-        guard mode == .off || connectionState == .connected else {
+        guard mode == .off || connectionState == .connected || outputTarget.sendsToLamp else {
             syncMode = .off
             syncError = "Not connected"
             return
@@ -306,19 +306,27 @@ public extension LightBLEManager {
             if smoothH < 0 { smoothH = h; smoothS = s; smoothV = v }
             var dh = h - smoothH
             if dh > 0.5 { dh -= 1 }; if dh < -0.5 { dh += 1 }
-            smoothH = (smoothH + dh * α).truncatingRemainder(dividingBy: 1)
-            if smoothH < 0 { smoothH += 1 }
-            smoothS = smoothS + (s - smoothS) * α
-            smoothV = smoothV + (v - smoothV) * 0.15
+            // A hard cut should land immediately. Small moves still ease.
+            if abs(dh) > 0.08 || abs(v - smoothV) > 0.35 {
+                smoothH = h
+                smoothS = s
+                smoothV = v
+            } else {
+                smoothH = (smoothH + dh * α).truncatingRemainder(dividingBy: 1)
+                if smoothH < 0 { smoothH += 1 }
+                smoothS = smoothS + (s - smoothS) * α
+                smoothV = smoothV + (v - smoothV) * α
+            }
             let hueDelta = min(abs(smoothH - (self.lastScreenH)), 1 - abs(smoothH - self.lastScreenH))
-            let boostedS = smoothS < 0.3 ? min(1.0, smoothS * 3.0) : min(1.0, smoothS * 1.5)
+            let boostedS = min(1.0, smoothS * 1.15)
             self.lastScreenH = smoothH
             self.lastScreenS = boostedS
             self.syncColor = Color(hue: smoothH, saturation: boostedS, brightness: 1)
             guard hueDelta > 0.008 || now - lastWrite > 0.5 else { return }
             if CombinedSyncMixer.screenShouldWriteHue(mode: self.syncMode, flashLevel: self.flashLevel) {
                 lastWrite = now
-                self.writeMirroredHue(smoothH, saturation: boostedS)
+                // Streaming colour (0x09). Static 0x04 is what the bar fades into.
+                self.writeMirroredHue(smoothH, saturation: boostedS, streaming: true)
             }
             if CombinedSyncMixer.screenShouldWriteBrightness(
                 mode: self.syncMode, videoSyncBrightness: self.videoSyncBrightness

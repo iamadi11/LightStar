@@ -1243,6 +1243,26 @@ final class ConnectAndSchedulePolicyTests: XCTestCase {
         XCTAssertFalse(AudioInputSyncPolicy.shouldDisableStripMic(previous: .stripMic, next: .stripMic))
     }
 
+    func testScreenHueShiftsTowardTheHeavierNeighbour() {
+        var bins = [Double](repeating: 0, count: 36)
+        bins[10] = 1
+        bins[11] = 4
+        bins[12] = 1
+        let center = 11.5 / 36
+        XCTAssertEqual(ColorMath.screenHue(histogram: bins, peak: 11), center, accuracy: 0.001)
+        bins[12] = 3
+        XCTAssertGreaterThan(ColorMath.screenHue(histogram: bins, peak: 11), center)
+    }
+
+    func testLightOutputTargetRoutesStripLampAndBoth() {
+        XCTAssertTrue(LightOutputTarget.strip.sendsToStrip)
+        XCTAssertFalse(LightOutputTarget.strip.sendsToLamp)
+        XCTAssertFalse(LightOutputTarget.lamp.sendsToStrip)
+        XCTAssertTrue(LightOutputTarget.lamp.sendsToLamp)
+        XCTAssertTrue(LightOutputTarget.both.sendsToStrip)
+        XCTAssertTrue(LightOutputTarget.both.sendsToLamp)
+    }
+
     func testStripCommandPolicySeparatesPowerRemoteAndLiveOutput() {
         XCTAssertFalse(StripCommandPolicy.canTogglePower(isConnected: false))
         XCTAssertTrue(StripCommandPolicy.canTogglePower(isConnected: true))

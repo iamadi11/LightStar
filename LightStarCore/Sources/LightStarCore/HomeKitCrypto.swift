@@ -70,12 +70,15 @@ enum HomeKitCrypto {
     static func decryptFrames(key: SymmetricKey, counter: inout UInt64, input: inout Data) throws -> Data {
         var output = Data()
         while input.count >= 2 {
-            let length = Int(UInt16(littleEndian: input.withUnsafeBytes { $0.load(as: UInt16.self) }))
+            let start = input.startIndex
+            let length = Int(input[start]) | (Int(input[input.index(after: start)]) << 8)
             let frame = 2 + length + 16
-            guard input.count >= frame else { break }
-            let aad = input.prefix(2)
-            let body = input.subdata(in: 2..<frame)
-            output.append(try open(key: key, nonce: nonce(counter: counter), aad: Data(aad), ciphertextAndTag: body))
+            guard frame >= 18, input.count >= frame else { break }
+            let end = input.index(start, offsetBy: frame)
+            let frameData = Data(input[start..<end])
+            let aad = frameData.prefix(2)
+            let body = frameData.dropFirst(2)
+            output.append(try open(key: key, nonce: nonce(counter: counter), aad: Data(aad), ciphertextAndTag: Data(body)))
             counter += 1
             input.removeFirst(frame)
         }

@@ -195,8 +195,7 @@ private func analyzePixelBuffer(_ pb: CVPixelBuffer) -> FrameAnalysis {
     for row in 0..<h {
         var rowBlackCount = 0
         for col in 0..<w {
-            let isEdge = row == 0 || row == h - 1 || col == 0 || col == w - 1
-            let wt: Double = isEdge ? 3.0 : 1.0
+            let wt = 1.0
             let i = row * bpr + col * 4
             let r = Double(ptr[i + 2]) / 255
             let g = Double(ptr[i + 1]) / 255
@@ -239,7 +238,7 @@ private func analyzePixelBuffer(_ pb: CVPixelBuffer) -> FrameAnalysis {
     
     if let maxBin = histogram.indices.max(by: { histogram[$0] < histogram[$1] }),
        histogram[maxBin] > 0, binCount[maxBin] > 0 {
-        let hue = (Double(maxBin) + 0.5) / Double(bins)
+        let hue = ColorMath.screenHue(histogram: histogram, peak: maxBin)
         let n = Double(binCount[maxBin])
         let sat = binSat[maxBin] / n
         let val = binVal[maxBin] / n
