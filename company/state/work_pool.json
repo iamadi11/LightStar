@@ -957,9 +957,108 @@
         "Record run URL + billing annotation in completion_evidence",
         "Do not claim Swift validation fixed CI"
       ]
+    },
+    {
+      "acceptance": [
+        "Sample classified with rationale"
+      ],
+      "blocked_reason": "Confidence too low without stronger evidence",
+      "claim": null,
+      "completion_evidence": [],
+      "confidence": 0.4,
+      "created_at": "2026-09-25T09:59:46+00:00",
+      "decision_history": [
+        {
+          "at": "2026-09-25T09:59:46+00:00",
+          "by": "debt",
+          "event": "created",
+          "note": "discovered"
+        },
+        {
+          "at": "2026-09-25T09:59:46+00:00",
+          "by": "triage",
+          "event": "triage_defer",
+          "note": "Confidence too low without stronger evidence"
+        }
+      ],
+      "department": "debt",
+      "dependencies": [],
+      "desired_outcome": "Classify sample: keep / ticket / remove \u2014 no mass delete",
+      "estimated_effort": "M",
+      "evidence": [
+        {
+          "kind": "repo",
+          "note": "LightStarCore/.build/arm64-apple-macosx/debug/LightStarCorePackageTests.derived/runner.swift:108; LightStarCore/.build/arm64-apple-macosx/debug/LightStarCorePackageTests.derived/runner.swift:227; LightStarCore/.build/arm64-apple-macosx/debug/LightStarCorePackageTests.derived/runner.swift:256",
+          "ref": "LightStarCore/**/*.swift"
+        }
+      ],
+      "fingerprint": "f157b2450aeb6efe",
+      "id": "W-0016",
+      "owner_worker": null,
+      "priority_rationale": "Debt awareness without premature optimization",
+      "problem": "Markers may hide unfinished work; blind cleanup is harmful",
+      "related_work": [],
+      "reviewer_worker": null,
+      "risks": [],
+      "status": "DEFERRED",
+      "title": "Triage 3 TODO/FIXME/HACK markers in LightStarCore",
+      "type": "debt",
+      "updated_at": "2026-09-25T09:59:46+00:00",
+      "validation_requirements": [
+        "Sample classified with rationale"
+      ]
+    },
+    {
+      "acceptance": [
+        "Record adopt|monitor|reject in company memory"
+      ],
+      "blocked_reason": "Confidence too low without stronger evidence",
+      "claim": null,
+      "completion_evidence": [],
+      "confidence": 0.35,
+      "created_at": "2026-09-25T09:59:46+00:00",
+      "decision_history": [
+        {
+          "at": "2026-09-25T09:59:46+00:00",
+          "by": "research",
+          "event": "created",
+          "note": "discovered"
+        },
+        {
+          "at": "2026-09-25T09:59:46+00:00",
+          "by": "triage",
+          "event": "triage_defer",
+          "note": "Confidence too low without stronger evidence"
+        }
+      ],
+      "department": "research",
+      "dependencies": [],
+      "desired_outcome": "Adopt / monitor / reject with citation \u2014 no blind vendor",
+      "estimated_effort": "S",
+      "evidence": [
+        {
+          "kind": "doc",
+          "ref": "company/memory/tooling.md"
+        }
+      ],
+      "fingerprint": "19dfef94f2008daf",
+      "id": "W-0017",
+      "owner_worker": null,
+      "priority_rationale": "Skills are capabilities, not orchestrator",
+      "problem": "Research whether /tdd /code-review skills are installed for workers",
+      "related_work": [],
+      "reviewer_worker": null,
+      "risks": [],
+      "status": "DEFERRED",
+      "title": "Evaluate optional Matt Pocock skills as worker capabilities",
+      "type": "research",
+      "updated_at": "2026-09-25T09:59:46+00:00",
+      "validation_requirements": [
+        "Record adopt|monitor|reject in company memory"
+      ]
     }
   ],
   "migrated_from": "task_pool.json",
-  "updated_at": "2026-09-21T20:58:42+00:00",
+  "updated_at": "2026-09-25T09:59:46+00:00",
   "version": 2
 }

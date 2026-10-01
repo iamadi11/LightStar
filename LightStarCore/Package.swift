@@ -10,9 +10,13 @@ let package = Package(
     products: [
         .library(name: "LightStarCore", targets: ["LightStarCore"])
     ],
+    dependencies: [
+        .package(url: "https://github.com/attaswift/BigInt.git", from: "5.7.0")
+    ],
     targets: [
         .target(
             name: "LightStarCore",
+            dependencies: ["BigInt"],
             resources: [
                 .process("MetalColorAnalyzer.metal")
             ]

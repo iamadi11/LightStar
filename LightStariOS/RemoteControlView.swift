@@ -493,6 +493,10 @@ struct RemoteSettingsView: View {
                 LabeledContent("Three-finger drag", value: settings.threeFingerDrag ? "On" : "Off")
                 LabeledContent("Three-finger swipe", value: (settings.threeFingerHorizSwipe || settings.threeFingerVertSwipe) ? "On" : "Off")
                 Toggle("Haptic feedback", isOn: $settings.hapticClicks)
+                Toggle("Scroll wheel", isOn: $settings.showScrollWheel)
+                Text("Shows a notched wheel on the trackpad. Each notch scrolls the Mac and clicks when haptics are on. The iPhone 16 Camera Control only talks to apps that are using the camera, so it can’t scroll from here.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
             }
 
             Section("Air pointer") {

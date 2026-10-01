@@ -31,6 +31,9 @@ final class RemoteInputSettings: ObservableObject {
     @Published var hapticClicks: Bool {
         didSet { UserDefaults.standard.set(hapticClicks, forKey: Keys.hapticClicks) }
     }
+    @Published var showScrollWheel: Bool {
+        didSet { UserDefaults.standard.set(showScrollWheel, forKey: Keys.showScrollWheel) }
+    }
     @Published var doubleClickThreshold: Double {
         didSet { UserDefaults.standard.set(doubleClickThreshold, forKey: Keys.doubleClick) }
     }
@@ -50,6 +53,7 @@ final class RemoteInputSettings: ObservableObject {
         threeFingerHorizSwipe = d.object(forKey: Keys.threeFingerHorizSwipe) as? Bool ?? true
         threeFingerVertSwipe = d.object(forKey: Keys.threeFingerVertSwipe) as? Bool ?? true
         hapticClicks = d.object(forKey: Keys.hapticClicks) as? Bool ?? true
+        showScrollWheel = d.object(forKey: Keys.showScrollWheel) as? Bool ?? false
         doubleClickThreshold = d.object(forKey: Keys.doubleClick) as? Double ?? 0.5
         gyroSensitivity = d.object(forKey: Keys.gyroSensitivity) as? Double ?? 1.0
     }
@@ -78,6 +82,7 @@ final class RemoteInputSettings: ObservableObject {
         static let threeFingerHorizSwipe = "remoteThreeFingerHorizSwipe"
         static let threeFingerVertSwipe = "remoteThreeFingerVertSwipe"
         static let hapticClicks = "remoteHapticClicks"
+        static let showScrollWheel = "remoteShowScrollWheel"
         static let doubleClick = "remoteDoubleClickThreshold"
         static let gyroSensitivity = "remoteGyroSensitivity"
     }

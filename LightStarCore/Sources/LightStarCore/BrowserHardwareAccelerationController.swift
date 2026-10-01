@@ -22,8 +22,20 @@ public final class BrowserHardwareAccelerationController {
     public var processControlEnabled = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil
 
     private var inFlight: Task<Void, Never>?
+    private var siteProbeAt: TimeInterval = -.greatestFiniteMagnitude
+    private var siteProbeBundleID: String?
 
     public init() {}
+
+    /// Bundle id of a running Chromium browser whose front tab is Netflix or
+    /// Prime Video. Nil for every other site, so we do not quit the browser.
+    public func netflixOrPrimeBundleID() -> String? {
+        let now = ProcessInfo.processInfo.systemUptime
+        if now - siteProbeAt < 5 { return siteProbeBundleID }
+        siteProbeAt = now
+        siteProbeBundleID = probeNetflixOrPrimeBundleID()
+        return siteProbeBundleID
+    }
 
     public func reconcile(
         wantDisabled: Bool,
@@ -169,6 +181,55 @@ public final class BrowserHardwareAccelerationController {
             cfg.arguments = BrowserHardwareAccelerationPolicy.restoreSessionLaunchArguments
             try await NSWorkspace.shared.openApplication(at: bundleURL, configuration: cfg)
         }
+    }
+
+    private func probeNetflixOrPrimeBundleID() -> String? {
+        if let match = onScreenChromiumTitleMatch() { return match }
+        let running = NSWorkspace.shared.runningApplications.compactMap(\.bundleIdentifier)
+        for bundleID in running where BrowserHardwareAccelerationPolicy.canAutoToggle(bundleID: bundleID) {
+            guard let tab = activeTab(bundleID: bundleID) else { continue }
+            if BrowserHardwareAccelerationPolicy.isNetflixOrPrime(url: tab.url, title: tab.title) {
+                return bundleID
+            }
+        }
+        return nil
+    }
+
+    private func onScreenChromiumTitleMatch() -> String? {
+        guard let windows = CGWindowListCopyWindowInfo(
+            [.optionOnScreenOnly, .excludeDesktopElements],
+            kCGNullWindowID
+        ) as? [[String: Any]] else { return nil }
+        for window in windows {
+            guard let title = window[kCGWindowName as String] as? String, !title.isEmpty,
+                  BrowserHardwareAccelerationPolicy.isNetflixOrPrime(url: nil, title: title),
+                  let pid = window[kCGWindowOwnerPID as String] as? Int32,
+                  let bundleID = NSRunningApplication(processIdentifier: pid)?.bundleIdentifier,
+                  BrowserHardwareAccelerationPolicy.canAutoToggle(bundleID: bundleID) else {
+                continue
+            }
+            return bundleID
+        }
+        return nil
+    }
+
+    private func activeTab(bundleID: String) -> (url: String, title: String)? {
+        let source = """
+        tell application id "\(bundleID)"
+            if (count of windows) is 0 then return ""
+            set tabURL to URL of active tab of front window
+            set tabTitle to title of active tab of front window
+            return tabURL & linefeed & tabTitle
+        end tell
+        """
+        var appleError: NSDictionary?
+        guard let result = NSAppleScript(source: source)?.executeAndReturnError(&appleError),
+              appleError == nil else { return nil }
+        let text = result.stringValue ?? ""
+        let parts = text.split(separator: "\n", maxSplits: 1, omittingEmptySubsequences: false)
+        guard let url = parts.first.map(String.init), !url.isEmpty else { return nil }
+        let title = parts.count > 1 ? String(parts[1]) : ""
+        return (url, title)
     }
 
     private func requestQuit(bundleID: String) {

@@ -63,8 +63,8 @@ public extension LightBLEManager {
         colorDebounce = Task { @MainActor in
             try? await Task.sleep(nanoseconds: 50_000_000)
             guard !Task.isCancelled else { return }
-            self.write(Cmd.hue(h, saturation: s))
-            self.write(Cmd.brightness(self.brightness))
+            self.writeMirroredHue(h, saturation: s)
+            self.writeMirroredBrightness(self.brightness)
         }
     }
 
@@ -88,7 +88,7 @@ public extension LightBLEManager {
     public func setBrightness(_ value: Double) {
         if syncMode != .off { stopSyncInline() }
         brightness = value
-        write(Cmd.brightness(value))
+        writeMirroredBrightness(value)
     }
 
     public func setEffect(id: UInt8) {
@@ -121,8 +121,8 @@ public extension LightBLEManager {
             do { try await Task.sleep(nanoseconds: 200_000_000) } catch { return }
             guard self.isOn else { return }
             let (h, s, _) = self.color.hsvComponents
-            self.write(Cmd.hue(h, saturation: s))
-            self.write(Cmd.brightness(self.brightness))
+            self.writeMirroredHue(h, saturation: s)
+            self.writeMirroredBrightness(self.brightness)
         }
     }
 }

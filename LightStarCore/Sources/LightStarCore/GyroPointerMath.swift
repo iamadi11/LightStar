@@ -186,6 +186,22 @@ public enum RemoteTrackpadSwipe: Equatable, Sendable {
     }
 }
 
+/// Notched wheel: drag accumulates until it crosses one notch, then that
+/// notch is a single scroll tick. Remainder stays so the wheel doesn't jump.
+public enum ScrollWheelDetent {
+    public static let spacing: Double = 22
+    public static let scrollPerNotch: Double = 40
+
+    public static func consume(accumulated: Double, delta: Double, spacing: Double = ScrollWheelDetent.spacing) -> (notches: Int, remainder: Double) {
+        guard spacing > 0, delta.isFinite, accumulated.isFinite else {
+            return (0, accumulated.isFinite ? accumulated : 0)
+        }
+        let total = accumulated + delta
+        let notches = Int((total / spacing).rounded(.towardZero))
+        return (notches, total - Double(notches) * spacing)
+    }
+}
+
 /// Finger deltas from UIKit (swipe up → negative dy) to CGEvent wheel units.
 /// Natural ON matches the physical Mac trackpad: do not invert. Natural OFF inverts once.
 public enum RemoteScrollMapping {
@@ -287,6 +303,35 @@ public enum RemoteTypingDelta: Equatable, Sendable {
 
     public static func shouldEmit(forLocalBufferReset: Bool) -> Bool {
         !forLocalBufferReset
+    }
+}
+
+/// One typed character is a HID key-down that carries Unicode, then a key-up
+/// that does not. The session tap is downstream of the HID tap, so posting
+/// there as well inserts the character a second time. Unicode on key-up does too.
+public enum RemoteTextInjection: Equatable, Sendable {
+    case keyDown
+    case keyUp
+
+    public static let strokes: [RemoteTextInjection] = [.keyDown, .keyUp]
+
+    public static func carriesCharacter(_ stroke: RemoteTextInjection) -> Bool {
+        stroke == .keyDown
+    }
+}
+
+/// Volume and brightness step the live system level. A local counter that
+/// starts at half scale stays wrong until it clamps at empty or full.
+public enum SystemLevelStep {
+    public static let notch = 1.0 / 16.0
+
+    public static func clamped(_ level: Double) -> Double {
+        guard level.isFinite else { return 0 }
+        return min(1, max(0, level))
+    }
+
+    public static func next(current: Double, delta: Double) -> Double {
+        clamped(current + delta)
     }
 }
 

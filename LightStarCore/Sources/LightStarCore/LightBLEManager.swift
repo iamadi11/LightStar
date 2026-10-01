@@ -64,6 +64,9 @@ public final class LightBLEManager: NSObject {
     public var syncTransitioning = false
     // Called after the connect sequence completes with no sync mode to restore
     public var onConnect: (@MainActor () -> Void)?
+    /// Copy of an accepted colour, brightness, or power change for the Wi-Fi lamp.
+    /// Must return immediately and must not call back into the strip.
+    public var onLampMirror: ((YeelightMirrorUpdate) -> Void)?
     public enum AudioSyncMode: String, CaseIterable { case rainbow = "Rainbow"; case pulse = "Pulse"; case frequency = "Frequency" }
     public var audioSyncMode: AudioSyncMode = .pulse
     public enum AudioInputSource: String, CaseIterable { case system = "System Audio"; case mic = "Microphone"; case stripMic = "Strip Mic" }
@@ -113,10 +116,11 @@ public final class LightBLEManager: NSObject {
     public var ledChannelOrder: LEDChannelOrder = .rgb {
         didSet { write(Cmd.channelOrder(UInt8(ledChannelOrder.rawValue))) }
     }
-    public var ledPixelCount: Int = 30 {
+    public var ledPixelCount: Int = UserDefaults.standard.object(forKey: "ledPixelCount") as? Int ?? 133 {
         didSet {
             let n = max(8, min(300, ledPixelCount))
             if n != ledPixelCount { ledPixelCount = n; return }
+            UserDefaults.standard.set(n, forKey: "ledPixelCount")
             write(Cmd.pixelCount(n))
         }
     }
@@ -423,8 +427,27 @@ public final class LightBLEManager: NSObject {
             }
         } else {
             writeNow(Cmd.powerOn)
+            write(Cmd.pixelCount(ledPixelCount))
         }
+        onLampMirror?(.power(on))
         reconcileBrowserHardwareAcceleration()
+    }
+
+    func writeMirroredHue(_ h: Double, saturation s: Double, streaming: Bool = false) {
+        let frame = streaming ? Cmd.audioHue(h, saturation: s) : Cmd.hue(h, saturation: s)
+        write(frame)
+        mirrorIfAccepted(frame[1], .color(hue: h, saturation: s))
+    }
+
+    func writeMirroredBrightness(_ value: Double) {
+        let frame = Cmd.brightness(value)
+        write(frame)
+        mirrorIfAccepted(frame[1], .brightness(value))
+    }
+
+    private func mirrorIfAccepted(_ command: UInt8, _ update: YeelightMirrorUpdate) {
+        guard StripPowerWritePolicy.shouldEnqueue(isOn: isOn, commandByte: command) else { return }
+        onLampMirror?(update)
     }
 
     // MARK: - Private helpers
@@ -456,13 +479,14 @@ public final class LightBLEManager: NSObject {
             if targetOn {
                 self.writeNow(Cmd.powerOn)
                 do { try await Task.sleep(nanoseconds: 500_000_000) } catch { return }
+                self.write(Cmd.pixelCount(self.ledPixelCount))
             }
             guard !Task.isCancelled else { return }
             self.isOn = targetOn
             if BLEDiscoveryPolicy.shouldRestoreAppearanceOnConnect(targetOn: targetOn) {
                 let (h, s, _) = self.color.hsvComponents
-                self.write(Cmd.hue(h, saturation: s))
-                self.write(Cmd.brightness(self.brightness))
+                self.writeMirroredHue(h, saturation: s)
+                self.writeMirroredBrightness(self.brightness)
                 // Keep lastSyncMode until restore succeeds or the user turns sync
                 // off. Clearing it here races onConnect's default preset.
                 if SyncReconnectPolicy.shouldRestoreSync(

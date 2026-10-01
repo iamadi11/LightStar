@@ -11,10 +11,39 @@ public enum BrowserHardwareAccelerationPolicy: Sendable {
         isOn: Bool,
         isSyncingVideo: Bool,
         alreadyAppliedThisSession: Bool,
-        protectedContentDetected: Bool
+        protectedContentDetected: Bool,
+        playbackIsNetflixOrPrime: Bool
     ) -> Bool {
         guard isOn, isSyncingVideo else { return false }
-        return alreadyAppliedThisSession || protectedContentDetected
+        if alreadyAppliedThisSession { return true }
+        return protectedContentDetected && playbackIsNetflixOrPrime
+    }
+
+    /// Netflix and Prime Video only. Other DRM (Disney+, native apps) and
+    /// ordinary black frames must not quit the browser.
+    public static func isNetflixOrPrime(url: String?, title: String?) -> Bool {
+        if let url, isNetflixOrPrimeURL(url) { return true }
+        if let title, isNetflixOrPrimeTitle(title) { return true }
+        return false
+    }
+
+    public static func isNetflixOrPrimeURL(_ raw: String) -> Bool {
+        guard let components = URLComponents(string: raw), let host = components.host?.lowercased() else {
+            return false
+        }
+        if host == "netflix.com" || host.hasSuffix(".netflix.com") { return true }
+        if host == "primevideo.com" || host.hasSuffix(".primevideo.com") { return true }
+        let labels = host.split(separator: ".")
+        guard labels.contains("amazon") else { return false }
+        let path = components.path.lowercased()
+        return path.contains("/gp/video") || path.hasPrefix("/video")
+    }
+
+    public static func isNetflixOrPrimeTitle(_ raw: String) -> Bool {
+        let title = raw.lowercased()
+        if title.contains("netflix") { return true }
+        if title.contains("prime video") { return true }
+        return false
     }
 
     /// Quit/relaunch at most once per Screen session. Reconcile is called on

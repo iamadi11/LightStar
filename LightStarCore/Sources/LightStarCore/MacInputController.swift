@@ -22,6 +22,9 @@ public final class MacInputController: ObservableObject {
     }
 
     public let pointerInjector = MacPointerInjector()
+    private var cachedSystemVolume: Double?
+    private var cachedSystemBrightness: Double?
+    private var didReadSystemLevels = false
     private var didPromptAccessibility = false
     private var lastPromptAt: CFTimeInterval = -100
     private let eventSource = CGEventSource(stateID: .hidSystemState)
@@ -240,15 +243,16 @@ public final class MacInputController: ObservableObject {
         guard ensureAccessibility() else { return }
         for char in text.unicodeScalars {
             var utf16 = Array(String(char).utf16)
-            if let down = CGEvent(keyboardEventSource: eventSource, virtualKey: 0, keyDown: true) {
-                down.keyboardSetUnicodeString(stringLength: utf16.count, unicodeString: &utf16)
-                down.post(tap: .cghidEventTap)
-                down.post(tap: .cgSessionEventTap)
-            }
-            if let up = CGEvent(keyboardEventSource: eventSource, virtualKey: 0, keyDown: false) {
-                up.keyboardSetUnicodeString(stringLength: utf16.count, unicodeString: &utf16)
-                up.post(tap: .cghidEventTap)
-                up.post(tap: .cgSessionEventTap)
+            for stroke in RemoteTextInjection.strokes {
+                guard let event = CGEvent(
+                    keyboardEventSource: eventSource,
+                    virtualKey: 0,
+                    keyDown: stroke == .keyDown
+                ) else { continue }
+                if RemoteTextInjection.carriesCharacter(stroke) {
+                    event.keyboardSetUnicodeString(stringLength: utf16.count, unicodeString: &utf16)
+                }
+                event.post(tap: .cghidEventTap)
             }
         }
     }
@@ -263,25 +267,17 @@ public final class MacInputController: ObservableObject {
         case .previousTrack:
             sendTransport(remote: MediaRemoteCommand.previousTrack, hid: NXKey.previous, script: "previous track")
         case .volumeUp:
-            if !postHIDSystemKey(NXKey.soundUp) {
-                adjustVolume(by: 1.0 / 16.0)
-            }
+            adjustVolume(by: Float(SystemLevelStep.notch))
         case .volumeDown:
-            if !postHIDSystemKey(NXKey.soundDown) {
-                adjustVolume(by: -1.0 / 16.0)
-            }
+            adjustVolume(by: -Float(SystemLevelStep.notch))
         case .mute:
             if !postHIDSystemKey(NXKey.mute) {
                 toggleMute()
             }
         case .brightnessUp:
-            if !postHIDSystemKey(NXKey.brightnessUp) {
-                adjustBrightness(by: 1.0 / 16.0)
-            }
+            adjustBrightness(by: Float(SystemLevelStep.notch))
         case .brightnessDown:
-            if !postHIDSystemKey(NXKey.brightnessDown) {
-                adjustBrightness(by: -1.0 / 16.0)
-            }
+            adjustBrightness(by: -Float(SystemLevelStep.notch))
         }
     }
 
@@ -407,10 +403,26 @@ public final class MacInputController: ObservableObject {
         return status == noErr ? device : nil
     }
 
+    /// Live menu-bar volume and main-display brightness. The first read is
+    /// deferred until a client asks, so light-sync snapshots do not shell out.
+    public func systemLevelsForSnapshot() -> (volume: Double?, brightness: Double?) {
+        if !didReadSystemLevels {
+            refreshSystemLevels()
+        }
+        return (cachedSystemVolume, cachedSystemBrightness)
+    }
+
+    public func refreshSystemLevels() {
+        didReadSystemLevels = true
+        cachedSystemVolume = readOutputVolume()
+        cachedSystemBrightness = readDisplayBrightness()
+    }
+
     private func adjustVolume(by delta: Float32) {
-        // CoreAudio virtual-master often returns noErr without changing the
-        // user-facing output (HDMI, aggregate, spatial). Standard Additions
-        // writes the same slider the menu-bar volume HUD uses.
+        // Synthetic HID volume keys drive a bezel counter that is not the
+        // current output, so the slider stays wrong until it hits 0 or full.
+        // Standard Additions writes the menu-bar volume from its live value.
+        // CoreAudio virtual-master often returns noErr without changing HDMI.
         let step = Int((delta * 100).rounded())
         let script =
             """
@@ -518,14 +530,27 @@ public final class MacInputController: ObservableObject {
         return ok
     }
 
+    private func readOutputVolume() -> Double? {
+        var error: NSDictionary?
+        guard let result = NSAppleScript(source: "output volume of (get volume settings)")?
+            .executeAndReturnError(&error), error == nil else {
+            return nil
+        }
+        let percent = Int(result.int32Value)
+        guard (0...100).contains(percent) else { return nil }
+        return SystemLevelStep.clamped(Double(percent) / 100)
+    }
+
+    private func readDisplayBrightness() -> Double? {
+        var current: Float = 0
+        guard let get = displayBrightnessGet(), get(CGMainDisplayID(), &current) == 0 else { return nil }
+        return SystemLevelStep.clamped(Double(current))
+    }
+
     private func adjustBrightness(by delta: Float) {
         let display = CGMainDisplayID()
         var current: Float = 0
-        typealias GetFn = @convention(c) (CGDirectDisplayID, UnsafeMutablePointer<Float>) -> Int32
-        typealias SetFn = @convention(c) (CGDirectDisplayID, Float) -> Int32
-        let path = "/System/Library/PrivateFrameworks/DisplayServices.framework/DisplayServices"
-        guard let get: GetFn = loadPrivateSymbol("DisplayServicesGetBrightness", from: path),
-              let set: SetFn = loadPrivateSymbol("DisplayServicesSetBrightness", from: path) else {
+        guard let get = displayBrightnessGet(), let set = displayBrightnessSet() else {
             inputLog.error("brightness: DisplayServices unavailable")
             return
         }
@@ -533,7 +558,23 @@ public final class MacInputController: ObservableObject {
             inputLog.error("brightness: get failed")
             return
         }
-        _ = set(display, min(1, max(0, current + delta)))
+        let next = SystemLevelStep.next(current: Double(current), delta: Double(delta))
+        _ = set(display, Float(next))
+    }
+
+    private typealias DisplayBrightnessGet = @convention(c) (CGDirectDisplayID, UnsafeMutablePointer<Float>) -> Int32
+    private typealias DisplayBrightnessSet = @convention(c) (CGDirectDisplayID, Float) -> Int32
+
+    private func displayBrightnessGet() -> DisplayBrightnessGet? {
+        loadPrivateSymbol("DisplayServicesGetBrightness", from: displayServicesPath)
+    }
+
+    private func displayBrightnessSet() -> DisplayBrightnessSet? {
+        loadPrivateSymbol("DisplayServicesSetBrightness", from: displayServicesPath)
+    }
+
+    private var displayServicesPath: String {
+        "/System/Library/PrivateFrameworks/DisplayServices.framework/DisplayServices"
     }
 
     private func loadPrivateSymbol<T>(_ name: String, from path: String) -> T? {

@@ -157,6 +157,10 @@ Echo Dot ──SSDP + Hue HTTP──► LightStar (port 9123)
 
 Enable in Settings → **Echo Hue bridge**. UserDefaults key: `alexaHueBridgeEnabled`. Alexa app: Add Device → Philips Hue → Discover. Requires Local Network permission. Does not add PS5 HDMI sync; screen sync remains Mac ScreenCaptureKit.
 
+### Mi Bedside Lamp 2 (Yeelight LAN)
+
+Settings → **Follow the light bar**. The Mac copies each accepted strip colour, brightness, and power change to the lamp. The copy uses the app’s hue, not the strip hue LUT, and it never writes BLE. Connect-sequence power cycles are not copied, so pairing the bar does not blink the lamp. Mi Bedside Lamp 2 (`MJCTD02YL`) no longer has Yeelight LAN Control; it is paired once with the 8-digit HomeKit code on the lamp base (`HomeKitLampController`). Other Yeelight bulbs that still answer SSDP use `YeelightLampController`. UserDefaults key: `yeelightMirrorEnabled`. Pairing record: `homekitLampPairing`.
+
 ### Permissions
 
 Mac requires:
@@ -242,7 +246,7 @@ See `docs/display-capture-research.md` for full research. Summary:
 1. Persistent rectangular black frames (`ProtectedContentPolicy`) **hold last good HSV + brightness**. They must not write near-black to the strip. Combined still pulses brightness from the Music audio sampler.
 2. After `confirmationFrameCount` consecutive protected frames, the Mac popover shows the hardware-acceleration-off guide (Chrome/Edge/Brave). Safari / native apps / HW-on Chrome stay black — say so. Dark IDE chrome (VS Code) is not a DRM rectangle and must not trip the guide.
 3. One tracker: `ProtectedContentTracker` in `ScreenColorSampler`. `CaptureDiagnostics` only supplies browser + copy. Do not start its 2s frontmost-app Timer unless Screen/Both is running. No `print()`.
-4. **Chromium Local State toggle** (user-requested): when the strip is on, Screen/Both is running, and protected frames are detected, LightStar **Apple-Event quits** Chrome/Edge/Brave (never `forceTerminate` — that drops tabs), waits for session files, patches only `hardware_acceleration_mode.enabled` in `Local State` (do not JSON-round-trip the whole file), then relaunches with `--restore-last-session`. Restore the previous value when leaving Screen/Both, powering off, or quitting LightStar. Do this once per Screen session (no relaunch loop). Safari is not touched. Skip all process control under XCTest.
+4. **Chromium Local State toggle** (user-requested): when the strip is on, Screen/Both is running, protected frames are detected, **and** the Chromium tab or window is Netflix or Prime Video, LightStar **Apple-Event quits** Chrome/Edge/Brave (never `forceTerminate` — that drops tabs), waits for session files, patches only `hardware_acceleration_mode.enabled` in `Local State` (do not JSON-round-trip the whole file), then relaunches with `--restore-last-session`. Other DRM and ordinary black frames do not restart the browser. Restore the previous value when leaving Screen/Both, powering off, or quitting LightStar. Do this once per Screen session (no relaunch loop). Safari is not touched. Skip all process control under XCTest.
 5. **Music Pulse must not capture a display.** System audio goes through a HAL process tap (`SystemAudioProcessTap`). A dummy 2×2 `SCStream` on the display still counts as screen sharing to Widevine.
 
 **DRM-impossible (do not loop on this):** Widevine L1 / FairPlay with hardware acceleration on never puts movie pixels in ScreenCaptureKit. Software-rendered L3 (HW accel off) is the only capturable Chromium path; Safari has none. LightStar automates the Chromium pref + relaunch; it does not patch Widevine or bypass `preventsCapture`.

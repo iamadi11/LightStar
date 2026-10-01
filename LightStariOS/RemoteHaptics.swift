@@ -8,6 +8,12 @@ enum RemoteHaptics {
         return gen
     }()
     
+    private static let rigidImpact: UIImpactFeedbackGenerator = {
+        let gen = UIImpactFeedbackGenerator(style: .rigid)
+        gen.prepare()
+        return gen
+    }()
+
     private static let softImpact: UIImpactFeedbackGenerator = {
         let gen = UIImpactFeedbackGenerator(style: .soft)
         gen.prepare()
@@ -48,6 +54,13 @@ enum RemoteHaptics {
         guard enabled else { return }
         notification.notificationOccurred(.warning)
         notification.prepare()
+    }
+
+    /// One notch of a scroll wheel. Short and firm, not a buzz.
+    static func tick(enabled: Bool = true) {
+        guard enabled else { return }
+        rigidImpact.impactOccurred(intensity: 0.55)
+        rigidImpact.prepare()
     }
 
     static func soft(enabled: Bool = true) {

@@ -39,35 +39,57 @@ final class RemoteLevelHUDModel: ObservableObject {
     @Published private(set) var level: Double?
     @Published private(set) var visible = false
 
-    private var volume = 0.5
-    private var brightness = 0.5
+    private var volume: Double?
+    private var brightness: Double?
+    private var pendingVolume: Double?
+    private var pendingBrightness: Double?
     private var hideTask: Task<Void, Never>?
 
-    /// Reset local volume/brightness state to neutral values.
-    /// Call this when reconnecting to avoid showing stale values.
+    /// Drop learned levels so the next Mac snapshot can seed them.
     func reset() {
-        volume = 0.5
-        brightness = 0.5
+        volume = nil
+        brightness = nil
+        pendingVolume = nil
+        pendingBrightness = nil
         visible = false
         hideTask?.cancel()
         hideTask = nil
     }
 
+    /// Apply the Mac's live levels. While the HUD is on screen, hold the
+    /// update until it hides so a press doesn't snap back to the previous value.
+    func adopt(systemVolume: Double?, systemBrightness: Double?) {
+        if visible {
+            if let systemVolume { pendingVolume = systemVolume }
+            if let systemBrightness { pendingBrightness = systemBrightness }
+            return
+        }
+        apply(systemVolume: systemVolume, systemBrightness: systemBrightness)
+    }
+
     func handle(_ key: MediaKeyMessage.MediaKey) {
         switch key {
         case .volumeUp:
-            volume = min(1, volume + 1.0 / 16.0)
+            if let volume {
+                self.volume = SystemLevelStep.next(current: volume, delta: SystemLevelStep.notch)
+            }
             show(icon: "speaker.wave.3.fill", title: "Volume", level: volume)
         case .volumeDown:
-            volume = max(0, volume - 1.0 / 16.0)
-            show(icon: volume == 0 ? "speaker.slash.fill" : "speaker.wave.1.fill", title: "Volume", level: volume)
+            if let volume {
+                self.volume = SystemLevelStep.next(current: volume, delta: -SystemLevelStep.notch)
+            }
+            show(icon: self.volume == 0 ? "speaker.slash.fill" : "speaker.wave.1.fill", title: "Volume", level: volume)
         case .mute:
             show(icon: "speaker.slash.fill", title: "Mute", level: nil)
         case .brightnessUp:
-            brightness = min(1, brightness + 1.0 / 16.0)
+            if let brightness {
+                self.brightness = SystemLevelStep.next(current: brightness, delta: SystemLevelStep.notch)
+            }
             show(icon: "sun.max.fill", title: "Brightness", level: brightness)
         case .brightnessDown:
-            brightness = max(0, brightness - 1.0 / 16.0)
+            if let brightness {
+                self.brightness = SystemLevelStep.next(current: brightness, delta: -SystemLevelStep.notch)
+            }
             show(icon: "sun.min.fill", title: "Brightness", level: brightness)
         case .playPause:
             show(icon: "playpause.fill", title: "Play / Pause", level: nil)
@@ -88,6 +110,22 @@ final class RemoteLevelHUDModel: ObservableObject {
             try? await Task.sleep(nanoseconds: 1_200_000_000)
             guard !Task.isCancelled else { return }
             self?.visible = false
+            self?.applyPending()
         }
+    }
+
+    private func apply(systemVolume: Double?, systemBrightness: Double?) {
+        if let systemVolume, systemVolume.isFinite {
+            volume = SystemLevelStep.clamped(systemVolume)
+        }
+        if let systemBrightness, systemBrightness.isFinite {
+            brightness = SystemLevelStep.clamped(systemBrightness)
+        }
+    }
+
+    private func applyPending() {
+        apply(systemVolume: pendingVolume, systemBrightness: pendingBrightness)
+        pendingVolume = nil
+        pendingBrightness = nil
     }
 }

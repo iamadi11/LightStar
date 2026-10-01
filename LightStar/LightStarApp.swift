@@ -15,6 +15,8 @@ struct LightStarApp: App {
                 .environment(appDelegate.ble)
                 .environment(appDelegate.presets)
                 .environment(appDelegate.schedules)
+                .environment(appDelegate.yeelight)
+                .environment(appDelegate.homeKitLamp)
         }
     }
 }
@@ -26,6 +28,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var popoverClickMonitor: Any?
     private var hotKeyRef: EventHotKeyRef?
     private var controlWindowController: NSWindowController?
+    private var settingsWindowController: NSWindowController?
     lazy var ble = LightBLEManager()
     lazy var presets = PresetStore()
     private var widgetStateTask: Task<Void, Never>?
@@ -47,10 +50,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Echo Dot discovers this as a Hue bridge; commands land on `ble`.
     lazy var alexaBridge = AlexaHueBridge()
 
+    /// Mi Bedside Lamp on the LAN. Follows strip colour without writing BLE.
+    lazy var yeelight = YeelightLampController()
+    lazy var homeKitLamp = HomeKitLampController()
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
         LightStarRuntime.register(ble: ble, presets: presets, schedules: schedules)
         WindowActions.openControl = { [weak self] in self?.showControlWindow() }
+        WindowActions.openSettings = { [weak self] in self?.showSettingsWindow() }
         WindowActions.closePopover = { [weak self] in self?.popover?.performClose(nil) }
         setupMenuBar()
         if UserDefaults.standard.object(forKey: "autoConnectOnLaunch") as? Bool ?? true {
@@ -88,6 +96,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if UserDefaults.standard.object(forKey: AlexaHueBridge.enabledDefaultsKey) as? Bool ?? false {
             alexaBridge.start()
         }
+        configureYeelight()
+        if UserDefaults.standard.object(forKey: YeelightLampController.enabledDefaultsKey) as? Bool ?? false {
+            yeelight.start()
+            homeKitLamp.start()
+        }
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        yeelight.stop()
+        homeKitLamp.stop()
     }
 
     private func configureAlexaBridge() {
@@ -121,6 +139,39 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if patch.on == true, !self.ble.isOn {
                 self.ble.setPower(on: true)
             }
+        }
+    }
+
+    private func configureYeelight() {
+        ble.onLampMirror = { [weak self] update in
+            self?.yeelight.submit(update)
+            self?.homeKitLamp.submit(update)
+        }
+        let push = { [weak self] in
+            guard let self else { return }
+            let updates: [YeelightMirrorUpdate] = [
+                .power(self.ble.isOn),
+                .color(hue: self.ble.colorHue, saturation: self.ble.colorSat),
+                .brightness(self.ble.brightness)
+            ]
+            for update in updates {
+                self.yeelight.submit(update)
+                self.homeKitLamp.submit(update)
+            }
+        }
+        yeelight.onFollowing = push
+        homeKitLamp.onFollowing = push
+    }
+
+    func setYeelightMirrorEnabled(_ enabled: Bool) {
+        UserDefaults.standard.set(enabled, forKey: YeelightLampController.enabledDefaultsKey)
+        if enabled {
+            configureYeelight()
+            yeelight.start()
+            homeKitLamp.start()
+        } else {
+            yeelight.stop()
+            homeKitLamp.stop()
         }
     }
 
@@ -362,7 +413,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         menu.addItem(NSMenuItem(title: "Open Window", action: #selector(showControlWindow), keyEquivalent: ""))
-        menu.addItem(NSMenuItem(title: "Settings…", action: #selector(showSettings), keyEquivalent: ","))
+        let settingsItem = NSMenuItem(title: "Settings…", action: #selector(showSettings), keyEquivalent: "")
+        settingsItem.target = self
+        menu.addItem(settingsItem)
         menu.addItem(.separator())
 
         menu.addItem(NSMenuItem(title: "Send Feedback…", action: #selector(contextSendFeedback), keyEquivalent: ""))
@@ -418,8 +471,54 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func showSettings() {
+        showSettingsWindow()
+    }
+
+    private func showSettingsWindow() {
         popover?.performClose(nil)
-        openLightStarSettings()
+        if NSApp.activationPolicy() != .regular {
+            NSApp.setActivationPolicy(.regular)
+        }
+        NSApp.activate(ignoringOtherApps: true)
+        if let existing = settingsWindowController?.window {
+            existing.level = .floating
+            existing.center()
+            existing.makeKeyAndOrderFront(nil)
+            existing.orderFrontRegardless()
+            return
+        }
+        let root = SettingsView()
+            .environment(ble)
+            .environment(presets)
+            .environment(schedules)
+            .environment(yeelight)
+            .environment(homeKitLamp)
+        let hosting = NSHostingController(rootView: root)
+        let window = NSWindow(contentViewController: hosting)
+        window.title = "Settings"
+        window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
+        window.setContentSize(NSSize(width: 480, height: 640))
+        window.identifier = NSUserInterfaceItemIdentifier("settings")
+        window.isReleasedWhenClosed = false
+        window.level = .floating
+        window.collectionBehavior = [.moveToActiveSpace, .managed]
+        window.center()
+        let controller = NSWindowController(window: window)
+        settingsWindowController = controller
+        controller.showWindow(nil)
+        window.makeKeyAndOrderFront(nil)
+        window.orderFrontRegardless()
+        NotificationCenter.default.addObserver(
+            forName: NSWindow.willCloseNotification,
+            object: window,
+            queue: .main
+        ) { _ in
+            Task { @MainActor in
+                if NSApp.activationPolicy() == .regular {
+                    NSApp.setActivationPolicy(.accessory)
+                }
+            }
+        }
     }
 
     func application(_ application: NSApplication, open urls: [URL]) {

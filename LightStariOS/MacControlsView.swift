@@ -63,7 +63,14 @@ struct MacControlsView: View {
             .onChange(of: client.state) { _, newState in
                 if case .connected = newState {
                     mediaHUD.reset()
+                    mediaHUD.adopt(
+                        systemVolume: client.currentState?.systemVolume,
+                        systemBrightness: client.currentState?.systemBrightness
+                    )
                 }
+            }
+            .onChange(of: client.currentState) { _, state in
+                mediaHUD.adopt(systemVolume: state?.systemVolume, systemBrightness: state?.systemBrightness)
             }
         }
     }

@@ -879,6 +879,31 @@ final class ConnectAndSchedulePolicyTests: XCTestCase {
         XCTAssertEqual(RemoteTypingDelta.from(oldValue: "hel", newValue: "hello"), .insert("lo"))
         XCTAssertEqual(RemoteTypingDelta.from(oldValue: "abc", newValue: "xyz"), .replace(delete: 3, insert: "xyz"))
         XCTAssertEqual(RemoteTypingDelta.from(oldValue: "a", newValue: "a"), .none)
+        let carriers = RemoteTextInjection.strokes.filter { RemoteTextInjection.carriesCharacter($0) }
+        XCTAssertEqual(carriers, [.keyDown])
+        XCTAssertEqual(RemoteTextInjection.strokes, [.keyDown, .keyUp])
+    }
+
+    func testScrollWheelDetentEmitsOneNotchPerSpacing() {
+        let first = ScrollWheelDetent.consume(accumulated: 0, delta: 10)
+        XCTAssertEqual(first.notches, 0)
+        XCTAssertEqual(first.remainder, 10, accuracy: 0.001)
+        let second = ScrollWheelDetent.consume(accumulated: first.remainder, delta: 14)
+        XCTAssertEqual(second.notches, 1)
+        XCTAssertEqual(second.remainder, 2, accuracy: 0.001)
+        let up = ScrollWheelDetent.consume(accumulated: 0, delta: -44)
+        XCTAssertEqual(up.notches, -2)
+        XCTAssertEqual(up.remainder, 0, accuracy: 0.001)
+    }
+
+    func testSystemLevelStepsFromLiveValueNotHalfScale() {
+        let fromQuiet = SystemLevelStep.next(current: 0.25, delta: SystemLevelStep.notch)
+        let fromHalf = SystemLevelStep.next(current: 0.5, delta: SystemLevelStep.notch)
+        XCTAssertEqual(fromQuiet, 0.25 + SystemLevelStep.notch, accuracy: 0.0001)
+        XCTAssertNotEqual(fromQuiet, fromHalf)
+        XCTAssertEqual(SystemLevelStep.next(current: 0.99, delta: SystemLevelStep.notch), 1)
+        XCTAssertEqual(SystemLevelStep.next(current: 0.02, delta: -SystemLevelStep.notch), 0)
+        XCTAssertEqual(SystemLevelStep.clamped(.nan), 0)
     }
 
     func testClickDragKeepsPointerWhenExtraFingerLands() {
@@ -1268,5 +1293,68 @@ final class ConnectAndSchedulePolicyTests: XCTestCase {
         XCTAssertTrue(RemoteStateBroadcastPolicy.shouldBroadcast(
             identityChanged: true, now: 1.01, lastBroadcastAt: 1.0
         ))
+    }
+}
+
+final class HomeKitSetupCodeTests: XCTestCase {
+    func testSetupCodeInsertsDashes() {
+        XCTAssertEqual(HomeKitSRP.setupCode("12345678"), "123-45-678")
+        XCTAssertEqual(HomeKitSRP.setupCode("123-45-678"), "123-45-678")
+        XCTAssertNil(HomeKitSRP.setupCode("1234"))
+    }
+}
+
+final class YeelightMirrorTests: XCTestCase {
+    func testLampHueIsNotTheStripLUT() {
+        let logical = 0.5
+        let lamp = YeelightColor.hueDegrees(logical)
+        let strip = Int(ColorMath.correctedHueDeg(logical).rounded())
+        XCTAssertEqual(lamp, 180)
+        XCTAssertNotEqual(lamp, strip)
+        let line = YeelightCommand.encode(id: 1, .hsv(hue: lamp, saturation: 100))
+        XCTAssertEqual(line, "{\"id\":1,\"method\":\"set_hsv\",\"params\":[180,100,\"sudden\",0]}\r\n")
+    }
+
+    func testQuotaFlushSendsOneCommandUntilMusicMode() {
+        var desired = YeelightMirrorState(power: true, hue: 0.25, saturation: 1, brightness: 0.4)
+        let first = YeelightFlush.commands(desired: desired, sent: YeelightMirrorState(), supportsHSV: true, musicMode: false)
+        XCTAssertEqual(first, [.power(true)])
+        var sent = YeelightMirrorState(power: true)
+        let second = YeelightFlush.commands(desired: desired, sent: sent, supportsHSV: true, musicMode: false)
+        XCTAssertEqual(second, [.hsv(hue: 90, saturation: 100)])
+        sent.hue = 0.25
+        sent.saturation = 1
+        let third = YeelightFlush.commands(desired: desired, sent: sent, supportsHSV: true, musicMode: false)
+        XCTAssertEqual(third, [.brightness(40)])
+        let live = YeelightFlush.commands(desired: desired, sent: YeelightMirrorState(), supportsHSV: true, musicMode: true)
+        XCTAssertEqual(live.count, 3)
+        desired.brightness = 0
+        XCTAssertEqual(YeelightColor.brightnessPercent(0), 1)
+    }
+
+    func testDiscoveryPrefersSavedLamp() {
+        let payload = """
+        HTTP/1.1 200 OK\r
+        Location: yeelight://192.168.1.50:55443\r
+        id: 0xabc\r
+        model: lamp\r
+        name: Bedside\r
+        support: get_prop set_power set_bright set_hsv set_rgb set_music\r
+        \r
+        """
+        let lamp = YeelightDiscovery.parse(payload)
+        XCTAssertEqual(lamp?.host, "192.168.1.50")
+        XCTAssertEqual(lamp?.port, 55443)
+        XCTAssertEqual(lamp?.displayName, "Bedside")
+        XCTAssertEqual(lamp?.supportsHSV, true)
+        XCTAssertEqual(lamp?.supportsMusic, true)
+        let other = YeelightAdvertisement(
+            id: "bulb", name: "", host: "192.168.1.9", port: 55443,
+            model: "color", supportsHSV: true, supportsMusic: true
+        )
+        let saved = YeelightDiscovery.choose([other, lamp!], savedID: "0xabc")
+        XCTAssertEqual(saved?.id, "0xabc")
+        let preferred = YeelightDiscovery.choose([other, lamp!], savedID: nil)
+        XCTAssertEqual(preferred?.model, "lamp")
     }
 }

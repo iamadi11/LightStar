@@ -77,6 +77,10 @@
     {
       "at": "2026-09-21T20:58:40+00:00",
       "learning": "Sync improvements must stay evidence-backed: sleep/wake races and capture/write rate mismatch beat speculative Metal rewrites."
+    },
+    {
+      "at": "2026-09-25T09:59:46+00:00",
+      "learning": "Retro cycle 19: completed=0 rejected=0 deferred=2"
     }
   ],
   "rejects": [],
@@ -85,6 +89,6 @@
     "Honor PD-001 / PD-002",
     "Prefer evidence over task count"
   ],
-  "updated_at": "2026-09-21T20:58:42+00:00",
+  "updated_at": "2026-09-25T09:59:46+00:00",
   "version": 1
 }

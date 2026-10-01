@@ -162,7 +162,7 @@ public extension LightBLEManager {
 
         case .video:
             seedScreenColorFromSteadyState()
-            write(Cmd.hue(lastScreenH, saturation: lastScreenS))
+            writeMirroredHue(lastScreenH, saturation: lastScreenS)
             screenSampler.capturesAudio = false
             setupScreenCallback()
             screenSampler.selectedDisplayID = selectedDisplayID
@@ -226,7 +226,7 @@ public extension LightBLEManager {
 
         case .combined:
             seedScreenColorFromSteadyState()
-            write(Cmd.hue(lastScreenH, saturation: lastScreenS))
+            writeMirroredHue(lastScreenH, saturation: lastScreenS)
             screenSampler.capturesAudio = CombinedCapturePolicy.shouldCaptureAudioOnScreenStream(mode: .combined)
             screenSampler.selectedDisplayID = selectedDisplayID
             setupScreenCallback()
@@ -318,12 +318,12 @@ public extension LightBLEManager {
             guard hueDelta > 0.008 || now - lastWrite > 0.5 else { return }
             if CombinedSyncMixer.screenShouldWriteHue(mode: self.syncMode, flashLevel: self.flashLevel) {
                 lastWrite = now
-                self.write(Cmd.hue(smoothH, saturation: boostedS))
+                self.writeMirroredHue(smoothH, saturation: boostedS)
             }
             if CombinedSyncMixer.screenShouldWriteBrightness(
                 mode: self.syncMode, videoSyncBrightness: self.videoSyncBrightness
             ) {
-                self.write(Cmd.brightness(min(1.0, max(0.05, smoothV * 1.3))))
+                self.writeMirroredBrightness(min(1.0, max(0.05, smoothV * 1.3)))
             }
         }
     }
@@ -347,12 +347,12 @@ public extension LightBLEManager {
                 }
                 // Hue stays with the screen sampler. Audio only writes BC05,
                 // same as Music Pulse, so a static window can keep color still.
-                self.write(Cmd.brightness(CombinedSyncMixer.combinedBrightness(
+                self.writeMirroredBrightness(CombinedSyncMixer.combinedBrightness(
                     userBrightness: self.brightness,
                     bass: bands.bass,
                     rms: bands.rms,
                     flashLevel: self.flashLevel
-                )))
+                ))
                 return
             }
 
@@ -368,12 +368,12 @@ public extension LightBLEManager {
                 if CombinedSyncMixer.audioShouldWriteStreamingHue(
                     mode: self.syncMode, audioSyncMode: .rainbow
                 ) {
-                    self.write(Cmd.audioHue(self.beatHue, saturation: rainbowS))
+                    self.writeMirroredHue(self.beatHue, saturation: rainbowS, streaming: true)
                 }
-                self.write(Cmd.brightness(min(1.0, max(0.05, bands.bass * 1.3 + bands.rms * 0.3))))
+                self.writeMirroredBrightness(min(1.0, max(0.05, bands.bass * 1.3 + bands.rms * 0.3)))
             case .pulse:
                 self.syncColor = Color(hue: self.audioPulseH, saturation: 1.0, brightness: 1)
-                self.write(Cmd.brightness(min(1.0, max(0.03, bands.bass * 1.5 + bands.rms * 0.2))))
+                self.writeMirroredBrightness(min(1.0, max(0.03, bands.bass * 1.5 + bands.rms * 0.2)))
             case .frequency:
                 let hTotal = bands.mid + bands.high + 0.001
                 let h = (bands.mid * (120/360.0) + bands.high * (240/360.0)) / hTotal
@@ -381,9 +381,9 @@ public extension LightBLEManager {
                 if CombinedSyncMixer.audioShouldWriteStreamingHue(
                     mode: self.syncMode, audioSyncMode: .frequency
                 ) {
-                    self.write(Cmd.audioHue(h, saturation: 1.0))
+                    self.writeMirroredHue(h, saturation: 1.0, streaming: true)
                 }
-                self.write(Cmd.brightness(min(1.0, max(0.05, (bands.bass + bands.mid + bands.high) / 3 * 1.5 + bands.rms * 0.2))))
+                self.writeMirroredBrightness(min(1.0, max(0.05, (bands.bass + bands.mid + bands.high) / 3 * 1.5 + bands.rms * 0.2)))
             }
         }
         if useMic {
@@ -432,8 +432,8 @@ public extension LightBLEManager {
     public func restoreSteadyState() {
         guard isOn else { return }
         let (h, s, _) = color.hsvComponents
-        write(Cmd.hue(h, saturation: s))
-        write(Cmd.brightness(brightness))
+        writeMirroredHue(h, saturation: s)
+        writeMirroredBrightness(brightness)
     }
 
     /// First combined beats must not flash hue 0 (red) before a screen sample arrives.
@@ -484,8 +484,8 @@ public extension LightBLEManager {
                 let s = max(0, min(1, startS + (targetS - startS) * e))
                 let bri = max(0, min(1, startBri + (targetBri - startBri) * e))
 
-                self.write(Cmd.hue(h, saturation: s))
-                self.write(Cmd.brightness(bri))
+                self.writeMirroredHue(h, saturation: s)
+                self.writeMirroredBrightness(bri)
                 do { try await Task.sleep(nanoseconds: 16_700_000) }
                 catch { return }
             }
@@ -504,15 +504,20 @@ public extension LightBLEManager {
     func reconcileBrowserHardwareAcceleration(syncMode: SyncMode? = nil) {
 #if os(macOS)
         let mode = syncMode ?? self.syncMode
+        let protected = screenSampler.protectedContentDetected || protectedContentBanner != nil
+        let siteBundle = (protected && !browserHWAccel.appliedThisSession)
+            ? browserHWAccel.netflixOrPrimeBundleID()
+            : nil
         let want = BrowserHardwareAccelerationPolicy.shouldDisable(
             isOn: isOn,
             isSyncingVideo: mode == .video || mode == .combined,
             alreadyAppliedThisSession: browserHWAccel.appliedThisSession,
-            protectedContentDetected: screenSampler.protectedContentDetected || protectedContentBanner != nil
+            protectedContentDetected: protected,
+            playbackIsNetflixOrPrime: siteBundle != nil
         )
         browserHWAccel.reconcile(
             wantDisabled: want,
-            detectedBundleID: screenSampler.diagnostics.detectedBrowser?.bundleID
+            detectedBundleID: siteBundle ?? screenSampler.diagnostics.detectedBrowser?.bundleID
         )
 #endif
     }

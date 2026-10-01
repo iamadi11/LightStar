@@ -6,24 +6,59 @@ final class BrowserHardwareAccelerationTests: XCTestCase {
     func testDisableOnlyWhileOnAndScreenSyncWithProtectionOrSession() {
         XCTAssertFalse(BrowserHardwareAccelerationPolicy.shouldDisable(
             isOn: true, isSyncingVideo: true,
-            alreadyAppliedThisSession: false, protectedContentDetected: false
+            alreadyAppliedThisSession: false, protectedContentDetected: false,
+            playbackIsNetflixOrPrime: false
         ), "VS Code / YouTube Screen sync must not quit Chrome")
+        XCTAssertFalse(BrowserHardwareAccelerationPolicy.shouldDisable(
+            isOn: true, isSyncingVideo: true,
+            alreadyAppliedThisSession: false, protectedContentDetected: true,
+            playbackIsNetflixOrPrime: false
+        ), "Disney+ and other black frames must not quit Chrome")
         XCTAssertTrue(BrowserHardwareAccelerationPolicy.shouldDisable(
             isOn: true, isSyncingVideo: true,
-            alreadyAppliedThisSession: false, protectedContentDetected: true
+            alreadyAppliedThisSession: false, protectedContentDetected: true,
+            playbackIsNetflixOrPrime: true
         ))
         XCTAssertTrue(BrowserHardwareAccelerationPolicy.shouldDisable(
             isOn: true, isSyncingVideo: true,
-            alreadyAppliedThisSession: true, protectedContentDetected: false
+            alreadyAppliedThisSession: true, protectedContentDetected: false,
+            playbackIsNetflixOrPrime: false
         ), "stay off for the rest of the Screen session so we do not relaunch-loop")
         XCTAssertFalse(BrowserHardwareAccelerationPolicy.shouldDisable(
             isOn: false, isSyncingVideo: true,
-            alreadyAppliedThisSession: true, protectedContentDetected: true
+            alreadyAppliedThisSession: true, protectedContentDetected: true,
+            playbackIsNetflixOrPrime: true
         ), "power off restores")
         XCTAssertFalse(BrowserHardwareAccelerationPolicy.shouldDisable(
             isOn: true, isSyncingVideo: false,
-            alreadyAppliedThisSession: true, protectedContentDetected: true
+            alreadyAppliedThisSession: true, protectedContentDetected: true,
+            playbackIsNetflixOrPrime: true
         ), "leaving Screen restores")
+    }
+
+    func testChromeRestartOnlyForNetflixAndPrime() {
+        XCTAssertTrue(BrowserHardwareAccelerationPolicy.isNetflixOrPrime(
+            url: "https://www.netflix.com/watch/123", title: "Show"
+        ))
+        XCTAssertTrue(BrowserHardwareAccelerationPolicy.isNetflixOrPrime(
+            url: "https://www.primevideo.com/detail/abc", title: nil
+        ))
+        XCTAssertTrue(BrowserHardwareAccelerationPolicy.isNetflixOrPrime(
+            url: "https://www.amazon.in/gp/video/storefront", title: nil
+        ))
+        XCTAssertTrue(BrowserHardwareAccelerationPolicy.isNetflixOrPrime(
+            url: nil, title: "Prime Video - Google Chrome"
+        ))
+        XCTAssertFalse(BrowserHardwareAccelerationPolicy.isNetflixOrPrime(
+            url: "https://www.youtube.com/watch?v=abc", title: "YouTube"
+        ))
+        XCTAssertFalse(BrowserHardwareAccelerationPolicy.isNetflixOrPrime(
+            url: "https://www.disneyplus.com/play/abc", title: "Disney+"
+        ))
+        XCTAssertFalse(BrowserHardwareAccelerationPolicy.isNetflixOrPrime(
+            url: "https://www.amazon.com/dp/B00TEST", title: "Amazon.com"
+        ))
+        XCTAssertFalse(BrowserHardwareAccelerationPolicy.isNetflixOrPrime(url: nil, title: nil))
     }
 
     func testDisableRelaunchIsOneShot() {
@@ -41,7 +76,8 @@ final class BrowserHardwareAccelerationTests: XCTestCase {
         ))
         XCTAssertTrue(BrowserHardwareAccelerationPolicy.shouldDisable(
             isOn: true, isSyncingVideo: true,
-            alreadyAppliedThisSession: true, protectedContentDetected: false
+            alreadyAppliedThisSession: true, protectedContentDetected: false,
+            playbackIsNetflixOrPrime: false
         ), "latch keeps wantDisabled true while Chrome is restarting and frames are not black")
     }
 

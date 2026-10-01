@@ -172,6 +172,10 @@ public struct LightStarState: Codable, Sendable, Equatable {
     public let syncColor: ColorInfo?
     public let protectedContentDetected: Bool
     public let trackpad: MacTrackpadPrefs?
+    /// Mac output volume, 0…1. Nil until the Mac has read it.
+    public var systemVolume: Double?
+    /// Main display brightness, 0…1. Nil until the Mac has read it.
+    public var systemBrightness: Double?
     
     public init(
         isConnected: Bool,
@@ -188,7 +192,9 @@ public struct LightStarState: Codable, Sendable, Equatable {
         availableDisplays: [DisplayInfo] = [],
         syncColor: ColorInfo? = nil,
         protectedContentDetected: Bool = false,
-        trackpad: MacTrackpadPrefs? = nil
+        trackpad: MacTrackpadPrefs? = nil,
+        systemVolume: Double? = nil,
+        systemBrightness: Double? = nil
     ) {
         self.isConnected = isConnected
         self.isOn = isOn
@@ -205,6 +211,15 @@ public struct LightStarState: Codable, Sendable, Equatable {
         self.syncColor = syncColor
         self.protectedContentDetected = protectedContentDetected
         self.trackpad = trackpad
+        self.systemVolume = systemVolume
+        self.systemBrightness = systemBrightness
+    }
+
+    public func withSystemLevels(volume: Double?, brightness: Double?) -> LightStarState {
+        var copy = self
+        copy.systemVolume = volume
+        copy.systemBrightness = brightness
+        return copy
     }
 }
 

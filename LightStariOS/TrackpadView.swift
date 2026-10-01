@@ -20,6 +20,7 @@ struct TrackpadView: View {
     @StateObject private var gyro = GyroPointerController()
     @StateObject private var mediaHUD = RemoteLevelHUDModel()
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var isActiveTab = true
     @State private var isLandscape = false
 
@@ -50,6 +51,7 @@ struct TrackpadView: View {
                                 if gyro.isAvailable {
                                     airPointerButton
                                 }
+                                scrollWheelToggleButton
                                 keyboardToggleButton
                             }
                             .padding(.horizontal, 16)
@@ -163,7 +165,14 @@ struct TrackpadView: View {
         .onChange(of: client.state) { _, newState in
             if case .connected = newState {
                 mediaHUD.reset()
+                mediaHUD.adopt(
+                    systemVolume: client.currentState?.systemVolume,
+                    systemBrightness: client.currentState?.systemBrightness
+                )
             }
+        }
+        .onChange(of: client.currentState) { _, state in
+            mediaHUD.adopt(systemVolume: state?.systemVolume, systemBrightness: state?.systemBrightness)
         }
         .onReceive(NotificationCenter.default.publisher(for: UIDevice.orientationDidChangeNotification)) { _ in
             syncInterfaceOrientation()
@@ -181,6 +190,19 @@ struct TrackpadView: View {
                         .padding(.top, 12)
                 }
             }
+            .overlay(alignment: .trailing) {
+                if settings.showScrollWheel {
+                    MouseScrollWheel(hapticsEnabled: settings.hapticClicks) { notches in
+                        client.sendScroll(
+                            deltaX: 0,
+                            deltaY: Double(notches) * ScrollWheelDetent.scrollPerNotch
+                        )
+                    }
+                    .padding(.trailing, 10)
+                    .padding(.vertical, 20)
+                    .transition(.opacity)
+                }
+            }
             .overlay {
                 if mediaHUD.visible {
                     RemoteLevelHUD(icon: mediaHUD.icon, title: mediaHUD.title, level: mediaHUD.level)
@@ -188,6 +210,7 @@ struct TrackpadView: View {
                 }
             }
             .animation(.easeOut(duration: 0.12), value: mediaHUD.visible)
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: settings.showScrollWheel)
     }
 
     private var landscapeSideBar: some View {
@@ -210,6 +233,13 @@ struct TrackpadView: View {
                     }
                 }
                 landscapeIconButton("keyboard", "Keyboard") { keyboardOpen = true }
+                landscapeIconButton(
+                    "arrow.up.and.down",
+                    settings.showScrollWheel ? "Hide scroll wheel" : "Show scroll wheel",
+                    selected: settings.showScrollWheel
+                ) {
+                    settings.showScrollWheel.toggle()
+                }
             }
             .padding(.vertical, 4)
         }
@@ -274,6 +304,31 @@ struct TrackpadView: View {
         gyro.onMove = { dx, dy in
             client.addMouseDelta(deltaX: dx, deltaY: dy)
         }
+    }
+
+    private var scrollWheelToggleButton: some View {
+        Button {
+            RemoteHaptics.select(enabled: settings.hapticClicks)
+            settings.showScrollWheel.toggle()
+        } label: {
+            Label(settings.showScrollWheel ? "Hide wheel" : "Wheel", systemImage: "arrow.up.and.down")
+                .font(.subheadline.weight(.semibold))
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+                .frame(maxWidth: .infinity)
+                .frame(minHeight: 48)
+                .background(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(settings.showScrollWheel ? Color.accentColor.opacity(0.28) : Color(uiColor: .secondarySystemFill))
+                )
+                .overlay {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .strokeBorder(settings.showScrollWheel ? Color.accentColor : Color.clear, lineWidth: 1)
+                }
+        }
+        .buttonStyle(RemotePressButtonStyle())
+        .accessibilityLabel(settings.showScrollWheel ? "Hide scroll wheel" : "Show scroll wheel")
+        .accessibilityAddTraits(settings.showScrollWheel ? .isSelected : [])
     }
 
     private var airPointerButton: some View {

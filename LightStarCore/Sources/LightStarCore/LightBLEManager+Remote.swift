@@ -141,7 +141,7 @@ public final class RemoteControlCoordinator: ObservableObject {
     
     private func setupServer() {
         server.getState = { [weak self] in
-            self?.ble?.createStateSnapshot() ?? LightStarState(
+            self?.stateForClients() ?? LightStarState(
                 isConnected: false, isOn: false, brightness: 0,
                 colorHue: 0, colorSaturation: 0, colorTemperature: 0.5, syncMode: "Off"
             )
@@ -157,12 +157,20 @@ public final class RemoteControlCoordinator: ObservableObject {
             self.ble?.refreshAttachedDisplays()
             guard !clients.isEmpty else { return }
             self.inputController.ensureAccessibility()
-            if let state = self.ble?.createStateSnapshot() {
-                self.server.broadcastStateUpdate(state)
-            }
+            self.inputController.refreshSystemLevels()
+            self.server.broadcastStateUpdate(self.stateForClients())
         }
     }
     
+    private func stateForClients() -> LightStarState {
+        let base = ble?.createStateSnapshot() ?? LightStarState(
+            isConnected: false, isOn: false, brightness: 0,
+            colorHue: 0, colorSaturation: 0, colorTemperature: 0.5, syncMode: "Off"
+        )
+        let levels = inputController.systemLevelsForSnapshot()
+        return base.withSystemLevels(volume: levels.volume, brightness: levels.brightness)
+    }
+
     private func accessibilityDeniedMessage() -> RemoteMessage? {
         try? RemoteMessage(
             type: .error,
@@ -225,6 +233,11 @@ public final class RemoteControlCoordinator: ObservableObject {
         case .mediaKey:
             if let cmd = try? message.decode(MediaKeyMessage.self) {
                 inputController.sendMediaKey(cmd.key)
+                if cmd.key == .volumeUp || cmd.key == .volumeDown
+                    || cmd.key == .brightnessUp || cmd.key == .brightnessDown || cmd.key == .mute {
+                    inputController.refreshSystemLevels()
+                    return try? RemoteMessage(type: .stateUpdate, content: stateForClients())
+                }
             }
             return nil
         case .macAction:
