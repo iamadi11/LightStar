@@ -274,31 +274,33 @@ struct RemoteLightControlView: View {
     @State private var hue: Double = 0
     @State private var saturation: Double = 1
     @State private var brightness: Double = 1
+    @State private var lampCode = ""
     
     var body: some View {
         NavigationStack {
             List {
                 if let state = client.currentState {
-                    connectionSection(state)
-                    if state.isConnected {
-                        powerSection(state)
-                        let live = StripCommandPolicy.canSendStripCommands(
-                            isConnected: true, isOn: state.isOn
-                        )
-                        if !live {
-                            Section {
-                                Text("Turn the light on to change brightness, color, and sync.")
-                                    .foregroundStyle(.secondary)
-                            }
+                    lightsSection(state)
+                    powerSection(state)
+                    let target = RemoteLightControls.target(from: state.outputTarget)
+                    let live = RemoteLightControls.canAdjust(
+                        target: target,
+                        stripConnected: state.isConnected,
+                        isOn: state.isOn
+                    )
+                    if !live {
+                        Section {
+                            Text(liveHint(state))
+                                .foregroundStyle(.secondary)
                         }
-                        Group {
-                            brightnessSection
-                            colorSection(state)
-                            syncSection(state)
-                            displaySection(state)
-                        }
-                        .stripOutputEnabled(live)
                     }
+                    Group {
+                        brightnessSection
+                        colorSection(state)
+                        syncSection(state)
+                        displaySection(state)
+                    }
+                    .stripOutputEnabled(live)
                 } else {
                     Section {
                         HStack {
@@ -324,31 +326,123 @@ struct RemoteLightControlView: View {
     }
     
     @ViewBuilder
-    private func connectionSection(_ state: LightStarState) -> some View {
-        Section("LED Strip") {
-            HStack {
-                Image(systemName: state.isConnected ? "checkmark.circle.fill" : "xmark.circle")
-                    .foregroundStyle(state.isConnected ? .green : .red)
-                Text(state.isConnected ? "Connected" : "Not Connected")
-                Spacer()
-                Button(state.isConnected ? "Reconnect" : "Connect") {
-                    client.connectStrip()
+    private func lightsSection(_ state: LightStarState) -> some View {
+        let target = RemoteLightControls.target(from: state.outputTarget)
+        Section {
+            Picker("Which lights", selection: Binding(
+                get: { target },
+                set: { next in
+                    RemoteHaptics.select()
+                    client.setOutputTarget(next)
+                }
+            )) {
+                ForEach(LightOutputTarget.allCases) { item in
+                    Text(item.title).tag(item)
+                }
+            }
+            .pickerStyle(.segmented)
+            Text("The Mac drives the LED strip, the Mi lamp, or both.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        }
+
+        if target.sendsToStrip {
+            Section("LED strip") {
+                HStack(spacing: 8) {
+                    Image(systemName: "lightstrip.2")
+                        .foregroundStyle(.secondary)
+                        .accessibilityHidden(true)
+                    Text(stripStatus(state))
+                        .foregroundStyle(.secondary)
+                    Spacer(minLength: 8)
+                }
+                .accessibilityElement(children: .combine)
+                Button(stripActionTitle(state)) {
+                    RemoteHaptics.select()
+                    let phase = stripPhase(state)
+                    if phase == "scanning" || phase == "connecting" || phase == "connected" {
+                        client.disconnectStrip()
+                    } else {
+                        client.connectStrip()
+                    }
+                }
+            }
+        }
+
+        if target.sendsToLamp {
+            Section("Mi lamp") {
+                HStack(spacing: 8) {
+                    Image(systemName: "lamp.desk")
+                        .foregroundStyle(.secondary)
+                        .accessibilityHidden(true)
+                    Text(RemoteLightControls.lampStatus(phase: state.lampPhase, detail: state.lampDetail))
+                        .foregroundStyle(state.lampPhase == "failed" ? .red : .secondary)
+                }
+                .accessibilityElement(children: .combine)
+                if state.lampPhase == "needsCode" || state.lampPhase == "failed" {
+                    TextField("Code on the lamp base", text: $lampCode)
+                        .keyboardType(.numberPad)
+                        .monospacedDigit()
+                        .textContentType(.oneTimeCode)
+                    Button("Connect lamp") {
+                        RemoteHaptics.select()
+                        client.setLampCode(lampCode)
+                    }
+                    .disabled(lampCode.filter(\.isNumber).count != 8)
                 }
             }
         }
     }
-    
+
     @ViewBuilder
     private func powerSection(_ state: LightStarState) -> some View {
-        Section("Power") {
-            Toggle("Light", isOn: Binding(
+        let target = RemoteLightControls.target(from: state.outputTarget)
+        let enabled = RemoteLightControls.canPower(target: target, stripConnected: state.isConnected)
+        Section {
+            Toggle(target.title, isOn: Binding(
                 get: { state.isOn },
                 set: {
                     RemoteHaptics.select()
                     client.setPower($0)
                 }
             ))
+            .disabled(!enabled)
+            Text(RemoteLightControls.powerDetail(target: target))
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        } header: {
+            Text("Power")
         }
+    }
+
+    private func stripPhase(_ state: LightStarState) -> String {
+        if let phase = state.stripPhase { return phase }
+        return state.isConnected ? "connected" : "disconnected"
+    }
+
+    private func stripStatus(_ state: LightStarState) -> String {
+        switch stripPhase(state) {
+        case "connected": return "Connected"
+        case "scanning": return "Looking for the LED strip…"
+        case "connecting": return "Connecting to the LED strip…"
+        default: return "Not connected"
+        }
+    }
+
+    private func stripActionTitle(_ state: LightStarState) -> String {
+        switch stripPhase(state) {
+        case "connected": return "Disconnect"
+        case "scanning", "connecting": return "Cancel"
+        default: return "Connect"
+        }
+    }
+
+    private func liveHint(_ state: LightStarState) -> String {
+        let target = RemoteLightControls.target(from: state.outputTarget)
+        if !RemoteLightControls.canPower(target: target, stripConnected: state.isConnected) {
+            return "Connect the LED strip to turn it on."
+        }
+        return "Turn the lights on to change brightness, color, and sync."
     }
 
     private var brightnessSection: some View {

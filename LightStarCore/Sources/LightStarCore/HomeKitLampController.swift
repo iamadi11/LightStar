@@ -27,8 +27,14 @@ public enum HomeKitLampState: Equatable, Sendable {
 public final class HomeKitLampController {
     nonisolated public static let pairingDefaultsKey = "homekitLampPairing"
 
-    public private(set) var state: HomeKitLampState = .stopped
+    public private(set) var state: HomeKitLampState = .stopped {
+        didSet {
+            guard state != oldValue else { return }
+            onStateChange?()
+        }
+    }
     public var onFollowing: (() -> Void)?
+    public var onStateChange: (() -> Void)?
 
     private let engine = HomeKitLampEngine()
     private var started = false

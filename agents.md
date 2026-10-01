@@ -138,7 +138,10 @@ Messages are length-prefixed (4-byte big-endian) JSON:
 | `stateUpdate` | Mac → iPhone | Full light state snapshot |
 | `setPower`, `setBrightness`, etc. | iPhone → Mac | Light commands |
 | `connectStrip`, `disconnectStrip`, `writeFrame` | iPhone → Mac | Use the Mac's BLE radio |
+| `setOutputTarget`, `setLampCode` | iPhone → Mac | Choose LED strip, Mi lamp, or both, and pass the lamp code |
 | `mouseMove`, `keyDown`, `macAction` | iPhone → Mac | Trackpad, typing, and Mac system actions |
+
+The phone Lights tab shows that choice. Power for the strip waits until the strip is connected. Power for the lamp or both does not. One switch drives every selected light.
 
 Two-finger scroll sends raw UIKit finger deltas. `MacInputController` maps them with `RemoteScrollMapping`: Natural scrolling ON (Mac default) posts the same polarity as the physical trackpad; Natural OFF inverts once. Do not invert again on iOS.
 

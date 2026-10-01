@@ -97,8 +97,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             alexaBridge.start()
         }
         configureYeelight()
+        remoteControl.lampStatus = { [weak self] in
+            guard let self else { return ("stopped", nil) }
+            switch self.homeKitLamp.state {
+            case .stopped: return ("stopped", nil)
+            case .searching: return ("searching", nil)
+            case .needsCode: return ("needsCode", nil)
+            case .pairing: return ("pairing", nil)
+            case .following(let name): return ("following", name)
+            case .failed(let message): return ("failed", message)
+            }
+        }
+        remoteControl.onLampCode = { [weak self] code in
+            self?.homeKitLamp.connect(setupCode: code)
+        }
+        homeKitLamp.onStateChange = { [weak self] in
+            self?.remoteControl.publishState()
+        }
         ble.onOutputTargetChange = { [weak self] target in
             self?.applyLampFollow(target.sendsToLamp)
+            self?.remoteControl.publishState()
         }
         if ble.outputTarget.sendsToLamp {
             applyLampFollow(true)

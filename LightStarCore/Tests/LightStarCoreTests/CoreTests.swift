@@ -700,7 +700,7 @@ final class RemoteProtocolTests: XCTestCase {
             .getState, .stateUpdate,
             .setPower, .setBrightness, .setColor, .setColorTemperature,
             .setEffect, .setEffectSpeed, .setEffectDirection, .setSyncMode, .selectDisplay,
-            .connectStrip, .disconnectStrip, .writeFrame,
+            .connectStrip, .disconnectStrip, .writeFrame, .setOutputTarget, .setLampCode,
             .mouseMove, .mouseDown, .mouseUp, .rightClick, .scroll,
             .keyDown, .keyUp, .textInput, .mediaKey, .macAction,
             .getDiagnostics, .diagnosticsUpdate,
@@ -1280,6 +1280,19 @@ final class ConnectAndSchedulePolicyTests: XCTestCase {
         XCTAssertEqual(ColorMath.screenHue(histogram: bins, peak: 11), center, accuracy: 0.001)
         bins[12] = 3
         XCTAssertGreaterThan(ColorMath.screenHue(histogram: bins, peak: 11), center)
+    }
+
+    func testRemoteLightControlsKeepLampPowerIndependentOfTheStrip() {
+        XCTAssertFalse(RemoteLightControls.canPower(target: .strip, stripConnected: false))
+        XCTAssertTrue(RemoteLightControls.canPower(target: .strip, stripConnected: true))
+        XCTAssertTrue(RemoteLightControls.canPower(target: .lamp, stripConnected: false))
+        XCTAssertTrue(RemoteLightControls.canPower(target: .both, stripConnected: false))
+        XCTAssertFalse(RemoteLightControls.canAdjust(target: .lamp, stripConnected: false, isOn: false))
+        XCTAssertTrue(RemoteLightControls.canAdjust(target: .lamp, stripConnected: false, isOn: true))
+        XCTAssertEqual(RemoteLightControls.target(from: nil), .strip)
+        XCTAssertEqual(RemoteLightControls.target(from: "both"), .both)
+        XCTAssertEqual(RemoteLightControls.lampStatus(phase: "following", detail: "MiBedsideLamp2"), "MiBedsideLamp2 · Connected")
+        XCTAssertEqual(RemoteLightControls.lampStatus(phase: "needsCode", detail: nil), "Enter the 8-digit code on the lamp base")
     }
 
     func testLightOutputTargetRoutesStripLampAndBoth() {

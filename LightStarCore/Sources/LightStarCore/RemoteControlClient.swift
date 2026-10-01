@@ -520,6 +520,18 @@ public final class RemoteControlClient: ObservableObject {
         }
     }
 
+    public func setOutputTarget(_ target: LightOutputTarget) {
+        if let msg = try? RemoteMessage(type: .setOutputTarget, content: SetOutputTargetMessage(target: target.rawValue)) {
+            send(msg)
+        }
+    }
+
+    public func setLampCode(_ code: String) {
+        if let msg = try? RemoteMessage(type: .setLampCode, content: SetLampCodeMessage(code: code)) {
+            send(msg)
+        }
+    }
+
     public func connectStrip() {
         send(RemoteMessage(type: .connectStrip))
     }

@@ -60,6 +60,8 @@ public enum RemoteMessageType: UInt8, Codable, Sendable {
     case connectStrip = 0x29
     case disconnectStrip = 0x2A
     case writeFrame = 0x2B
+    case setOutputTarget = 0x2C
+    case setLampCode = 0x2D
     
     // Mac control (input)
     case mouseMove = 0x30
@@ -176,6 +178,14 @@ public struct LightStarState: Codable, Sendable, Equatable {
     public var systemVolume: Double?
     /// Main display brightness, 0…1. Nil until the Mac has read it.
     public var systemBrightness: Double?
+    /// `strip`, `lamp`, or `both`. Nil on older Macs.
+    public var outputTarget: String?
+    /// Strip link: disconnected, scanning, connecting, connected.
+    public var stripPhase: String?
+    /// Lamp link: stopped, searching, needsCode, pairing, following, failed.
+    public var lampPhase: String?
+    /// Lamp name when following, or the failure text.
+    public var lampDetail: String?
     
     public init(
         isConnected: Bool,
@@ -194,7 +204,11 @@ public struct LightStarState: Codable, Sendable, Equatable {
         protectedContentDetected: Bool = false,
         trackpad: MacTrackpadPrefs? = nil,
         systemVolume: Double? = nil,
-        systemBrightness: Double? = nil
+        systemBrightness: Double? = nil,
+        outputTarget: String? = nil,
+        stripPhase: String? = nil,
+        lampPhase: String? = nil,
+        lampDetail: String? = nil
     ) {
         self.isConnected = isConnected
         self.isOn = isOn
@@ -213,6 +227,10 @@ public struct LightStarState: Codable, Sendable, Equatable {
         self.trackpad = trackpad
         self.systemVolume = systemVolume
         self.systemBrightness = systemBrightness
+        self.outputTarget = outputTarget
+        self.stripPhase = stripPhase
+        self.lampPhase = lampPhase
+        self.lampDetail = lampDetail
     }
 
     public func withSystemLevels(volume: Double?, brightness: Double?) -> LightStarState {
@@ -221,6 +239,23 @@ public struct LightStarState: Codable, Sendable, Equatable {
         copy.systemBrightness = brightness
         return copy
     }
+
+    public func withLamp(phase: String, detail: String?) -> LightStarState {
+        var copy = self
+        copy.lampPhase = phase
+        copy.lampDetail = detail
+        return copy
+    }
+}
+
+public struct SetOutputTargetMessage: Codable, Sendable {
+    public let target: String
+    public init(target: String) { self.target = target }
+}
+
+public struct SetLampCodeMessage: Codable, Sendable {
+    public let code: String
+    public init(code: String) { self.code = code }
 }
 
 /// macOS Trackpad pane values, mirrored onto the iPhone remote.

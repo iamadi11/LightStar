@@ -30,7 +30,9 @@ public extension LightBLEManager {
             availableDisplays: displays.map { DisplayInfo(id: $0.id, name: $0.name) },
             syncColor: syncColorInfo,
             protectedContentDetected: screenSampler.protectedContentDetected,
-            trackpad: MacTrackpadPreferences.current()
+            trackpad: MacTrackpadPreferences.current(),
+            outputTarget: outputTarget.rawValue,
+            stripPhase: connectionState.rawValue
         )
     }
 
@@ -100,6 +102,11 @@ public extension LightBLEManager {
             if let cmd = try? message.decode(SelectDisplayMessage.self) {
                 selectedDisplayID = cmd.displayID
             }
+        case .setOutputTarget:
+            if let cmd = try? message.decode(SetOutputTargetMessage.self),
+               let target = LightOutputTarget(rawValue: cmd.target) {
+                outputTarget = target
+            }
         case .connectStrip:
             reconnectPreservingSync()
         case .disconnectStrip:
@@ -125,6 +132,9 @@ public final class RemoteControlCoordinator: ObservableObject {
     public let inputController: MacInputController
     
     private weak var ble: LightBLEManager?
+    /// Lamp phase and detail for the phone. The Mac owns the HomeKit session.
+    public var lampStatus: () -> (phase: String, detail: String?) = { ("stopped", nil) }
+    public var onLampCode: ((String) -> Void)?
     private var stateObservationTask: Task<Void, Never>?
     private var shouldObserveState = false
     private var lastBroadcastIdentity = ""
@@ -168,7 +178,14 @@ public final class RemoteControlCoordinator: ObservableObject {
             colorHue: 0, colorSaturation: 0, colorTemperature: 0.5, syncMode: "Off"
         )
         let levels = inputController.systemLevelsForSnapshot()
-        return base.withSystemLevels(volume: levels.volume, brightness: levels.brightness)
+        let lamp = lampStatus()
+        return base
+            .withSystemLevels(volume: levels.volume, brightness: levels.brightness)
+            .withLamp(phase: lamp.phase, detail: lamp.detail)
+    }
+
+    public func publishState() {
+        server.broadcastStateUpdate(stateForClients())
     }
 
     private func accessibilityDeniedMessage() -> RemoteMessage? {
@@ -253,7 +270,12 @@ public final class RemoteControlCoordinator: ObservableObject {
                 inputController.perform(cmd.action)
             }
             return nil
-            
+        case .setLampCode:
+            if let cmd = try? message.decode(SetLampCodeMessage.self) {
+                onLampCode?(cmd.code)
+            }
+            return try? RemoteMessage(type: .stateUpdate, content: stateForClients())
+
         // Light commands - delegate to BLE manager
         default:
             return ble?.handleRemoteCommand(message)
