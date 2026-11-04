@@ -1,35 +1,43 @@
 name: Auto-merge
 
-# Merge a PR into main as soon as its CI run passes. Runs from the default
-# branch's copy of this file, so it applies to PRs opened after it lands.
-# A newer push cancels the older CI run (see ci.yml concurrency) and
-# --match-head-commit refuses to merge commits CI didn't test.
+# Merges PRs into main once their CI passes, and keeps them moving when CI
+# never ran: GitHub's macOS arm64 runners are often short, and a job that no
+# runner picks up ends red with no step executed. See .github/scripts/sweep-prs.sh.
+#
+# - CI finishing (any result): merge if green, re-run if it never got a runner.
+# - Every 20 minutes: the same sweep, for anything an event missed.
+# - Manually from the Actions tab.
+#
+# workflow_run and schedule both run this file as it is on main.
+# Merges made with GITHUB_TOKEN don't start other workflows, so CI doesn't
+# re-run on main afterwards; the PR's CI already tested the merge result.
 on:
   workflow_run:
     workflows: [CI]
     types: [completed]
+  schedule:
+    - cron: "*/20 * * * *"
+  workflow_dispatch:
 
 permissions:
   contents: write
   pull-requests: write
+  actions: write
+
+concurrency:
+  group: auto-merge
+  cancel-in-progress: false
 
 jobs:
-  merge:
-    if: >-
-      github.event.workflow_run.event == 'pull_request' &&
-      github.event.workflow_run.conclusion == 'success' &&
-      github.event.workflow_run.pull_requests[0].base.ref == 'main'
+  sweep:
     runs-on: ubuntu-latest
     steps:
-      - name: Merge the PR
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          sparse-checkout: .github/scripts
+      - name: Merge green PRs, re-run CI that never got a runner
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
-          PR: ${{ github.event.workflow_run.pull_requests[0].number }}
-          SHA: ${{ github.event.workflow_run.head_sha }}
-        run: |
-          if [ "$(gh pr view "$PR" --repo "$REPO" --json isDraft --jq .isDraft)" = "true" ]; then
-            echo "PR #$PR is a draft; not merging."
-            exit 0
-          fi
-          gh pr merge "$PR" --repo "$REPO" --merge --match-head-commit "$SHA"
+        run: .github/scripts/sweep-prs.sh
