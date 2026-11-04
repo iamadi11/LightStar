@@ -143,6 +143,7 @@ struct MenuBarView: View {
         case .following: return ble.isOn ? "Lightbar on" : "Lightbar off"
         case .searching: return "Finding lightbar"
         case .notFound: return "No lightbar"
+        case .blocked: return "Lightbar blocked"
         case .stopped: return "Lightbar off"
         }
     }

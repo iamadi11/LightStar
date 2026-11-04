@@ -19,6 +19,24 @@ final class LampGradientTests: XCTestCase {
         XCTAssertEqual(zones.last, WizRGB(r: 255, g: 0, b: 0))
     }
 
+    private func zones(_ pixel: (Int) -> [UInt8], height: Int = 7) -> [WizRGB] {
+        let frame = (0..<(4 * height)).flatMap { pixel($0) }
+        return frame.withUnsafeBufferPointer {
+            LampGradient.screenZones(bgra: $0.baseAddress!, width: 4, height: height, bytesPerRow: 16, count: 1)
+        }
+    }
+
+    func testMixedBandTakesTheDominantColourNotAMuddyAverage() {
+        // 3 of 4 columns red, 1 green: an average would be olive/brown.
+        let band = zones { $0 % 4 == 3 ? [0, 255, 0, 255] : [0, 0, 255, 255] }
+        XCTAssertEqual(band, [WizRGB(r: 255, g: 0, b: 0)])
+    }
+
+    func testGreyBandIsNeutralAtItsBrightness() {
+        let band = zones { _ in [128, 128, 128, 255] }
+        XCTAssertEqual(band, [WizRGB(r: 128, g: 128, b: 128)])
+    }
+
     func testVUFillsFromTheFloorGreenToRed() {
         XCTAssertTrue(LampGradient.vu(level: 0).allSatisfy(\.isOff))
         let full = LampGradient.vu(level: 1)

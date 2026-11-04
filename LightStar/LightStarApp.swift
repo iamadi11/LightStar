@@ -112,6 +112,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             if !target.sendsToMiLamp {
                 if case .notFound = self.wizLamp.state { return ("failed", "No lightbar on this network") }
+                if case .blocked = self.wizLamp.state { return ("failed", "Allow Local Network for LightStar on the Mac") }
                 return ("searching", nil)
             }
             switch self.homeKitLamp.state {

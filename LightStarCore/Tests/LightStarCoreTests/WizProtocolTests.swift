@@ -98,6 +98,30 @@ final class WizProtocolTests: XCTestCase {
         XCTAssertEqual(WizSegmentLayout.stored.widths, [1, 1])
     }
 
+    func testDarkColoursGoFullScaleWithBrightnessInDimming() {
+        let layout = WizSegmentLayout(widths: [1, 1, 1], slot: 258)
+        let steps = layout.steps([WizRGB(r: 30, g: 30, b: 30), WizRGB(r: 10, g: 0, b: 0), WizRGB(r: 1, g: 1, b: 1)], dimming: 100)!
+        XCTAssertEqual(Array(steps[0][1...3]), [255, 255, 255])
+        XCTAssertEqual(steps[0][7], 12, "30/255 of full")
+        XCTAssertEqual(steps[1][7], 10, "never below WiZ's 10% floor")
+        XCTAssertEqual(steps[1][1], 100, "the rest of the darkness goes into the colour")
+        XCTAssertEqual(steps[2][7], 0, "near-black is off")
+    }
+
+    func testLinkResendsUnansweredCommandsAndNoticesALostLightbar() {
+        let t = Date(timeIntervalSince1970: 1000)
+        func at(_ s: Double) -> Date { t.addingTimeInterval(s) }
+        // Answered: nothing to do.
+        XCTAssertEqual(WizLink.action(now: at(1), lastCommand: at(0), lastReply: at(0.05), lastPing: .distantPast), .none)
+        // Command never answered: send it again.
+        XCTAssertEqual(WizLink.action(now: at(0.6), lastCommand: at(0), lastReply: at(-1), lastPing: .distantPast), .resend)
+        // Quiet for a while: ping, but not twice in a row.
+        XCTAssertEqual(WizLink.action(now: at(4), lastCommand: at(0), lastReply: at(0.05), lastPing: .distantPast), .ping)
+        XCTAssertEqual(WizLink.action(now: at(4), lastCommand: at(0), lastReply: at(0.05), lastPing: at(3.5)), .none)
+        // No reply at all for 8 s: gone.
+        XCTAssertEqual(WizLink.action(now: at(9), lastCommand: at(0), lastReply: at(0.05), lastPing: at(7)), .lost)
+    }
+
     func testLightbarIsItsOwnTarget() {
         XCTAssertTrue(LightOutputTarget.lightbar.sendsToLightbar)
         XCTAssertFalse(LightOutputTarget.lightbar.sendsToStrip)

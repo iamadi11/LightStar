@@ -171,9 +171,17 @@ struct LightTargetSection: View {
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 8)
-            if case .notFound = wizLamp.state {
+            switch wizLamp.state {
+            case .notFound:
                 Button("Search Again") { wizLamp.searchAgain() }
                     .controlSize(.small)
+            case .blocked:
+                Button("Open Settings") {
+                    NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_LocalNetwork")!)
+                }
+                .controlSize(.small)
+            default:
+                EmptyView()
             }
         }
     }
@@ -183,6 +191,7 @@ struct LightTargetSection: View {
         case .following(let name): return "\(name) · Connected"
         case .searching: return "Looking for the lightbar…"
         case .notFound: return "No lightbar found. Check it's on the same Wi-Fi."
+        case .blocked: return "macOS is blocking the local network. Allow LightStar under Privacy & Security → Local Network."
         case .stopped: return "Lightbar"
         }
     }

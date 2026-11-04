@@ -7,6 +7,8 @@ public enum WizLampState: Equatable, Sendable {
     case searching
     case following(String)
     case notFound
+    /// Every probe was refused by macOS: Local Network access is off for LightStar.
+    case blocked
 }
 
 /// WiZ lamp on the LAN (Philips Gradient Floor Lamp). Follows the strip like the
@@ -16,6 +18,7 @@ public enum WizLampState: Equatable, Sendable {
 @Observable
 public final class WizLampController {
     nonisolated public static let macDefaultsKey = "wizLampMAC"
+    nonisolated public static let hostDefaultsKey = "wizLampHost"
 
     public private(set) var state: WizLampState = .stopped
     /// Last segment colours sent from LightStar. Firmware cannot report them.
@@ -107,6 +110,12 @@ private final class WizEngine: @unchecked Sendable {
     private var sent = WizPilot()
     private var layout = WizSegmentLayout.stored
     private var lastSend = Date.distantPast
+    /// Link health: last setPilot sent, last datagram back, last getPilot ping.
+    private var lastCommand = Date.distantPast
+    private var lastReply = Date.distantPast
+    private var lastPing = Date.distantPast
+    /// Probes macOS let out during the current search.
+    private var probesSent = 0
     private var flushScheduled = false
     /// ~30 fps; the firmware takes more but screen sync does not need it.
     private let interval: TimeInterval = 1.0 / 30
@@ -185,34 +194,88 @@ private final class WizEngine: @unchecked Sendable {
         }
     }
 
+    /// Asks the last known address directly (instant when nothing changed) and
+    /// broadcasts for a lightbar that moved, several times: right after launch
+    /// macOS refuses the first packets ("No route to host") while its Local
+    /// Network check settles, so one probe is not enough. The saved lightbar is
+    /// taken the moment it answers; anything else at the end of the window.
     private func search() {
         guard running else { return }
         handler?(.searching)
         found.removeAll()
+        probesSent = 0
         let session = generation
-        socket.send(WizCommand.systemConfig, to: "255.255.255.255")
-        queue.asyncAfter(deadline: .now() + 2) { [weak self] in
-            guard let self, self.running, self.generation == session, self.device == nil else { return }
-            let saved = UserDefaults.standard.string(forKey: WizLampController.macDefaultsKey)
-            guard let choice = WizDiscovery.choose(self.found, savedMAC: saved) else {
-                self.handler?(.notFound)
-                self.queue.asyncAfter(deadline: .now() + 8) { [weak self] in
-                    guard let self, self.running, self.generation == session, self.device == nil else { return }
-                    self.search()
+        for delay in [0, 0.3, 0.6, 1.0, 1.5, 2.0] {
+            queue.asyncAfter(deadline: .now() + delay) { [weak self] in
+                guard let self, self.running, self.generation == session, self.device == nil else { return }
+                if let host = UserDefaults.standard.string(forKey: WizLampController.hostDefaultsKey),
+                   self.socket.send(WizCommand.systemConfig, to: host) {
+                    self.probesSent += 1
                 }
-                return
+                if self.socket.send(WizCommand.systemConfig, to: "255.255.255.255") {
+                    self.probesSent += 1
+                }
             }
-            UserDefaults.standard.set(choice.mac, forKey: WizLampController.macDefaultsKey)
-            self.device = choice
-            self.sent = WizPilot()
-            self.handler?(.following(choice.displayName))
-            self.socket.send(WizCommand.modelConfig, to: choice.host)
-            self.flush()
+        }
+        queue.asyncAfter(deadline: .now() + 2.5) { [weak self] in
+            self?.finishSearch(session)
+        }
+    }
+
+    private func finishSearch(_ session: Int) {
+        guard running, generation == session, device == nil else { return }
+        let saved = UserDefaults.standard.string(forKey: WizLampController.macDefaultsKey)
+        guard let choice = WizDiscovery.choose(found, savedMAC: saved) else {
+            handler?(probesSent == 0 ? .blocked : .notFound)
+            queue.asyncAfter(deadline: .now() + 3) { [weak self] in
+                guard let self, self.running, self.generation == session, self.device == nil else { return }
+                self.search()
+            }
+            return
+        }
+        connect(choice)
+    }
+
+    private func connect(_ choice: WizDevice) {
+        UserDefaults.standard.set(choice.mac, forKey: WizLampController.macDefaultsKey)
+        UserDefaults.standard.set(choice.host, forKey: WizLampController.hostDefaultsKey)
+        device = choice
+        sent = WizPilot()
+        lastReply = Date()
+        handler?(.following(choice.displayName))
+        socket.send(WizCommand.modelConfig, to: choice.host)
+        flush()
+        heartbeat(generation)
+    }
+
+    private func heartbeat(_ session: Int) {
+        guard running, generation == session, let device else { return }
+        let now = Date()
+        switch WizLink.action(now: now, lastCommand: lastCommand, lastReply: lastReply, lastPing: lastPing) {
+        case .none:
+            break
+        case .resend:
+            sent = WizPilot()
+            flush()
+        case .ping:
+            lastPing = now
+            socket.send(WizCommand.pilot, to: device.host)
+        case .lost:
+            // Keep `desired`; it is sent again once the lightbar is back.
+            self.device = nil
+            sent = WizPilot()
+            search()
+            return
+        }
+        queue.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+            self?.heartbeat(session)
         }
     }
 
     private func received(_ data: Data, from host: String) {
+        guard running else { return }
         if let device, host == device.host {
+            lastReply = Date()
             guard let count = WizDiscovery.segmentCount(data),
                   count != UserDefaults.standard.integer(forKey: WizSegmentLayout.countDefaultsKey) else { return }
             UserDefaults.standard.set(count, forKey: WizSegmentLayout.countDefaultsKey)
@@ -221,9 +284,12 @@ private final class WizEngine: @unchecked Sendable {
             flush()
             return
         }
-        guard running, device == nil, let lamp = WizDiscovery.parse(data, host: host),
+        guard device == nil, let lamp = WizDiscovery.parse(data, host: host),
               !found.contains(where: { $0.mac == lamp.mac }) else { return }
         found.append(lamp)
+        if lamp.mac == UserDefaults.standard.string(forKey: WizLampController.macDefaultsKey) {
+            finishSearch(generation)
+        }
     }
 
     private func flush() {
@@ -239,6 +305,7 @@ private final class WizEngine: @unchecked Sendable {
             sent = next
         }
         lastSend = Date()
+        lastCommand = lastSend
     }
 
     private func scheduleFlush() {
@@ -283,20 +350,23 @@ private final class WizSocket: @unchecked Sendable {
         onData = nil
     }
 
-    func send(_ data: Data, to host: String) {
-        guard fd >= 0, !data.isEmpty else { return }
+    /// False when macOS refused the packet (e.g. Local Network access off).
+    @discardableResult
+    func send(_ data: Data, to host: String) -> Bool {
+        guard fd >= 0, !data.isEmpty else { return false }
         var dest = sockaddr_in()
         dest.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
         dest.sin_family = sa_family_t(AF_INET)
         dest.sin_port = WizCommand.port.bigEndian
-        guard inet_pton(AF_INET, host, &dest.sin_addr) == 1 else { return }
-        _ = data.withUnsafeBytes { bytes in
+        guard inet_pton(AF_INET, host, &dest.sin_addr) == 1 else { return false }
+        let sent = data.withUnsafeBytes { bytes in
             withUnsafePointer(to: &dest) {
                 $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
                     sendto(fd, bytes.baseAddress, bytes.count, 0, $0, socklen_t(MemoryLayout<sockaddr_in>.size))
                 }
             }
         }
+        return sent >= 0
     }
 
     private func read() {
