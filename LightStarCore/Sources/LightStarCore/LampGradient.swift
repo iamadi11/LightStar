@@ -9,6 +9,15 @@ public enum LampGradient {
     /// Mean brightness below this is black on screen: the zone goes dark.
     public static let blackLevel = 0.1
 
+    /// Whether a frame's zones go to the lightbar. A frame the DRM guard holds
+    /// (mostly black with a black band) can still be real content, like the
+    /// Netflix logo on black: paint it, with its black zones off. Only a frame
+    /// with nothing visible at all is held, since DRM-protected video captures
+    /// as solid black and must not blank the lightbar.
+    public static func shouldPaint(_ zones: [WizRGB], frameWritable: Bool) -> Bool {
+        frameWritable || zones.contains { !$0.isOff }
+    }
+
     /// How the lightbar stands next to the screen. Vertical slices the screen
     /// into rows (bottom row → base), horizontal into columns (left → base).
     public enum Orientation: String, CaseIterable, Sendable, Identifiable {

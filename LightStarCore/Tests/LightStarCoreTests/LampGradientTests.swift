@@ -76,6 +76,15 @@ final class LampGradientTests: XCTestCase {
         XCTAssertEqual(zones.first, WizRGB(r: 255, g: 0, b: 0), "top of screen (red) at the base")
     }
 
+    func testLogoOnBlackPaintsEvenWhenTheDRMGuardHoldsTheStrip() {
+        let red = WizRGB(r: 255, g: 0, b: 0)
+        let logo: [WizRGB] = [.off, .off, .off, red, .off, .off, .off]
+        XCTAssertTrue(LampGradient.shouldPaint(logo, frameWritable: false), "Netflix N on black: red centre, rest off")
+        XCTAssertFalse(LampGradient.shouldPaint(Array(repeating: .off, count: 7), frameWritable: false),
+                       "solid black may be DRM: hold the last frame")
+        XCTAssertTrue(LampGradient.shouldPaint(Array(repeating: .off, count: 7), frameWritable: true))
+    }
+
     func testVUFillsFromTheFloorGreenToRed() {
         XCTAssertTrue(LampGradient.vu(level: 0).allSatisfy(\.isOff))
         let full = LampGradient.vu(level: 1)
