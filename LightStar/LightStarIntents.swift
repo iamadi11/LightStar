@@ -8,11 +8,13 @@ import SwiftUI
 enum LSIntentError: Error, LocalizedError {
     case notConnected
     case presetNotFound(String)
+    case lightbarNotChosen
 
     var errorDescription: String? {
         switch self {
         case .notConnected:          return "LightStar is not connected to a light bar."
         case .presetNotFound(let n): return "No preset named \"\(n)\" found."
+        case .lightbarNotChosen:     return "The lightbar isn't one of the lights LightStar controls. Choose Lightbar or All first."
         }
     }
 }
@@ -227,6 +229,126 @@ struct ApplyPresetIntent: AppIntent {
     }
 }
 
+// MARK: - Lightbar
+
+enum LightbarEffectOption: String, AppEnum {
+    case none, rainbowFlow, ocean, rainbowChase, breathe, openClose, sparkle, fire
+
+    nonisolated(unsafe) static var typeDisplayRepresentation: TypeDisplayRepresentation = "Lightbar Effect"
+    nonisolated(unsafe) static var caseDisplayRepresentations: [LightbarEffectOption: DisplayRepresentation] = [
+        .none: "None", .rainbowFlow: "Rainbow Flow", .ocean: "Ocean", .rainbowChase: "Rainbow Chase",
+        .breathe: "Breathe", .openClose: "Open / Close", .sparkle: "Sparkle", .fire: "Fire",
+    ]
+
+    /// The matching built-in effect.
+    var effect: LampEffect? {
+        let name: String
+        switch self {
+        case .none: return nil
+        case .rainbowFlow: name = "Rainbow Flow"
+        case .ocean: name = "Ocean"
+        case .rainbowChase: name = "Rainbow Chase"
+        case .breathe: name = "Breathe"
+        case .openClose: name = "Open / Close"
+        case .sparkle: name = "Sparkle"
+        case .fire: name = "Fire"
+        }
+        return LampEffect.builtIn.first { $0.name == name }
+    }
+}
+
+enum LightsOption: String, AppEnum {
+    case strip, miLamp, lightbar, all
+
+    nonisolated(unsafe) static var typeDisplayRepresentation: TypeDisplayRepresentation = "Lights"
+    nonisolated(unsafe) static var caseDisplayRepresentations: [LightsOption: DisplayRepresentation] = [
+        .strip: "LED strip", .miLamp: "Mi lamp", .lightbar: "Lightbar", .all: "All",
+    ]
+
+    var target: LightOutputTarget {
+        switch self {
+        case .strip: return .strip
+        case .miLamp: return .lamp
+        case .lightbar: return .lightbar
+        case .all: return .both
+        }
+    }
+}
+
+struct LightbarSceneEntity: AppEntity {
+    var id: Int
+    var displayRepresentation: DisplayRepresentation {
+        .init(title: "\(WizScene.all.first { $0.id == id }?.name ?? "Scene \(id)")")
+    }
+    nonisolated(unsafe) static var typeDisplayRepresentation: TypeDisplayRepresentation = "Lightbar Scene"
+    nonisolated(unsafe) static var defaultQuery = LightbarSceneQuery()
+}
+
+struct LightbarSceneQuery: EntityQuery {
+    func entities(for ids: [Int]) async throws -> [LightbarSceneEntity] {
+        ids.filter { id in WizScene.all.contains { $0.id == id } }.map(LightbarSceneEntity.init)
+    }
+
+    func suggestedEntities() async throws -> [LightbarSceneEntity] {
+        WizScene.all.map { LightbarSceneEntity(id: $0.id) }
+    }
+}
+
+@MainActor
+private func requireLightbar() throws -> LightBLEManager {
+    let ble = try requireConnected()
+    guard ble.outputTarget.sendsToLightbar else { throw LSIntentError.lightbarNotChosen }
+    return ble
+}
+
+struct SetLightbarEffectIntent: AppIntent {
+    nonisolated(unsafe) static var title: LocalizedStringResource = "Set Lightbar Effect"
+    nonisolated(unsafe) static var description = IntentDescription("Run an animated effect across the lightbar, or stop it.")
+    nonisolated(unsafe) static var openAppWhenRun: Bool = false
+
+    @Parameter(title: "Effect", default: LightbarEffectOption.rainbowFlow)
+    var effect: LightbarEffectOption
+
+    @MainActor func perform() async throws -> some IntentResult {
+        let ble = try requireLightbar()
+        if !ble.isOn { ble.setPower(on: true) }
+        ble.setLampEffect(effect.effect)
+        return .result()
+    }
+}
+
+struct SetLightbarSceneIntent: AppIntent {
+    nonisolated(unsafe) static var title: LocalizedStringResource = "Set Lightbar Scene"
+    nonisolated(unsafe) static var description = IntentDescription("Show one of the lightbar's built-in WiZ scenes, like Ocean or Fireplace.")
+    nonisolated(unsafe) static var openAppWhenRun: Bool = false
+
+    @Parameter(title: "Scene")
+    var scene: LightbarSceneEntity
+
+    @MainActor func perform() async throws -> some IntentResult {
+        let ble = try requireLightbar()
+        if !ble.isOn { ble.setPower(on: true) }
+        ble.setLampEffect(nil)
+        LightStarRuntime.wizLamp?.setScene(scene.id)
+        return .result()
+    }
+}
+
+struct ChooseLightsIntent: AppIntent {
+    nonisolated(unsafe) static var title: LocalizedStringResource = "Choose LightStar Lights"
+    nonisolated(unsafe) static var description = IntentDescription("Pick which lights LightStar controls: the LED strip, the Mi lamp, the lightbar, or all of them.")
+    nonisolated(unsafe) static var openAppWhenRun: Bool = false
+
+    @Parameter(title: "Lights", default: LightsOption.all)
+    var lights: LightsOption
+
+    @MainActor func perform() async throws -> some IntentResult {
+        guard let ble = LightStarRuntime.ble ?? appDelegate()?.ble else { throw LSIntentError.notConnected }
+        ble.outputTarget = lights.target
+        return .result()
+    }
+}
+
 // MARK: - State query
 
 struct GetLightStateIntent: AppIntent {
@@ -261,8 +383,8 @@ struct LightStarFocusFilter: SetFocusFilterIntent {
     var colorTemperature: ColorTempOption
 
     @MainActor func perform() async throws -> some IntentResult {
-        guard let ble = appDelegate()?.ble,
-              ble.connectionState == .connected else { return .result() }
+        // Same rule as the actions: only a strip-only setup needs Bluetooth.
+        guard let ble = try? requireConnected() else { return .result() }
         ble.setBrightness(Double(brightness) / 100.0)
         ble.setColorTemperature((colorTemperature.kelvin - 2700) / 3800)
         return .result()
@@ -345,6 +467,24 @@ struct LightStarShortcuts: AppShortcutsProvider {
             ],
             shortTitle: "Get State",
             systemImageName: "info.circle"
+        )
+        AppShortcut(
+            intent: SetLightbarEffectIntent(),
+            phrases: [
+                "Start a lightbar effect with \(.applicationName)",
+                "Set the \(.applicationName) lightbar to \(\.$effect)",
+            ],
+            shortTitle: "Lightbar Effect",
+            systemImageName: "sparkles"
+        )
+        AppShortcut(
+            intent: ChooseLightsIntent(),
+            phrases: [
+                "Choose lights in \(.applicationName)",
+                "Control \(\.$lights) with \(.applicationName)",
+            ],
+            shortTitle: "Choose Lights",
+            systemImageName: "lightbulb.2"
         )
     }
 }
