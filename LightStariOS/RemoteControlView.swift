@@ -341,7 +341,7 @@ struct RemoteLightControlView: View {
                 }
             }
             .pickerStyle(.segmented)
-            Text("The Mac drives the LED strip, the lamps, or both.")
+            Text("The Mac drives the LED strip, the Mi lamp, the lightbar, or all of them.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
         }
@@ -370,7 +370,7 @@ struct RemoteLightControlView: View {
         }
 
         if target.sendsToLamp {
-            Section("Lamps") {
+            Section(target == .lightbar ? "Lightbar" : target == .lamp ? "Mi lamp" : "Lamps") {
                 HStack(spacing: 8) {
                     Image(systemName: "lamp.desk")
                         .foregroundStyle(.secondary)
@@ -379,7 +379,7 @@ struct RemoteLightControlView: View {
                         .foregroundStyle(state.lampPhase == "failed" ? .red : .secondary)
                 }
                 .accessibilityElement(children: .combine)
-                if state.lampPhase == "needsCode" || state.lampPhase == "failed" {
+                if target.sendsToMiLamp, state.lampPhase == "needsCode" || state.lampPhase == "failed" {
                     TextField("Code on the lamp base", text: $lampCode)
                         .keyboardType(.numberPad)
                         .monospacedDigit()

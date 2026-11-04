@@ -5,6 +5,7 @@ import LightStarCore
 struct ControlWindowView: View {
     @Environment(LightBLEManager.self) private var ble
     @Environment(HomeKitLampController.self) private var homeKitLamp
+    @Environment(WizLampController.self) private var wizLamp
     @Environment(PresetStore.self) private var presets
 
     var body: some View {
@@ -28,9 +29,7 @@ struct ControlWindowView: View {
                 VStack(alignment: .leading, spacing: 20) {
                     LightTargetSection()
                     if !outputReachable {
-                        Text(ble.outputTarget == .lamp
-                             ? "Connect the Mi lamp above. Colour and power go to the lamp."
-                             : "Connect a light above to change colour, brightness, and power.")
+                        Text(waitingText)
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                     } else {
@@ -71,15 +70,16 @@ struct ControlWindowView: View {
         .frame(minWidth: 640, minHeight: 520)
     }
 
-    private var lampReady: Bool {
-        if case .following = homeKitLamp.state { return true }
-        return false
+    private var outputReachable: Bool {
+        LightReach.any(ble, miLamp: homeKitLamp, lightbar: wizLamp)
     }
 
-    private var outputReachable: Bool {
-        let strip = ble.outputTarget.sendsToStrip && ble.connectionState == .connected
-        let lamp = ble.outputTarget.sendsToLamp && lampReady
-        return strip || lamp
+    private var waitingText: String {
+        switch ble.outputTarget {
+        case .lamp: return "Connect the Mi lamp above. Colour and power go to the lamp."
+        case .lightbar: return "Waiting for the lightbar on Wi-Fi. Colour, power, and sync go to it alone."
+        default: return "Connect a light above to change colour, brightness, and power."
+        }
     }
 
     private var statusText: String {

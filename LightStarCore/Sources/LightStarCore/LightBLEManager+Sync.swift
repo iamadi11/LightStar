@@ -429,7 +429,7 @@ public extension LightBLEManager {
 
     /// Gradient lamps get per-segment sync instead of the bar's single colour.
     var sendsLampGradient: Bool {
-        outputTarget.sendsToLamp && LampGradient.enabled && onLampZones != nil
+        outputTarget.sendsToLightbar && LampGradient.enabled && onLampZones != nil
     }
 
     public func setSyncError(_ error: Error) {

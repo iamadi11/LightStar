@@ -104,17 +104,8 @@ struct MenuBarView: View {
         .padding(.bottom, 8)
     }
 
-    /// Either lamp counts: the Mi lamp over HomeKit or a WiZ lamp on Wi-Fi.
-    private var lampReady: Bool {
-        if case .following = homeKitLamp.state { return true }
-        if case .following = wizLamp.state { return true }
-        return false
-    }
-
     private var outputReachable: Bool {
-        let strip = ble.outputTarget.sendsToStrip && ble.connectionState == .connected
-        let lamp = ble.outputTarget.sendsToLamp && lampReady
-        return strip || lamp
+        LightReach.any(ble, miLamp: homeKitLamp, lightbar: wizLamp)
     }
 
     @ViewBuilder
@@ -139,13 +130,20 @@ struct MenuBarView: View {
     }
 
     private var statusLine: String {
-        switch ble.outputTarget {
-        case .strip:
-            return stripStatusLine
-        case .lamp:
-            return lampStatusLine
-        case .both:
-            return "\(stripStatusLine) · \(lampStatusLine)"
+        let target = ble.outputTarget
+        var parts: [String] = []
+        if target.sendsToStrip { parts.append(stripStatusLine) }
+        if target.sendsToMiLamp { parts.append(lampStatusLine) }
+        if target.sendsToLightbar { parts.append(lightbarStatusLine) }
+        return parts.joined(separator: " · ")
+    }
+
+    private var lightbarStatusLine: String {
+        switch wizLamp.state {
+        case .following: return ble.isOn ? "Lightbar on" : "Lightbar off"
+        case .searching: return "Finding lightbar"
+        case .notFound: return "No lightbar"
+        case .stopped: return "Lightbar off"
         }
     }
 
@@ -160,13 +158,11 @@ struct MenuBarView: View {
     }
 
     private var lampStatusLine: String {
-        if lampReady { return ble.isOn ? "Lamp on" : "Lamp off" }
-        if case .searching = wizLamp.state { return "Finding lamp" }
         switch homeKitLamp.state {
-        case .following: return ble.isOn ? "Lamp on" : "Lamp off"
-        case .pairing, .searching: return "Finding lamp"
-        case .needsCode, .failed: return "Lamp needs code"
-        case .stopped: return "Lamp off"
+        case .following: return ble.isOn ? "Mi lamp on" : "Mi lamp off"
+        case .pairing, .searching: return "Finding Mi lamp"
+        case .needsCode, .failed: return "Mi lamp needs code"
+        case .stopped: return "Mi lamp off"
         }
     }
 

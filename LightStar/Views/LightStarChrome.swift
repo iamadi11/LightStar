@@ -40,6 +40,27 @@ enum LightStarMotion {
     }
 }
 
+/// Whether the lights chosen under Control can take a command right now.
+@MainActor
+enum LightReach {
+    static func miLampReady(_ lamp: HomeKitLampController) -> Bool {
+        if case .following = lamp.state { return true }
+        return false
+    }
+
+    static func lightbarReady(_ bar: WizLampController) -> Bool {
+        if case .following = bar.state { return true }
+        return false
+    }
+
+    static func any(_ ble: LightBLEManager, miLamp: HomeKitLampController, lightbar: WizLampController) -> Bool {
+        let target = ble.outputTarget
+        return (target.sendsToStrip && ble.connectionState == .connected)
+            || (target.sendsToMiLamp && miLampReady(miLamp))
+            || (target.sendsToLightbar && lightbarReady(lightbar))
+    }
+}
+
 extension LightBLEManager {
     var stripAccent: Color {
         let stripLive = connectionState == .connected && outputTarget.sendsToStrip
@@ -74,9 +95,11 @@ struct LightTargetSection: View {
             if ble.outputTarget.sendsToStrip {
                 stripRow
             }
-            if ble.outputTarget.sendsToLamp {
+            if ble.outputTarget.sendsToMiLamp {
                 lampRow
-                wizRow
+            }
+            if ble.outputTarget.sendsToLightbar {
+                lightbarRow
             }
         }
     }
@@ -137,24 +160,30 @@ struct LightTargetSection: View {
         }
     }
 
-    private var wizRow: some View {
+    private var lightbarRow: some View {
         HStack(spacing: 8) {
             Image(systemName: "lamp.floor")
                 .frame(width: 16)
                 .foregroundStyle(.secondary)
-            Text(wizStatus)
+                .accessibilityHidden(true)
+            Text(lightbarStatus)
                 .font(.caption)
                 .foregroundStyle(.secondary)
-                .lineLimit(1)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 8)
+            if case .notFound = wizLamp.state {
+                Button("Search Again") { wizLamp.searchAgain() }
+                    .controlSize(.small)
+            }
         }
     }
 
-    private var wizStatus: String {
+    private var lightbarStatus: String {
         switch wizLamp.state {
         case .following(let name): return "\(name) · Connected"
-        case .searching: return "Looking for a WiZ lamp…"
-        case .notFound: return "No WiZ lamp on this network"
-        case .stopped: return "WiZ lamp"
+        case .searching: return "Looking for the lightbar…"
+        case .notFound: return "No lightbar found. Check it's on the same Wi-Fi."
+        case .stopped: return "Lightbar"
         }
     }
 

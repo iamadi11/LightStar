@@ -2,8 +2,8 @@ import SwiftUI
 import AppKit
 import LightStarCore
 
-/// WiZ gradient lamp: built-in scenes, one colour per segment, and the segment
-/// layout. The layout is a calibration knob until checked on the real lamp.
+/// The WiZ gradient lightbar: built-in scenes, one colour per segment, and the
+/// segment layout (detected from the lamp; saved widths override it).
 struct WizLampSection: View {
     @Environment(WizLampController.self) private var wizLamp
     @State private var colors: [Color] = []

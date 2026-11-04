@@ -3,20 +3,28 @@ import Foundation
 /// Which lights the power, colour, and brightness controls drive.
 public enum LightOutputTarget: String, CaseIterable, Sendable, Identifiable {
     case strip
+    /// The Mi bedside lamp (Yeelight / HomeKit).
     case lamp
+    /// The WiZ gradient lightbar on Wi-Fi.
+    case lightbar
+    /// Every light. Raw value kept from when there were two.
     case both
 
     public var id: String { rawValue }
     public static let defaultsKey = "lightOutputTarget"
 
-    public var sendsToStrip: Bool { self != .lamp }
-    public var sendsToLamp: Bool { self != .strip }
+    public var sendsToStrip: Bool { self == .strip || self == .both }
+    public var sendsToMiLamp: Bool { self == .lamp || self == .both }
+    public var sendsToLightbar: Bool { self == .lightbar || self == .both }
+    /// Any Wi-Fi lamp: the mirror path runs.
+    public var sendsToLamp: Bool { sendsToMiLamp || sendsToLightbar }
 
     public var title: String {
         switch self {
         case .strip: return "LED strip"
-        case .lamp: return "Lamps"
-        case .both: return "Both"
+        case .lamp: return "Mi lamp"
+        case .lightbar: return "Lightbar"
+        case .both: return "All"
         }
     }
 
@@ -50,8 +58,9 @@ public enum RemoteLightControls {
     public static func powerDetail(target: LightOutputTarget) -> String {
         switch target {
         case .strip: return "Turns the LED strip on and off."
-        case .lamp: return "Turns the lamps on and off."
-        case .both: return "Turns the LED strip and the lamps on and off together."
+        case .lamp: return "Turns the Mi lamp on and off."
+        case .lightbar: return "Turns the lightbar on and off."
+        case .both: return "Turns every light on and off together."
         }
     }
 
@@ -68,7 +77,7 @@ public enum RemoteLightControls {
         case "failed":
             return detail ?? "The lamp didn’t connect"
         default:
-            return "Lamps"
+            return "Lamp"
         }
     }
 }
