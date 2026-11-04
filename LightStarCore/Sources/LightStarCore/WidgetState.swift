@@ -5,12 +5,17 @@ public struct WidgetState: Codable, Equatable, Sendable {
     public var isOn: Bool
     public var hue: Double
     public var saturation: Double
+    /// Lightbar status line, when the lightbar is one of the chosen lights.
+    /// Optional so state written by older builds still decodes.
+    public var lightbar: String?
 
-    public init(connected: Bool = false, isOn: Bool = false, hue: Double = 0.6, saturation: Double = 1.0) {
+    public init(connected: Bool = false, isOn: Bool = false, hue: Double = 0.6, saturation: Double = 1.0,
+                lightbar: String? = nil) {
         self.connected = connected
         self.isOn = isOn
         self.hue = hue
         self.saturation = saturation
+        self.lightbar = lightbar
     }
 
     public static let appGroupID = "group.com.adityaraj.LightStar"

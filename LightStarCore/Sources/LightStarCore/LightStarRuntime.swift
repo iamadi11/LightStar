@@ -7,6 +7,9 @@ public enum LightStarRuntime {
     public static weak var ble: LightBLEManager?
     public static weak var presets: PresetStore?
     public static weak var schedules: ScheduleStore?
+    #if os(macOS)
+    public static weak var wizLamp: WizLampController?
+    #endif
 
     public static func register(ble: LightBLEManager, presets: PresetStore, schedules: ScheduleStore) {
         self.ble = ble

@@ -48,6 +48,21 @@ public extension LightBLEManager {
         if !isOn { setPower(on: true) }
         setColor(preset.color)
         setBrightness(preset.brightness)
+        if let look = preset.lightbar { apply(lightbarLook: look) }
+    }
+
+    /// The preset colour reaches the lightbar through setHue's 50 ms debounce;
+    /// the look goes on after it so the late colour doesn't overwrite it.
+    public func apply(lightbarLook look: LightbarLook) {
+        Task { @MainActor [weak self] in
+            do { try await Task.sleep(nanoseconds: 150_000_000) } catch { return }
+            guard let self else { return }
+            if let name = look.effect, let effect = LampEffect.builtIn.first(where: { $0.name == name }) {
+                self.setLampEffect(effect)
+            } else {
+                self.onLightbarLook?(look)
+            }
+        }
     }
 
     public func setHue(_ h: Double, saturation s: Double) {

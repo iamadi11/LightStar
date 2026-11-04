@@ -44,8 +44,16 @@ struct LightStarWidgetView: View {
                 .font(.caption2.bold())
                 .foregroundStyle(entry.state.connected ? .primary : .secondary)
 
+            if let lightbar = entry.state.lightbar {
+                Text(lightbar)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+            }
+
             Text("LightStar")
-                .font(.system(size: 9))
+                .font(.caption2)
                 .foregroundStyle(.tertiary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -63,7 +71,7 @@ struct LightStarWidget: Widget {
                 .containerBackground(.fill.tertiary, for: .widget)
         }
         .configurationDisplayName("LightStar")
-        .description("Status and quick control for your LED bar.")
+        .description("Status of your LED strip and lightbar.")
         .supportedFamilies([.systemSmall])
     }
 }

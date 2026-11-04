@@ -15,6 +15,7 @@ struct ScheduleView: View {
                 Spacer()
                 Button { showAdd = true } label: { Image(systemName: "plus") }
                     .buttonStyle(.plain).font(.caption).help("Add schedule")
+                    .accessibilityLabel("Add schedule")
             }
 
             if store.schedules.isEmpty {
@@ -98,7 +99,8 @@ private struct ScheduleRow: View {
         switch schedule.action {
         case .powerOn:  return "On"
         case .powerOff: return "Off"
-        case .preset:   return "Preset"
+        case .preset:   return "Color"
+        case .savedPreset: return "Preset"
         }
     }
 }
@@ -111,7 +113,9 @@ private struct AddScheduleSheet: View {
     @State private var label = ""
     @State private var time = Calendar.current.date(bySettingHour: 8, minute: 0, second: 0, of: Date()) ?? Date()
     @State private var days: Set<Int> = [2, 3, 4, 5, 6]   // Mon–Fri default
-    @State private var actionType = 0   // 0=On, 1=Off, 2=Current color
+    @State private var actionType = 0   // 0=On, 1=Off, 2=Current color, 3=Preset
+    @Environment(PresetStore.self) private var presets
+    @State private var presetID: UUID?
     @State private var useFirmwareTimer = false
 
     private let dayLabels = [(1,"Su"),(2,"Mo"),(3,"Tu"),(4,"We"),(5,"Th"),(6,"Fr"),(7,"Sa")]
@@ -147,9 +151,19 @@ private struct AddScheduleSheet: View {
                     Text("Power On").tag(0)
                     Text("Power Off").tag(1)
                     Text("Current Color").tag(2)
+                    Text("Preset").tag(3)
                 }
                 .labelsHidden()
                 .pickerStyle(.segmented)
+                if actionType == 3 {
+                    Picker("Preset", selection: $presetID) {
+                        ForEach(presets.presets) { Text($0.name).tag(Optional($0.id)) }
+                    }
+                    .onAppear { if presetID == nil { presetID = presets.presets.first?.id } }
+                    Text("Includes the preset's lightbar effect, scene, or colours.")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
             }
 
             Toggle("Firmware timer (works with Mac asleep)", isOn: $useFirmwareTimer)
@@ -162,7 +176,7 @@ private struct AddScheduleSheet: View {
                 Spacer()
                 Button("Add") { save(); dismiss() }
                     .buttonStyle(.borderedProminent)
-                    .disabled(days.isEmpty)
+                    .disabled(days.isEmpty || (actionType == 3 && presetID == nil))
             }
         }
         .padding(24)
@@ -174,6 +188,9 @@ private struct AddScheduleSheet: View {
         let action: LightSchedule.ScheduledAction
         switch actionType {
         case 1:  action = .powerOff
+        case 3:
+            guard let presetID else { return }
+            action = .savedPreset(presetID)
         case 2:
             let (h, s, _) = ble.color.hsvComponents
             action = .preset(colorHue: h, colorSat: s, brightness: ble.brightness)

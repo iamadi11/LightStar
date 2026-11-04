@@ -59,6 +59,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
         LightStarRuntime.register(ble: ble, presets: presets, schedules: schedules)
+        LightStarRuntime.wizLamp = wizLamp
+        ble.onLightbarLook = { [weak self] look in
+            guard let self else { return }
+            self.ble.setLampEffect(nil)
+            if let scene = look.scene {
+                self.wizLamp.setScene(scene)
+            } else if let colours = look.segmentColours {
+                self.wizLamp.setSegments(colours)
+            }
+        }
         WindowActions.openControl = { [weak self] in self?.showControlWindow() }
         WindowActions.openSettings = { [weak self] in self?.showSettingsWindow() }
         WindowActions.closePopover = { [weak self] in self?.popover?.performClose(nil) }
@@ -295,6 +305,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             _ = ble.color
             _ = ble.isOn
             _ = ble.connectionState
+            _ = ble.outputTarget
+            _ = wizLamp.state
+            _ = homeKitLamp.state
             writeWidgetState()
         } onChange: {
             Task { @MainActor in self.startObservingWidgetAndConnection() }
@@ -321,13 +334,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             try? await Task.sleep(nanoseconds: 200_000_000)
             guard !Task.isCancelled else { return }
             let (h, s, _) = self.ble.color.hsvComponents
+            // "Connected" means any chosen light, so a lightbar-only setup isn't "Offline".
             WidgetState(
-                connected: self.ble.connectionState == .connected,
+                connected: LightReach.any(self.ble, miLamp: self.homeKitLamp, lightbar: self.wizLamp),
                 isOn: self.ble.isOn,
                 hue: h,
-                saturation: s
+                saturation: s,
+                lightbar: self.widgetLightbarLine
             ).save()
             WidgetCenter.shared.reloadTimelines(ofKind: "LightStarWidget")
+        }
+    }
+
+    private var widgetLightbarLine: String? {
+        guard ble.outputTarget.sendsToLightbar else { return nil }
+        switch wizLamp.state {
+        case .following(let name): return "\(name) · \(ble.isOn ? "On" : "Off")"
+        case .searching: return "Lightbar · Finding"
+        case .notFound, .blocked: return "Lightbar · Not found"
+        case .stopped: return nil
         }
     }
 

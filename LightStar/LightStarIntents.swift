@@ -27,7 +27,9 @@ private func requireConnected() throws -> LightBLEManager {
     guard let ble = LightStarRuntime.ble ?? (NSApp.delegate as? AppDelegate)?.ble else {
         throw LSIntentError.notConnected
     }
-    guard ble.connectionState == .connected else { throw LSIntentError.notConnected }
+    // Only a strip-only setup needs Bluetooth; lamps and the lightbar are on Wi-Fi.
+    guard ble.connectionState == .connected || !ble.outputTarget.sendsToStrip || ble.outputTarget.sendsToLamp
+    else { throw LSIntentError.notConnected }
     return ble
 }
 
