@@ -1,0 +1,35 @@
+name: Auto-merge
+
+# Merge a PR into main as soon as its CI run passes. Runs from the default
+# branch's copy of this file, so it applies to PRs opened after it lands.
+# A newer push cancels the older CI run (see ci.yml concurrency) and
+# --match-head-commit refuses to merge commits CI didn't test.
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  merge:
+    if: >-
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.pull_requests[0].base.ref == 'main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Merge the PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.workflow_run.pull_requests[0].number }}
+          SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          if [ "$(gh pr view "$PR" --repo "$REPO" --json isDraft --jq .isDraft)" = "true" ]; then
+            echo "PR #$PR is a draft; not merging."
+            exit 0
+          fi
+          gh pr merge "$PR" --repo "$REPO" --merge --match-head-commit "$SHA"
