@@ -128,53 +128,46 @@ struct WizLampSection: View {
     }
 }
 
-/// Where the screen sits on the lightbar in screen sync: how much of the bar
-/// it covers (the rest goes dark) and where along the bar that stretch is.
+/// How much of each end of the lightbar stays off in screen sync, for a bar
+/// longer than the monitor. The screen fills the stretch in between.
 struct LightbarFitControls: View {
     let orientation: LampGradient.Orientation
-    @AppStorage(LampGradient.centreDefaultsKey) private var centre = 0.0
-    @AppStorage(LampGradient.spanDefaultsKey) private var span = 1.0
+    @AppStorage(LampGradient.trimStartDefaultsKey) private var trimStart = 0.0
+    @AppStorage(LampGradient.trimEndDefaultsKey) private var trimEnd = 0.0
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 6) {
-                Text("Width")
-                    .font(.caption)
-                    .frame(width: 52, alignment: .leading)
-                Slider(value: $span, in: LampGradient.spanRange)
-                    .controlSize(.small)
-                    .accessibilityLabel("Screen width on the lightbar")
-                    .accessibilityValue("\(Int((span * 100).rounded()))% of the lightbar")
-                Text("\(Int((span * 100).rounded()))%")
-                    .font(.caption2.monospacedDigit())
-                    .foregroundStyle(.secondary)
-                    .frame(width: 34, alignment: .trailing)
-            }
-            HStack(spacing: 6) {
-                Text("Position")
-                    .font(.caption)
-                    .frame(width: 52, alignment: .leading)
-                Text(orientation == .vertical ? "Bottom" : "Left")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                Slider(value: $centre, in: LampGradient.centreRange)
-                    .controlSize(.small)
-                    .accessibilityLabel("Screen position on the lightbar")
-                    .accessibilityValue(centre == 0 ? "Centred" : "\(Int((centre * 100).rounded()))% from centre")
-                Text(orientation == .vertical ? "Top" : "Right")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-            }
+            trimRow(orientation == .vertical ? "Off at bottom" : "Off at left",
+                    value: Binding(get: { trimStart },
+                                   set: { trimStart = min($0, 1 - LampGradient.minLit - trimEnd) }))
+            trimRow(orientation == .vertical ? "Off at top" : "Off at right",
+                    value: Binding(get: { trimEnd },
+                                   set: { trimEnd = min($0, 1 - LampGradient.minLit - trimStart) }))
             HStack {
-                Text("Screen sync lights only this stretch; the rest of the lightbar stays off.")
+                Text("Screen sync lights only the stretch in between.")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
                 Spacer(minLength: 6)
-                Button("Reset") { centre = 0; span = 1 }
+                Button("Reset") { trimStart = 0; trimEnd = 0 }
                     .controlSize(.small)
-                    .disabled(centre == 0 && span == 1)
+                    .disabled(trimStart == 0 && trimEnd == 0)
             }
+        }
+    }
+
+    private func trimRow(_ title: String, value: Binding<Double>) -> some View {
+        HStack(spacing: 6) {
+            Text(title)
+                .font(.caption)
+                .frame(width: 78, alignment: .leading)
+            Slider(value: value, in: 0...(1 - LampGradient.minLit))
+                .controlSize(.small)
+                .accessibilityLabel(title)
+                .accessibilityValue("\(Int((value.wrappedValue * 100).rounded()))% of the lightbar")
+            Text("\(Int((value.wrappedValue * 100).rounded()))%")
+                .font(.caption2.monospacedDigit())
+                .foregroundStyle(.secondary)
+                .frame(width: 34, alignment: .trailing)
         }
     }
 }
