@@ -21,6 +21,7 @@ public final class WizLampController {
     /// Last segment colours sent from LightStar. Firmware cannot report them.
     public private(set) var segments: [WizRGB] = Array(repeating: .off, count: 7)
     public var onFollowing: (() -> Void)?
+    public var onStateChange: (() -> Void)?
 
     private let engine = WizEngine()
     private var started = false
@@ -29,9 +30,11 @@ public final class WizLampController {
         engine.setHandler { [weak self] event in
             Task { @MainActor in
                 guard let self, self.started else { return }
-                let first = event != self.state
+                let changed = event != self.state
                 self.state = event
-                if first, case .following = event { self.onFollowing?() }
+                guard changed else { return }
+                self.onStateChange?()
+                if case .following = event { self.onFollowing?() }
             }
         }
     }

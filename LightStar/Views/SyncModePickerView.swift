@@ -14,7 +14,7 @@ struct SyncModePickerView: View {
                 if ble.syncTransitioning { ProgressView().controlSize(.mini) }
             }
 
-            Picker("", selection: Binding(
+            Picker("Sync mode", selection: Binding(
                 get: { ble.syncMode },
                 set: { ble.setSyncMode($0) }
             )) {
@@ -22,18 +22,19 @@ struct SyncModePickerView: View {
                     Text($0.rawValue).tag($0)
                 }
             }
+            .labelsHidden()
             .pickerStyle(.segmented)
             .disabled(ble.syncTransitioning)
 
             if let err = ble.syncError {
                 Text(err)
-                    .font(.system(size: 9))
+                    .font(.caption2)
                     .foregroundStyle(ble.syncMode == .off ? .red : .orange)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
             if ble.syncMode == .audio {
-                Picker("", selection: Binding(
+                Picker("Audio source", selection: Binding(
                     get: { ble.audioInputSource },
                     set: { ble.audioInputSource = $0 }
                 )) {
@@ -41,6 +42,7 @@ struct SyncModePickerView: View {
                         Text($0.rawValue).tag($0)
                     }
                 }
+                .labelsHidden()
                 .pickerStyle(.segmented)
                 .controlSize(.mini)
 
@@ -58,7 +60,7 @@ struct SyncModePickerView: View {
 
                     HStack {
                         Text("Sensitivity")
-                            .font(.system(size: 10))
+                            .font(.caption2)
                             .foregroundStyle(.secondary)
                         Slider(value: Binding(
                             get: { ble.micSensitivity },
@@ -66,7 +68,7 @@ struct SyncModePickerView: View {
                         ))
                     }
                 } else {
-                    Picker("", selection: Binding(
+                    Picker("Music style", selection: Binding(
                         get: { ble.audioSyncMode },
                         set: { ble.audioSyncMode = $0 }
                     )) {
@@ -74,18 +76,19 @@ struct SyncModePickerView: View {
                             Text($0.rawValue).tag($0)
                         }
                     }
+                    .labelsHidden()
                     .pickerStyle(.segmented)
                     .controlSize(.mini)
                 }
             }
 
             Text(modeDescription)
-                .font(.system(size: 9))
+                .font(.caption2)
                 .foregroundStyle(.secondary)
 
             if ble.isSyncingVideo {
                 HStack(spacing: 4) {
-                    Picker("", selection: Binding(
+                    Picker("Display", selection: Binding(
                         get: { ble.selectedDisplayID },
                         set: { ble.selectedDisplayID = $0 }
                     )) {
@@ -99,6 +102,7 @@ struct SyncModePickerView: View {
                         Image(systemName: "arrow.clockwise")
                     }
                     .buttonStyle(.plain).font(.caption).help("Refresh display list")
+                    .accessibilityLabel("Refresh display list")
                 }
                 .onAppear { ble.loadAvailableDisplays() }
             }

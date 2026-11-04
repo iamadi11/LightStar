@@ -31,7 +31,7 @@ struct EffectsView: View {
                                 .buttonStyle(.bordered)
                                 .controlSize(.mini)
                                 .tint(ble.effectModeActive && ble.effectID == fx.id ? .accentColor : nil)
-                                .font(.system(size: 10))
+                                .font(.caption2)
                         }
                     }
                 }

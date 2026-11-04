@@ -38,7 +38,7 @@ private struct ScheduleRow: View {
 
     var body: some View {
         HStack(spacing: 6) {
-            Toggle("", isOn: Binding(
+            Toggle("Schedule enabled", isOn: Binding(
                 get: { schedule.isEnabled },
                 set: { val in
                     if let idx = store.schedules.firstIndex(where: { $0.id == schedule.id }) {
@@ -143,11 +143,12 @@ private struct AddScheduleSheet: View {
 
             VStack(alignment: .leading, spacing: 4) {
                 Text("Action").font(.caption).foregroundStyle(.secondary)
-                Picker("", selection: $actionType) {
+                Picker("Action", selection: $actionType) {
                     Text("Power On").tag(0)
                     Text("Power Off").tag(1)
                     Text("Current Color").tag(2)
                 }
+                .labelsHidden()
                 .pickerStyle(.segmented)
             }
 

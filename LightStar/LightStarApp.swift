@@ -101,6 +101,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         configureYeelight()
         remoteControl.lampStatus = { [weak self] in
             guard let self else { return ("stopped", nil) }
+            // The phone has one lamp row; a connected WiZ lamp shows there too.
+            if case .following(let wiz) = self.wizLamp.state {
+                if case .following(let mi) = self.homeKitLamp.state { return ("following", "\(mi) & \(wiz)") }
+                return ("following", wiz)
+            }
             switch self.homeKitLamp.state {
             case .stopped: return ("stopped", nil)
             case .searching: return ("searching", nil)
@@ -114,6 +119,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.homeKitLamp.connect(setupCode: code)
         }
         homeKitLamp.onStateChange = { [weak self] in
+            self?.remoteControl.publishState()
+        }
+        wizLamp.onStateChange = { [weak self] in
             self?.remoteControl.publishState()
         }
         ble.onOutputTargetChange = { [weak self] target in

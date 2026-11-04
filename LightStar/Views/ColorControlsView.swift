@@ -30,10 +30,11 @@ struct ColorControlView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Spacer()
-                Picker("", selection: $mode) {
+                Picker("Colour mode", selection: $mode) {
                     Text("Color").tag(ColorMode.color)
                     Text("White").tag(ColorMode.white)
                 }
+                .labelsHidden()
                 .pickerStyle(.segmented)
                 .controlSize(.mini)
                 .frame(width: 110)
