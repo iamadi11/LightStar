@@ -51,17 +51,23 @@ public final class WizLampController {
     }
 
     public func submit(_ update: YeelightMirrorUpdate) {
-        engine.submit { $0.apply(update) }
+        engine.mirror(update)
     }
 
     public func setScene(_ id: Int) {
-        engine.submit { $0.power = true; $0.mode = .scene(id) }
+        engine.choose(.scene(id))
     }
 
     /// One colour per segment; `.off` turns that segment dark.
     public func setSegments(_ colors: [WizRGB]) {
         segments = colors
-        engine.submit { $0.power = true; $0.mode = .segments(colors) }
+        engine.choose(.segments(colors))
+    }
+
+    /// Sync frames (screen gradient or VU meter). While they flow the bar's
+    /// single colour and brightness are held back; nil hands the lamp back.
+    public func stream(_ zones: [WizRGB]?) {
+        engine.stream(zones)
     }
 
     /// Re-send after the widths or slot change, since the lamp holds no layout.
@@ -86,6 +92,9 @@ private final class WizEngine: @unchecked Sendable {
     private var found: [WizDevice] = []
     private var device: WizDevice?
     private var desired = WizPilot()
+    /// What the lamp shows when sync is not streaming to it.
+    private var resting = WizPilot()
+    private var streaming = false
     private var sent = WizPilot()
     private var layout = WizSegmentLayout.stored
     private var lastSend = Date.distantPast
@@ -117,12 +126,44 @@ private final class WizEngine: @unchecked Sendable {
             self.socket.close()
             self.device = nil
             self.sent = WizPilot()
+            self.streaming = false
+            self.desired = self.resting
         }
     }
 
-    func submit(_ change: @escaping @Sendable (inout WizPilot) -> Void) {
+    func mirror(_ update: YeelightMirrorUpdate) {
         queue.async {
-            change(&self.desired)
+            self.resting.apply(update)
+            if self.streaming {
+                // Power still follows the bar; colour belongs to the stream.
+                if case .power(let on) = update { self.desired.power = on }
+            } else {
+                self.desired = self.resting
+            }
+            self.flush()
+        }
+    }
+
+    func choose(_ mode: WizMode) {
+        queue.async {
+            self.resting.power = true
+            self.resting.mode = mode
+            if !self.streaming { self.desired = self.resting }
+            self.flush()
+        }
+    }
+
+    func stream(_ zones: [WizRGB]?) {
+        queue.async {
+            if let zones {
+                self.streaming = true
+                self.desired.mode = .segments(zones)
+                self.desired.dimming = 100
+            } else {
+                guard self.streaming else { return }
+                self.streaming = false
+                self.desired = self.resting
+            }
             self.flush()
         }
     }

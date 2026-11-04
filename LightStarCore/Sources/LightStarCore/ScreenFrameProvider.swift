@@ -10,6 +10,8 @@ public struct FrameAnalysis: Sendable {
     public let dominantBrightness: Double
     public let blackPixelPercentage: Double
     public let hasRectangularBlackRegion: Bool
+    /// Lamp gradient colours, bottom of the screen first.
+    public var zones: [WizRGB] = []
     
     public var suspectedProtectedContent: Bool {
         ProtectedContentPolicy.isProtectedFrame(self)

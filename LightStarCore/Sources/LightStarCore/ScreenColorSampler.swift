@@ -25,6 +25,9 @@ public final class ScreenColorSampler: NSObject {
     /// Called when the DRM guide should appear (N consecutive protected frames).
     public var onProtectedContentDetected: (() -> Void)?
 
+    /// Lamp gradient colours for frames that pass the protected-content hold.
+    public var onZones: (([WizRGB]) -> Void)?
+
     /// Called with detailed frame analysis for diagnostics.
     public var onFrameAnalysis: ((FrameAnalysis) -> Void)?
 
@@ -89,6 +92,7 @@ public final class ScreenColorSampler: NSObject {
 
         if case .write(let hsv) = write {
             onColor?(hsv.hue, hsv.saturation, hsv.brightness)
+            if !analysis.zones.isEmpty { onZones?(analysis.zones) }
         }
     }
 

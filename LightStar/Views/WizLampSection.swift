@@ -11,6 +11,7 @@ struct WizLampSection: View {
     @State private var sceneID = 0
     @State private var widthsText = ""
     @State private var slot = 258
+    @AppStorage(LampGradient.enabledDefaultsKey) private var gradientSync = true
 
     private var ready: Bool {
         if case .following = wizLamp.state { return true }
@@ -19,6 +20,11 @@ struct WizLampSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
+            Toggle("Gradient sync", isOn: $gradientSync)
+            Text("While syncing, screen sync paints the lamp top to bottom like the screen, and music sync fills it like a level meter.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
             Picker("Scene", selection: $sceneID) {
                 Text("None").tag(0)
                 ForEach(WizScene.all, id: \.id) { scene in
