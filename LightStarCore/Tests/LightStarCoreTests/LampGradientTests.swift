@@ -236,4 +236,17 @@ final class LampGradientTests: XCTestCase {
         XCTAssertEqual(find(0x23).palette, LampEffect.rainbow)
         XCTAssertEqual(find(0x36).palette, LampEffect.white) // Transition · White
     }
+
+    // MARK: Music styles
+
+    func testSpectrumPutsBassAtTheBaseAndTrebleAtTheTop() {
+        let bassOnly = LampGradient.spectrum(FrequencyBands(bass: 1, mid: 0, high: 0, rms: 0.5, flux: 0), count: 12)
+        XCTAssertFalse(bassOnly[0].isOff, "bass lights the base")
+        XCTAssertTrue(bassOnly[11].isOff, "treble end dark")
+        let trebleOnly = LampGradient.spectrum(FrequencyBands(bass: 0, mid: 0, high: 1, rms: 0.5, flux: 0), count: 12)
+        XCTAssertTrue(trebleOnly[0].isOff)
+        XCTAssertFalse(trebleOnly[11].isOff, "treble lights the top")
+        XCTAssertGreaterThan(bassOnly[0].r, bassOnly[0].b, "base is red")
+        XCTAssertGreaterThan(trebleOnly[11].b, trebleOnly[11].g, "top is violet")
+    }
 }

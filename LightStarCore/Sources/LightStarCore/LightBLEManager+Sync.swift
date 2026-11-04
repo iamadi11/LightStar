@@ -57,6 +57,8 @@ public extension LightBLEManager {
         screenSampler.onFrameAnalysis = nil
         screenSampler.onDiagnosticsUpdate = nil
         screenSampler.capturesAudio = false
+        lampScreenZones = nil
+        lampCombinedLevel = nil
         onLampZones?(nil, nil)
         flashLevel = 0
         syncColor = nil
@@ -147,6 +149,8 @@ public extension LightBLEManager {
         screenSampler.onFrameAnalysis = nil
         screenSampler.onDiagnosticsUpdate = nil
         screenSampler.capturesAudio = false
+        lampScreenZones = nil
+        lampCombinedLevel = nil
         onLampZones?(nil, nil)
         flashLevel = 0
         syncMode = .off
@@ -319,7 +323,10 @@ public extension LightBLEManager {
             guard now - lastZones >= 1.0 / 30.0 else { return }
             lastZones = now
             let smoothed = zoneSmoother.next(zones, alpha: self.syncResponsiveness)
-            self.onLampZones?(LampGradient.scaled(smoothed, by: self.brightness), .current)
+            self.lampScreenZones = smoothed
+            // Combined: the music sets the brightness, as it does for the strip.
+            let level = (self.syncMode == .combined ? self.lampCombinedLevel : nil) ?? self.brightness
+            self.onLampZones?(LampGradient.scaled(smoothed, by: level), .current)
         }
         screenSampler.onColor = { [weak self] h, s, v in
             guard let self, self.isSyncingVideo, self.isOn else { return }
@@ -380,19 +387,28 @@ public extension LightBLEManager {
                 }
                 // Hue stays with the screen sampler. Audio only writes BC05,
                 // same as Music Pulse, so a static window can keep color still.
-                self.writeMirroredBrightness(CombinedSyncMixer.combinedBrightness(
+                let level = CombinedSyncMixer.combinedBrightness(
                     userBrightness: self.brightness,
                     bass: bands.bass,
                     rms: bands.rms,
                     flashLevel: self.flashLevel
-                ))
+                )
+                self.writeMirroredBrightness(level)
+                // The lightbar pulses too, between screen frames.
+                self.lampCombinedLevel = level
+                if self.sendsLampGradient, let zones = self.lampScreenZones {
+                    self.onLampZones?(LampGradient.scaled(zones, by: level), .current)
+                }
                 return
             }
 
             if self.sendsLampGradient {
                 let level = meter.next(bands)
                 let count = LampGradient.colourCount(for: LampGradient.Placement(), segments: LampGradient.segmentCount)
-                self.onLampZones?(LampGradient.scaled(LampGradient.vu(level: level, count: count), by: self.brightness), nil)
+                let frame = LampGradient.musicStyle == .spectrum
+                    ? LampGradient.spectrum(bands, count: count)
+                    : LampGradient.vu(level: level, count: count)
+                self.onLampZones?(LampGradient.scaled(frame, by: self.brightness), nil)
             }
 
             switch self.audioSyncMode {
