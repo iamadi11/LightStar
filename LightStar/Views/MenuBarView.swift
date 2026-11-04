@@ -583,7 +583,7 @@ struct SyncControlView: View {
                         .toggleStyle(.checkbox)
                         .font(.caption)
                 }
-                LightbarCentreSlider(orientation: orientation)
+                LightbarFitControls(orientation: orientation)
             }
 
             if ble.isSyncingVideo {

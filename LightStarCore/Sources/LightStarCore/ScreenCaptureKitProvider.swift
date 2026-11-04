@@ -177,7 +177,7 @@ extension ScreenCaptureKitProvider: SCStreamOutput {
 // MARK: - Pixel Analysis
 
 /// The latest captured frame (48×27, ~5 KB), kept so lightbar settings —
-/// centre, swap, orientation — apply at once. On a still screen (a paused
+/// position, width, swap, orientation — apply at once. On a still screen (a paused
 /// video, while lining the lightbar up) ScreenCaptureKit sends no new frames.
 final class LampFrameStore: @unchecked Sendable {
     private let lock = NSLock()
@@ -210,8 +210,7 @@ final class LampFrameStore: @unchecked Sendable {
                 bgra: $0.baseAddress!, width: w, height: h, bytesPerRow: bpr,
                 orientation: LampGradient.orientation,
                 flipped: LampGradient.flipped,
-                followBrightness: UserDefaults.standard.bool(forKey: "videoSyncBrightness"),
-                centre: LampGradient.centre
+                followBrightness: UserDefaults.standard.bool(forKey: "videoSyncBrightness")
             )
         }
     }

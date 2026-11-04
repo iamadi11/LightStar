@@ -69,22 +69,46 @@ final class LampGradientTests: XCTestCase {
         XCTAssertEqual(sideBySide(.horizontal, flipped: true).first, WizRGB(r: 0, g: 0, b: 255), "base on the right")
     }
 
-    func testCentreShiftsWhichPartOfTheScreenFeedsTheLightbar() {
-        // Left half red, right half blue.
-        func zones(centre: Double) -> [WizRGB] {
-            let frame = (0..<4).flatMap { _ in (0..<14).flatMap { col in col < 7 ? [0, 0, 255, 255] : [255, 0, 0, 255] as [UInt8] } }
-            return frame.withUnsafeBufferPointer {
-                LampGradient.screenZones(bgra: $0.baseAddress!, width: 14, height: 4, bytesPerRow: 56, count: 7,
-                                         orientation: .horizontal, centre: centre)
-            }
-        }
-        let red = WizRGB(r: 255, g: 0, b: 0), blue = WizRGB(r: 0, g: 0, b: 255)
-        let centred = zones(centre: 0).filter { $0 == red }.count
-        let right = zones(centre: 0.25)
-        XCTAssertEqual(right.first, red)
-        XCTAssertEqual(right.filter { $0 == red }.count, 2, "only the two zones still over the left half")
-        XCTAssertLessThan(2, centred, "lightbar centred right of the screen sees less of the left")
-        XCTAssertEqual(right.last, blue, "past the right edge it repeats the edge colour, not dark")
+    func testScreenFillsOnlyItsStretchOfTheBar() {
+        // 18 segments, 7 colours.
+        let full = LampGradient.Placement().widths(zones: 7, segments: 18)
+        XCTAssertEqual(full, [0, 3, 2, 3, 2, 3, 2, 3, 0], "whole bar, no dark ends")
+
+        let half = LampGradient.Placement(span: 0.5).widths(zones: 7, segments: 18)
+        XCTAssertEqual(half.count, 9, "7 colours + 2 dark steps, inside WiZ's 12")
+        XCTAssertEqual(half.reduce(0, +), 18)
+        XCTAssertEqual(half[1..<8].reduce(0, +), 9, "screen covers half the bar")
+        XCTAssertEqual(abs(half[0] - half[8]), 1, "centred: dark ends match (±1 rounding)")
+
+        let right = LampGradient.Placement(span: 0.5, centre: 0.25).widths(zones: 7, segments: 18)
+        XCTAssertEqual(right.first, 9, "screen on the right half: left half dark")
+        XCTAssertEqual(right.last, 0)
+
+        let flipped = LampGradient.Placement(span: 0.5, centre: 0.25, flipped: true).widths(zones: 7, segments: 18)
+        XCTAssertEqual(flipped.first, 0, "base on the right: the lit half starts at the base")
+        XCTAssertEqual(flipped.last, 9)
+    }
+
+    func testScreenPushedPastTheEndIsCutOff() {
+        // Full-size screen slid half a bar right: left half dark, and the
+        // screen's right-hand colours fall off the end.
+        let w = LampGradient.Placement(span: 1, centre: 0.5).widths(zones: 7, segments: 18)
+        XCTAssertEqual(w.first, 9)
+        XCTAssertEqual(w.last, 0)
+        XCTAssertEqual(w[5...7].reduce(0, +), 0, "the screen's right zones are off the bar")
+        XCTAssertEqual(w.reduce(0, +), 18)
+    }
+
+    func testPlacedGradientEncodesDarkEnds() throws {
+        let red = WizRGB(r: 255, g: 0, b: 0)
+        let widths = LampGradient.Placement(span: 0.5, centre: 0.25).widths(zones: 7, segments: 18)
+        let desired = WizPilot(power: true, mode: .gradient([.off] + Array(repeating: red, count: 7) + [.off], widths: widths), dimming: 100)
+        let data = try XCTUnwrap(WizFlush.messages(desired: desired, sent: WizPilot(power: true), layout: WizSegmentLayout(), mac: nil).first?.0)
+        let params = try XCTUnwrap((JSONSerialization.jsonObject(with: data) as? [String: Any])?["params"] as? [String: Any])
+        let steps = try XCTUnwrap((params["elm"] as? [String: Any])?["steps"] as? [[Int]])
+        XCTAssertEqual(steps.first?[7], 0, "dark stretch first")
+        XCTAssertEqual(steps.first?[12], 9)
+        XCTAssertEqual(steps.map { $0[12] }.reduce(0, +), 18, "zero-width dark end dropped, bar fully covered")
     }
 
     #if os(macOS)

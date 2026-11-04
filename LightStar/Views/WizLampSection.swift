@@ -30,7 +30,7 @@ struct WizLampSection: View {
             .disabled(!gradientSync)
             Toggle(orientation.flipTitle, isOn: $flipped)
                 .disabled(!gradientSync)
-            LightbarCentreSlider(orientation: orientation)
+            LightbarFitControls(orientation: orientation)
                 .disabled(!gradientSync)
             Text(orientationHint)
                 .font(.caption)
@@ -128,28 +128,53 @@ struct WizLampSection: View {
     }
 }
 
-/// Moves which part of the screen feeds the lightbar's middle, for a lightbar
-/// that isn't centred on the screen.
-struct LightbarCentreSlider: View {
+/// Where the screen sits on the lightbar in screen sync: how much of the bar
+/// it covers (the rest goes dark) and where along the bar that stretch is.
+struct LightbarFitControls: View {
     let orientation: LampGradient.Orientation
     @AppStorage(LampGradient.centreDefaultsKey) private var centre = 0.0
+    @AppStorage(LampGradient.spanDefaultsKey) private var span = 1.0
 
     var body: some View {
-        HStack(spacing: 6) {
-            Text(orientation == .vertical ? "Bottom" : "Left")
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-            Slider(value: $centre, in: LampGradient.centreRange)
-                .controlSize(.small)
-                .accessibilityLabel("Lightbar centre")
-                .accessibilityValue(centre == 0 ? "Screen centre" : "\(Int((centre * 100).rounded()))% from centre")
-            Text(orientation == .vertical ? "Top" : "Right")
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-            Button("Centre") { centre = 0 }
-                .controlSize(.small)
-                .disabled(centre == 0)
-                .help("Line the lightbar's middle up with the screen's centre")
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 6) {
+                Text("Width")
+                    .font(.caption)
+                    .frame(width: 52, alignment: .leading)
+                Slider(value: $span, in: LampGradient.spanRange)
+                    .controlSize(.small)
+                    .accessibilityLabel("Screen width on the lightbar")
+                    .accessibilityValue("\(Int((span * 100).rounded()))% of the lightbar")
+                Text("\(Int((span * 100).rounded()))%")
+                    .font(.caption2.monospacedDigit())
+                    .foregroundStyle(.secondary)
+                    .frame(width: 34, alignment: .trailing)
+            }
+            HStack(spacing: 6) {
+                Text("Position")
+                    .font(.caption)
+                    .frame(width: 52, alignment: .leading)
+                Text(orientation == .vertical ? "Bottom" : "Left")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                Slider(value: $centre, in: LampGradient.centreRange)
+                    .controlSize(.small)
+                    .accessibilityLabel("Screen position on the lightbar")
+                    .accessibilityValue(centre == 0 ? "Centred" : "\(Int((centre * 100).rounded()))% from centre")
+                Text(orientation == .vertical ? "Top" : "Right")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            HStack {
+                Text("Screen sync lights only this stretch; the rest of the lightbar stays off.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 6)
+                Button("Reset") { centre = 0; span = 1 }
+                    .controlSize(.small)
+                    .disabled(centre == 0 && span == 1)
+            }
         }
     }
 }

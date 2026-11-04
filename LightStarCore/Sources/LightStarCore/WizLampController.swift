@@ -78,8 +78,9 @@ public final class WizLampController {
 
     /// Sync frames (screen gradient or VU meter). While they flow the bar's
     /// single colour and brightness are held back; nil hands the lamp back.
-    public func stream(_ zones: [WizRGB]?) {
-        engine.stream(zones)
+    /// With a placement the zones fill only that stretch of the bar.
+    public func stream(_ zones: [WizRGB]?, placement: LampGradient.Placement? = nil) {
+        engine.stream(zones, placement: placement)
     }
 
     /// Re-send after the widths or slot change, since the lamp holds no layout.
@@ -171,11 +172,16 @@ private final class WizEngine: @unchecked Sendable {
         }
     }
 
-    func stream(_ zones: [WizRGB]?) {
+    func stream(_ zones: [WizRGB]?, placement: LampGradient.Placement?) {
         queue.async {
             if let zones {
                 self.streaming = true
-                self.desired.mode = .segments(zones)
+                if let placement {
+                    let widths = placement.widths(zones: zones.count, segments: self.layout.widths.reduce(0, +))
+                    self.desired.mode = .gradient([.off] + zones + [.off], widths: widths)
+                } else {
+                    self.desired.mode = .segments(zones)
+                }
                 self.desired.dimming = 100
             } else {
                 guard self.streaming else { return }

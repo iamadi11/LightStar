@@ -69,7 +69,7 @@ public final class LightBLEManager: NSObject {
     public var onLampMirror: ((YeelightMirrorUpdate) -> Void)?
     /// Per-segment colours for a gradient lamp while sync runs; nil hands the
     /// lamp back to the mirrored colour.
-    public var onLampZones: (([WizRGB]?) -> Void)?
+    public var onLampZones: (([WizRGB]?, LampGradient.Placement?) -> Void)?
     /// Starts or stops the bedside lamp when the user picks Strip, Lamp, or Both.
     public var onOutputTargetChange: ((LightOutputTarget) -> Void)?
     public var outputTarget: LightOutputTarget = .stored {
