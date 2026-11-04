@@ -58,6 +58,10 @@ public final class LightBLEManager: NSObject {
     /// The lightbar effect was started by a strip effect and ends with it.
     var lampEffectFollowsStrip = false
     @ObservationIgnored var lampEffectTask: Task<Void, Never>?
+    /// Combined sync: latest screen zones (unscaled) and the music's
+    /// brightness, so beats can pulse the lightbar between screen frames.
+    @ObservationIgnored var lampScreenZones: [WizRGB]?
+    @ObservationIgnored var lampCombinedLevel: Double?
     public var colorTemperature: Double = 0.5  // 0=warm 2700K … 1=cool 6500K; not persisted as a mode flag
     // Sync state machine
     public var syncMode: SyncMode = .off

@@ -15,6 +15,34 @@ public enum LampGradient {
         return max(1, min(WizSegmentLayout.maxSteps - darkEnds, lit))
     }
 
+    /// What music sync shows on the lightbar.
+    public enum MusicStyle: String, CaseIterable, Sendable, Identifiable {
+        /// Loudness fills the bar from the base, green to red.
+        case meter
+        /// Bass at the base, mids in the middle, treble at the top.
+        case spectrum
+        public var id: String { rawValue }
+        public var title: String { self == .meter ? "Level meter" : "Spectrum" }
+    }
+    public static let musicStyleDefaultsKey = "lightbarMusicStyle"
+    public static var musicStyle: MusicStyle {
+        UserDefaults.standard.string(forKey: musicStyleDefaultsKey).flatMap(MusicStyle.init) ?? .meter
+    }
+
+    /// Spectrum: each zone lit by the energy of its band (bass at the base,
+    /// treble at the top, blended between), coloured red at the base to
+    /// violet at the top.
+    public static func spectrum(_ bands: FrequencyBands, count: Int) -> [WizRGB] {
+        (0..<count).map { i in
+            let x = count > 1 ? Double(i) / Double(count - 1) : 0
+            let energy = x < 0.5
+                ? bands.bass + (bands.mid - bands.bass) * x * 2
+                : bands.mid + (bands.high - bands.mid) * (x - 0.5) * 2
+            guard energy > 0.03 else { return .off }
+            return scaled([WizRGB(hue: x * 0.75, saturation: 1)], by: min(1, energy * 1.2))[0]
+        }
+    }
+
     /// Physical segments of the connected lightbar (detected, or saved widths).
     public static var segmentCount: Int { WizSegmentLayout.stored.widths.reduce(0, +) }
     public static let enabledDefaultsKey = "lampGradientSync"

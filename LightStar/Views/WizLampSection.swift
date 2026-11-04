@@ -15,6 +15,7 @@ struct WizLampSection: View {
     @AppStorage(LampGradient.enabledDefaultsKey) private var gradientSync = true
     @AppStorage(LampGradient.orientationDefaultsKey) private var orientation = LampGradient.Orientation.vertical
     @AppStorage(LampGradient.flippedDefaultsKey) private var flipped = false
+    @AppStorage(LampGradient.musicStyleDefaultsKey) private var musicStyle = LampGradient.MusicStyle.meter
 
     private var ready: Bool {
         if case .following = wizLamp.state { return true }
@@ -24,6 +25,11 @@ struct WizLampSection: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Toggle("Gradient sync", isOn: $gradientSync)
+            Picker("Music", selection: $musicStyle) {
+                ForEach(LampGradient.MusicStyle.allCases) { Text($0.title).tag($0) }
+            }
+            .pickerStyle(.segmented)
+            .disabled(!gradientSync)
             Picker("Orientation", selection: $orientation) {
                 ForEach(LampGradient.Orientation.allCases) { Text($0.title).tag($0) }
             }
@@ -130,7 +136,7 @@ struct WizLampSection: View {
         let screen = orientation == .vertical
             ? "reads the screen top to bottom"
             : "reads the screen left to right"
-        return "Screen sync \(screen) onto the lightbar; music sync fills it from the base like a level meter."
+        return "Screen sync \(screen) onto the lightbar. In Combined, beats pulse it too."
     }
 
     private func load(_ layout: WizSegmentLayout) {

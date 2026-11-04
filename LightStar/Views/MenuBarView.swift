@@ -463,6 +463,7 @@ struct SyncControlView: View {
     @AppStorage(LampGradient.enabledDefaultsKey) private var gradientSync = true
     @AppStorage(LampGradient.orientationDefaultsKey) private var orientation = LampGradient.Orientation.vertical
     @AppStorage(LampGradient.flippedDefaultsKey) private var flipped = false
+    @AppStorage(LampGradient.musicStyleDefaultsKey) private var musicStyle = LampGradient.MusicStyle.meter
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -568,6 +569,15 @@ struct SyncControlView: View {
             Text(modeDescription)
                 .font(.caption2)
                 .foregroundStyle(.secondary)
+
+            if ble.syncMode == .audio, ble.outputTarget.sendsToLightbar, gradientSync {
+                Picker("Lightbar music style", selection: $musicStyle) {
+                    ForEach(LampGradient.MusicStyle.allCases) { Text($0.title).tag($0) }
+                }
+                .labelsHidden()
+                .pickerStyle(.segmented)
+                .controlSize(.small)
+            }
 
             if ble.isSyncingVideo, ble.outputTarget.sendsToLightbar, gradientSync {
                 // Right here, so the lightbar can be flipped while watching it.
