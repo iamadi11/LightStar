@@ -1,4 +1,5 @@
 import XCTest
+import CoreVideo
 @testable import LightStarCore
 
 final class LampGradientTests: XCTestCase {
@@ -85,6 +86,39 @@ final class LampGradientTests: XCTestCase {
         XCTAssertLessThan(2, centred, "lightbar centred right of the screen sees less of the left")
         XCTAssertEqual(right.last, blue, "past the right edge it repeats the edge colour, not dark")
     }
+
+    #if os(macOS)
+    func testLatestFrameRepaintsWithNewSettingsWithoutANewFrame() {
+        let defaults = UserDefaults.standard
+        let keys = [LampGradient.orientationDefaultsKey, LampGradient.flippedDefaultsKey, LampGradient.centreDefaultsKey]
+        let saved = keys.map { defaults.object(forKey: $0) }
+        defer { for (k, v) in zip(keys, saved) { defaults.set(v, forKey: k) } }
+
+        // 14×4 BGRA: left half red, right half blue.
+        var pb: CVPixelBuffer?
+        CVPixelBufferCreate(nil, 14, 4, kCVPixelFormatType_32BGRA, nil, &pb)
+        let buffer = pb!
+        CVPixelBufferLockBaseAddress(buffer, [])
+        let base = CVPixelBufferGetBaseAddress(buffer)!.assumingMemoryBound(to: UInt8.self)
+        let bpr = CVPixelBufferGetBytesPerRow(buffer)
+        for row in 0..<4 { for col in 0..<14 {
+            let i = row * bpr + col * 4
+            (base[i], base[i + 1], base[i + 2], base[i + 3]) = col < 7 ? (0, 0, 255, 255) : (255, 0, 0, 255)
+        } }
+        CVPixelBufferUnlockBaseAddress(buffer, [])
+
+        let store = LampFrameStore()
+        store.store(buffer)
+        defaults.set("horizontal", forKey: LampGradient.orientationDefaultsKey)
+        defaults.set(false, forKey: LampGradient.flippedDefaultsKey)
+        defaults.set(0.0, forKey: LampGradient.centreDefaultsKey)
+        let before = store.zones()
+        defaults.set(true, forKey: LampGradient.flippedDefaultsKey)
+        let after = store.zones()
+        XCTAssertEqual(before.first, WizRGB(r: 255, g: 0, b: 0))
+        XCTAssertEqual(after.first, WizRGB(r: 0, g: 0, b: 255), "same frame, new setting, new zones")
+    }
+    #endif
 
     func testVerticalFlipPutsTheTopOfTheScreenAtTheBase() {
         let frame = splitFrame()

@@ -64,7 +64,35 @@ public final class ScreenColorSampler: NSObject {
         setupProviderCallback()
     }
 
+    private var trailingRefresh: Task<Void, Never>?
+
+    /// Re-paint the lightbar from the latest frame. Lightbar settings write
+    /// UserDefaults; on a still screen no new frame would show the change.
+    /// Sync drops zone frames over 30 fps, so once a slider stops, paint once
+    /// more so its final position always lands.
+    public func refreshZones() {
+        paintLatestZones()
+        trailingRefresh?.cancel()
+        trailingRefresh = Task { @MainActor [weak self] in
+            do { try await Task.sleep(nanoseconds: 60_000_000) } catch { return }
+            self?.paintLatestZones()
+        }
+    }
+
+    private func paintLatestZones() {
+        guard isRunning, let onZones else { return }
+        let zones = provider.currentLampZones()
+        guard LampGradient.shouldPaint(zones, frameWritable: false) else { return }
+        onZones(zones)
+    }
+
     private func setupProviderCallback() {
+        // ponytail: never removed; the sampler lives as long as the app.
+        NotificationCenter.default.addObserver(
+            forName: UserDefaults.didChangeNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.refreshZones() }
+        }
         provider.onFrame = { [weak self] analysis in
             guard let self else { return }
             self.handleFrame(analysis)
