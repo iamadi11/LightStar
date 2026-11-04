@@ -12,7 +12,10 @@ concurrency:
 jobs:
   test:
     name: Generate, test, build
-    runs-on: macos-15
+    # Intel image: GitHub's macOS arm64 pool runs short ("job was not acquired
+    # by Runner ... even after multiple attempts"). Same macOS 15 image with
+    # Xcode 26.3 at the same path; supported until August 2027.
+    runs-on: macos-15-intel
     steps:
       - uses: actions/checkout@v4
 
