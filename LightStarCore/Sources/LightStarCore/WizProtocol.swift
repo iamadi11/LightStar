@@ -122,24 +122,36 @@ public struct WizSegmentLayout: Equatable, Sendable {
         guard Self.parse(widths) != nil else { return nil }
         return widths.enumerated().compactMap { index, width in
             guard width > 0 else { return nil }
-            let (rgb, level) = Self.split(index < colors.count ? colors[index] : .off, dimming: dimming)
-            return [0, rgb.r, rgb.g, rgb.b, 0, 0, 0, level, 0, 0, 0, 0, width]
+            let c = WizChannels(index < colors.count ? colors[index] : .off, dimming: dimming)
+            // Index 4 is warm white, 5 cool white (verified on WiZ RGBIC).
+            return [0, c.r, c.g, c.b, 0, c.cold, 0, c.dimming, 0, 0, 0, 0, width]
         }
     }
+}
 
-    /// WiZ renders a dark RGB like (30, 30, 30) badly; it wants the colour at
-    /// full scale and the brightness in the step's dimming. Below the 10%
-    /// dimming floor the colour itself is darkened for the rest.
-    static func split(_ color: WizRGB, dimming: Int) -> (WizRGB, Int) {
+/// One colour as a WiZ light wants it. WiZ renders a dark RGB like
+/// (30, 30, 30) badly, and white mixed from red + green + blue looks tinted,
+/// so: the neutral part of the colour goes to the cool-white LEDs, what's left
+/// goes to RGB, both at full scale, and brightness goes in `dimming`. Below
+/// the 10% dimming floor the channels themselves are darkened for the rest.
+public struct WizChannels: Equatable, Sendable {
+    public var r = 0, g = 0, b = 0, cold = 0, dimming = 0
+
+    public init(_ color: WizRGB, dimming: Int) {
         let peak = max(color.r, color.g, color.b)
         let level = Double(max(0, min(100, dimming))) * Double(peak) / 255
-        guard peak >= 4, level >= 1 else { return (.off, 0) }
+        guard peak >= 4, level >= 1 else { return }
         let scale = (level < 10 ? level / 10 : 1) * 255 / Double(peak)
-        let rgb = WizRGB(r: Int((Double(color.r) * scale).rounded()),
-                         g: Int((Double(color.g) * scale).rounded()),
-                         b: Int((Double(color.b) * scale).rounded()))
-        return (rgb, max(10, Int(level.rounded())))
+        let white = min(color.r, color.g, color.b)
+        func channel(_ v: Int) -> Int { max(0, min(255, Int((Double(v) * scale).rounded()))) }
+        r = channel(color.r - white)
+        g = channel(color.g - white)
+        b = channel(color.b - white)
+        cold = channel(white)
+        self.dimming = max(10, Int(level.rounded()))
     }
+
+    public var isOff: Bool { dimming == 0 }
 }
 
 public enum WizCommand {
@@ -156,7 +168,10 @@ public enum WizCommand {
     }
 
     public static func color(_ rgb: WizRGB, dimming: Int) -> Data {
-        encode("setPilot", ["r": rgb.r, "g": rgb.g, "b": rgb.b, "dimming": dimming])
+        let c = WizChannels(rgb, dimming: dimming)
+        // Black still means "this colour, dimmest": power-off is a separate command.
+        guard !c.isOff else { return encode("setPilot", ["r": 0, "g": 0, "b": 0, "c": 0, "dimming": 10]) }
+        return encode("setPilot", ["r": c.r, "g": c.g, "b": c.b, "c": c.cold, "dimming": c.dimming])
     }
 
     public static func scene(_ id: Int, dimming: Int) -> Data {
