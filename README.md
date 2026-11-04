@@ -23,6 +23,16 @@ Open `LightStar.xcodeproj` after generating it (`LightStar.xcodeproj` is gitigno
 
 Grant **Bluetooth** on first connect, **Screen Recording** for video sync, **Microphone** for mic sync. TCC follows bundle id `com.adityaraj.LightStar` and the signing identity.
 
+### iPhone install that renews itself
+
+A free Apple developer team signs the iPhone app for 7 days. `scripts/iphone-reinstall.sh` keeps it alive. Set it up once, with the team of an account signed in to Xcode (Settings → Accounts):
+
+```bash
+scripts/iphone-reinstall.sh --install-agent --team TEAMID
+```
+
+A launchd agent then checks every 30 minutes, at login and after wake. A day before the install expires, it builds the latest `main` and installs it whenever the iPhone is in range (USB or the same Wi-Fi), retrying until it succeeds. It sends a notification on success, and once a day if the app has expired and the phone isn't reachable. Run `--status`, `--force`, `--dry-run`, or `--remove-agent` as needed; device ids live in `~/Library/Application Support/LightStar/iphone-reinstall.conf`, not in the repo. A free team can't hold the widget's App Group, so the iPhone widget doesn't show live state.
+
 ## Autonomous company
 
 ```bash
