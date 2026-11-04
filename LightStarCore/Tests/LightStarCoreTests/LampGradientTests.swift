@@ -68,6 +68,24 @@ final class LampGradientTests: XCTestCase {
         XCTAssertEqual(sideBySide(.horizontal, flipped: true).first, WizRGB(r: 0, g: 0, b: 255), "base on the right")
     }
 
+    func testCentreShiftsWhichPartOfTheScreenFeedsTheLightbar() {
+        // Left half red, right half blue.
+        func zones(centre: Double) -> [WizRGB] {
+            let frame = (0..<4).flatMap { _ in (0..<14).flatMap { col in col < 7 ? [0, 0, 255, 255] : [255, 0, 0, 255] as [UInt8] } }
+            return frame.withUnsafeBufferPointer {
+                LampGradient.screenZones(bgra: $0.baseAddress!, width: 14, height: 4, bytesPerRow: 56, count: 7,
+                                         orientation: .horizontal, centre: centre)
+            }
+        }
+        let red = WizRGB(r: 255, g: 0, b: 0), blue = WizRGB(r: 0, g: 0, b: 255)
+        let centred = zones(centre: 0).filter { $0 == red }.count
+        let right = zones(centre: 0.25)
+        XCTAssertEqual(right.first, red)
+        XCTAssertEqual(right.filter { $0 == red }.count, 2, "only the two zones still over the left half")
+        XCTAssertLessThan(2, centred, "lightbar centred right of the screen sees less of the left")
+        XCTAssertEqual(right.last, blue, "past the right edge it repeats the edge colour, not dark")
+    }
+
     func testVerticalFlipPutsTheTopOfTheScreenAtTheBase() {
         let frame = splitFrame()
         let zones = frame.withUnsafeBufferPointer {
