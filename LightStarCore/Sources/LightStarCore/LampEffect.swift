@@ -79,13 +79,54 @@ public struct LampEffect: Equatable, Sendable, Identifiable {
         return found.isEmpty ? rainbow : found
     }
 
+    // MARK: Custom colours
+
+    public static let customColoursDefaultsKey = "lightbarEffectCustomColours"
+    public static let customPaletteDefaultsKey = "lightbarEffectPalette"
+    public static let defaultCustomPalette = [
+        WizRGB(r: 255, g: 0, b: 80), WizRGB(r: 255, g: 140, b: 0),
+        WizRGB(r: 0, g: 120, b: 255), WizRGB(r: 140, g: 0, b: 255),
+    ]
+
+    /// The user's own effect colours, when switched on in Settings → Lightbar.
+    public static var customPalette: [WizRGB]? {
+        let d = UserDefaults.standard
+        guard d.bool(forKey: customColoursDefaultsKey) else { return nil }
+        let stored = (d.array(forKey: customPaletteDefaultsKey) as? [[Int]])?
+            .compactMap { $0.count == 3 ? WizRGB(r: $0[0], g: $0[1], b: $0[2]) : nil }
+        return stored?.isEmpty == false ? stored : defaultCustomPalette
+    }
+
+    /// Same effect in other colours.
+    public func with(palette: [WizRGB]) -> LampEffect {
+        LampEffect(name: name, motion: motion, palette: palette)
+    }
+
+    /// This effect in the user's custom colours, if they've switched them on.
+    public func withUserPalette() -> LampEffect {
+        Self.customPalette.map(with(palette:)) ?? self
+    }
+
+    /// A built-in effect by name, in the given colours or its own.
+    public static func named(_ name: String, palette: [WizRGB]? = nil) -> LampEffect? {
+        guard let effect = builtIn.first(where: { $0.name == name }) else { return nil }
+        return palette.map(effect.with(palette:)) ?? effect
+    }
+
     // MARK: Frames
 
     /// Cycles per second at the strip's speed setting (0…1).
     static func rate(_ speed: Double) -> Double { 0.1 + max(0, min(1, speed)) * 1.4 }
 
-    /// One frame: `count` colours, zone 0 at the base.
-    public func frame(time: Double, speed: Double, count: Int) -> [WizRGB] {
+    /// One frame: `count` colours, zone 0 at the base. `reversed` runs flows
+    /// and chases from the far end (the strip's direction setting); fire stays
+    /// hottest at the base, and the symmetric motions don't change.
+    public func frame(time: Double, speed: Double, count: Int, reversed: Bool = false) -> [WizRGB] {
+        let f = frame(time: time, speed: speed, count: count)
+        return reversed && (motion == .flow || motion == .chase) ? f.reversed() : f
+    }
+
+    private func frame(time: Double, speed: Double, count: Int) -> [WizRGB] {
         guard count > 0 else { return [] }
         let phase = time * Self.rate(speed)
         let n = Double(count)

@@ -12,11 +12,26 @@ public struct LightbarLook: Codable, Equatable, Sendable {
     public var scene: Int?
     /// One RGB triple per segment; [0, 0, 0] is off.
     public var segments: [[Int]]?
+    /// The effect's colours when they weren't its own (custom colours).
+    public var palette: [[Int]]?
 
-    public init(effect: String? = nil, scene: Int? = nil, segments: [[Int]]? = nil) {
+    public init(effect: String? = nil, scene: Int? = nil, segments: [[Int]]? = nil, palette: [[Int]]? = nil) {
         self.effect = effect
         self.scene = scene
         self.segments = segments
+        self.palette = palette
+    }
+
+    /// The look of a running effect: its name, plus its colours if custom.
+    public init(effect: LampEffect) {
+        let own = LampEffect.named(effect.name)?.palette
+        self.init(effect: effect.name, palette: effect.palette == own ? nil : effect.palette.map { [$0.r, $0.g, $0.b] })
+    }
+
+    /// The effect this look runs, in its saved colours.
+    public var lampEffect: LampEffect? {
+        guard let effect else { return nil }
+        return LampEffect.named(effect, palette: palette?.map { $0.count == 3 ? WizRGB(r: $0[0], g: $0[1], b: $0[2]) : .off })
     }
 
     public var segmentColours: [WizRGB]? {

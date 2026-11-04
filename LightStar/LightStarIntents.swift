@@ -312,7 +312,7 @@ struct SetLightbarEffectIntent: AppIntent {
     @MainActor func perform() async throws -> some IntentResult {
         let ble = try requireLightbar()
         if !ble.isOn { ble.setPower(on: true) }
-        ble.setLampEffect(effect.effect)
+        ble.setLampEffect(effect.effect?.withUserPalette())
         return .result()
     }
 }
