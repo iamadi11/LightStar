@@ -9,6 +9,22 @@ public enum LampGradient {
     /// Mean brightness below this is black on screen: the zone goes dark.
     public static let blackLevel = 0.1
 
+    /// How the lightbar stands next to the screen. Vertical slices the screen
+    /// into rows (bottom row → base), horizontal into columns (left → base).
+    public enum Orientation: String, CaseIterable, Sendable, Identifiable {
+        case vertical, horizontal
+        public var id: String { rawValue }
+        public var title: String { self == .vertical ? "Vertical" : "Horizontal" }
+    }
+    public static let orientationDefaultsKey = "lightbarOrientation"
+    /// Base at the top (vertical) or on the right (horizontal).
+    public static let flippedDefaultsKey = "lightbarFlipped"
+
+    public static var orientation: Orientation {
+        UserDefaults.standard.string(forKey: orientationDefaultsKey).flatMap(Orientation.init) ?? .vertical
+    }
+    public static var flipped: Bool { UserDefaults.standard.bool(forKey: flippedDefaultsKey) }
+
     public static var enabled: Bool {
         UserDefaults.standard.object(forKey: enabledDefaultsKey) as? Bool ?? true
     }
@@ -21,14 +37,20 @@ public enum LampGradient {
     /// almost nothing colourful in it shows neutral white at its brightness;
     /// averaging instead would mix colours into grey.
     public static func screenZones(
-        bgra: UnsafePointer<UInt8>, width: Int, height: Int, bytesPerRow: Int, count: Int = zoneCount
+        bgra: UnsafePointer<UInt8>, width: Int, height: Int, bytesPerRow: Int, count: Int = zoneCount,
+        orientation: Orientation = .vertical, flipped: Bool = false
     ) -> [WizRGB] {
         guard width > 0, height > 0, count > 0 else { return [] }
         let bins = 36
-        return (0..<count).map { zone in
-            // Bottom zone comes from the bottom rows of the screen.
-            let top = height - (zone + 1) * height / count
-            let bottom = height - zone * height / count
+        let zones = (0..<count).map { zone -> WizRGB in
+            // Zone 0 is the lightbar's base: the bottom rows, or the left columns.
+            var rows = 0..<height, cols = 0..<width
+            switch orientation {
+            case .vertical:
+                rows = band(zone, of: height, count: count, fromEnd: true)
+            case .horizontal:
+                cols = band(zone, of: width, count: count, fromEnd: false)
+            }
             var histogram = [Double](repeating: 0, count: bins)
             var satSum = [Double](repeating: 0, count: bins)
             var valSum = [Double](repeating: 0, count: bins)
@@ -36,8 +58,8 @@ public enum LampGradient {
             var binCount = [Int](repeating: 0, count: bins)
             var pixels = 0, colourful = 0
             var valueTotal = 0.0
-            for row in max(0, top)..<max(top + 1, bottom) where row < height {
-                for col in 0..<width {
+            for row in rows {
+                for col in cols {
                     let i = row * bytesPerRow + col * 4
                     let (h, s, v) = hsv(r: bgra[i + 2], g: bgra[i + 1], b: bgra[i])
                     pixels += 1
@@ -68,6 +90,15 @@ public enum LampGradient {
             let grey = Int((mean * 255).rounded())
             return WizRGB(r: grey, g: grey, b: grey)
         }
+        return flipped ? zones.reversed() : zones
+    }
+
+    /// Slice `zone` of `count` along a side `length` long, never empty.
+    private static func band(_ zone: Int, of length: Int, count: Int, fromEnd: Bool) -> Range<Int> {
+        let start = zone * length / count
+        let end = max(start + 1, (zone + 1) * length / count)
+        let range = min(start, length - 1)..<min(end, length)
+        return fromEnd ? (length - range.upperBound)..<(length - range.lowerBound) : range
     }
 
     private static func hsv(r: UInt8, g: UInt8, b: UInt8) -> (Double, Double, Double) {

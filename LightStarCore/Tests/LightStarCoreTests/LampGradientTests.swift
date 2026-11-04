@@ -41,6 +41,30 @@ final class LampGradientTests: XCTestCase {
         XCTAssertEqual(band, [WizRGB(r: 128, g: 128, b: 128)])
     }
 
+    /// 14×4 frame: left half red, right half blue.
+    private func sideBySide(_ orientation: LampGradient.Orientation, flipped: Bool = false) -> [WizRGB] {
+        let frame = (0..<4).flatMap { _ in (0..<14).flatMap { col in col < 7 ? [0, 0, 255, 255] : [255, 0, 0, 255] as [UInt8] } }
+        return frame.withUnsafeBufferPointer {
+            LampGradient.screenZones(bgra: $0.baseAddress!, width: 14, height: 4, bytesPerRow: 56, count: 7,
+                                     orientation: orientation, flipped: flipped)
+        }
+    }
+
+    func testHorizontalReadsTheScreenLeftToRightFromTheBase() {
+        let zones = sideBySide(.horizontal)
+        XCTAssertEqual(zones.first, WizRGB(r: 255, g: 0, b: 0), "base end = left of screen")
+        XCTAssertEqual(zones.last, WizRGB(r: 0, g: 0, b: 255))
+        XCTAssertEqual(sideBySide(.horizontal, flipped: true).first, WizRGB(r: 0, g: 0, b: 255), "base on the right")
+    }
+
+    func testVerticalFlipPutsTheTopOfTheScreenAtTheBase() {
+        let frame = splitFrame()
+        let zones = frame.withUnsafeBufferPointer {
+            LampGradient.screenZones(bgra: $0.baseAddress!, width: 4, height: 14, bytesPerRow: 16, count: 7, flipped: true)
+        }
+        XCTAssertEqual(zones.first, WizRGB(r: 255, g: 0, b: 0), "top of screen (red) at the base")
+    }
+
     func testVUFillsFromTheFloorGreenToRed() {
         XCTAssertTrue(LampGradient.vu(level: 0).allSatisfy(\.isOff))
         let full = LampGradient.vu(level: 1)

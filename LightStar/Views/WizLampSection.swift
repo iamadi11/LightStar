@@ -12,6 +12,8 @@ struct WizLampSection: View {
     @State private var widthsText = ""
     @State private var slot = 258
     @AppStorage(LampGradient.enabledDefaultsKey) private var gradientSync = true
+    @AppStorage(LampGradient.orientationDefaultsKey) private var orientation = LampGradient.Orientation.vertical
+    @AppStorage(LampGradient.flippedDefaultsKey) private var flipped = false
 
     private var ready: Bool {
         if case .following = wizLamp.state { return true }
@@ -21,7 +23,14 @@ struct WizLampSection: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Toggle("Gradient sync", isOn: $gradientSync)
-            Text("While syncing, screen sync paints the lamp top to bottom like the screen, and music sync fills it like a level meter.")
+            Picker("Orientation", selection: $orientation) {
+                ForEach(LampGradient.Orientation.allCases) { Text($0.title).tag($0) }
+            }
+            .pickerStyle(.segmented)
+            .disabled(!gradientSync)
+            Toggle(orientation == .vertical ? "Base at the top" : "Base on the right", isOn: $flipped)
+                .disabled(!gradientSync)
+            Text(orientationHint)
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
@@ -77,6 +86,13 @@ struct WizLampSection: View {
     private var detectedText: String {
         let count = UserDefaults.standard.integer(forKey: WizSegmentLayout.countDefaultsKey)
         return count > 0 ? "; the lamp reports \(count)" : ""
+    }
+
+    private var orientationHint: String {
+        let screen = orientation == .vertical
+            ? "reads the screen top to bottom"
+            : "reads the screen left to right"
+        return "Screen sync \(screen) onto the lightbar; music sync fills it from the base like a level meter."
     }
 
     private func load(_ layout: WizSegmentLayout) {
