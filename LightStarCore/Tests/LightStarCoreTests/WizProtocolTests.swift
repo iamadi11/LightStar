@@ -70,6 +70,34 @@ final class WizProtocolTests: XCTestCase {
         XCTAssertEqual(steps[0][7], 50)
     }
 
+    func testEvenWidthsCoverTheWholeLamp() {
+        XCTAssertEqual(WizSegmentLayout.even(segments: 18, steps: 7), [2, 3, 2, 3, 2, 3, 3])
+        XCTAssertEqual(WizSegmentLayout.even(segments: 7, steps: 7), Array(repeating: 1, count: 7))
+        XCTAssertEqual(WizSegmentLayout.even(segments: 4, steps: 7), [1, 1, 1, 1], "never a zero-width step")
+        XCTAssertEqual(WizSegmentLayout.even(segments: 40, steps: 7).reduce(0, +), 40)
+    }
+
+    func testSegmentCountComesFromModelConfig() {
+        // Reply from the Gradient Floor Lamp (trimmed): 36 LEDs, 18 addressable segments.
+        let lamp = Data(#"{"method":"getModelConfig","env":"pro","result":{"headTotal":36,"swHead":18,"hasGradient":1,"lightType":6}}"#.utf8)
+        XCTAssertEqual(WizDiscovery.segmentCount(lamp), 18)
+        let bulb = Data(#"{"method":"getModelConfig","result":{"swHead":1,"hasGradient":0}}"#.utf8)
+        XCTAssertNil(WizDiscovery.segmentCount(bulb))
+    }
+
+    func testStoredLayoutUsesDetectedCountUnlessWidthsSaved() {
+        let defaults = UserDefaults.standard
+        let keys = [WizSegmentLayout.countDefaultsKey, WizSegmentLayout.defaultsKey]
+        let saved = keys.map { defaults.object(forKey: $0) }
+        defer { for (key, value) in zip(keys, saved) { defaults.set(value, forKey: key) } }
+
+        defaults.removeObject(forKey: WizSegmentLayout.defaultsKey)
+        defaults.set(18, forKey: WizSegmentLayout.countDefaultsKey)
+        XCTAssertEqual(WizSegmentLayout.stored.widths, [2, 3, 2, 3, 2, 3, 3])
+        defaults.set([1, 1], forKey: WizSegmentLayout.defaultsKey)
+        XCTAssertEqual(WizSegmentLayout.stored.widths, [1, 1])
+    }
+
     func testDiscoveryParsesSystemConfigAndPrefersSavedLamp() {
         let reply = Data(#"{"method":"getSystemConfig","env":"pro","result":{"mac":"a8bb50000002","moduleName":"ESP25_MHORGB_01","fwVersion":"1.38.0"}}"#.utf8)
         let lamp = WizDiscovery.parse(reply, host: "192.168.1.40")
