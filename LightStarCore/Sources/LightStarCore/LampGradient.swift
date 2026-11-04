@@ -6,6 +6,8 @@ import Foundation
 public enum LampGradient {
     public static let zoneCount = WizSegmentLayout.zones
     public static let enabledDefaultsKey = "lampGradientSync"
+    /// Mean brightness below this is black on screen: the zone goes dark.
+    public static let blackLevel = 0.1
 
     public static var enabled: Bool {
         UserDefaults.standard.object(forKey: enabledDefaultsKey) as? Bool ?? true
@@ -60,7 +62,10 @@ public enum LampGradient {
                 let saturation = min(1, satSum[peak] / n * 1.15)
                 return scaled([WizRGB(hue: hue, saturation: saturation)], by: valSum[peak] / n)[0]
             }
-            let grey = Int((valueTotal / Double(pixels) * 255).rounded())
+            // A black band is off, not the dimmest grey the lamp can make.
+            let mean = valueTotal / Double(pixels)
+            guard mean >= blackLevel else { return .off }
+            let grey = Int((mean * 255).rounded())
             return WizRGB(r: grey, g: grey, b: grey)
         }
     }

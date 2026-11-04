@@ -32,6 +32,10 @@ final class LampGradientTests: XCTestCase {
         XCTAssertEqual(band, [WizRGB(r: 255, g: 0, b: 0)])
     }
 
+    func testBlackBandIsOffNotDimGrey() {
+        XCTAssertEqual(zones { _ in [12, 12, 12, 255] }, [.off])
+    }
+
     func testGreyBandIsNeutralAtItsBrightness() {
         let band = zones { _ in [128, 128, 128, 255] }
         XCTAssertEqual(band, [WizRGB(r: 128, g: 128, b: 128)])

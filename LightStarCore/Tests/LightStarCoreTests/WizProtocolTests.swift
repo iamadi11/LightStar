@@ -101,11 +101,23 @@ final class WizProtocolTests: XCTestCase {
     func testDarkColoursGoFullScaleWithBrightnessInDimming() {
         let layout = WizSegmentLayout(widths: [1, 1, 1], slot: 258)
         let steps = layout.steps([WizRGB(r: 30, g: 30, b: 30), WizRGB(r: 10, g: 0, b: 0), WizRGB(r: 1, g: 1, b: 1)], dimming: 100)!
-        XCTAssertEqual(Array(steps[0][1...3]), [255, 255, 255])
+        XCTAssertEqual(Array(steps[0][1...5]), [0, 0, 0, 0, 255], "grey goes to the cool-white LEDs")
         XCTAssertEqual(steps[0][7], 12, "30/255 of full")
         XCTAssertEqual(steps[1][7], 10, "never below WiZ's 10% floor")
         XCTAssertEqual(steps[1][1], 100, "the rest of the darkness goes into the colour")
         XCTAssertEqual(steps[2][7], 0, "near-black is off")
+    }
+
+    func testWhiteUsesTheWhiteLEDsAndPastelsMixBoth() {
+        XCTAssertEqual(WizChannels(WizRGB(r: 255, g: 255, b: 255), dimming: 100),
+                       { var c = WizChannels(.off, dimming: 0); c.cold = 255; c.dimming = 100; return c }())
+        let pink = WizChannels(WizRGB(r: 255, g: 180, b: 180), dimming: 100)
+        XCTAssertEqual([pink.r, pink.g, pink.b, pink.cold], [75, 0, 0, 180])
+        let red = WizChannels(WizRGB(r: 255, g: 0, b: 0), dimming: 50)
+        XCTAssertEqual([red.r, red.g, red.b, red.cold, red.dimming], [255, 0, 0, 0, 50], "pure colours untouched")
+        let p = try! JSONSerialization.jsonObject(with: WizCommand.color(WizRGB(r: 255, g: 255, b: 255), dimming: 80)) as! [String: Any]
+        let params = p["params"] as! [String: Int]
+        XCTAssertEqual(params, ["r": 0, "g": 0, "b": 0, "c": 255, "dimming": 80])
     }
 
     func testLinkResendsUnansweredCommandsAndNoticesALostLightbar() {
