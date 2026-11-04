@@ -208,6 +208,7 @@ final class LampFrameStore: @unchecked Sendable {
         return b.withUnsafeBufferPointer {
             LampGradient.screenZones(
                 bgra: $0.baseAddress!, width: w, height: h, bytesPerRow: bpr,
+                count: LampGradient.colourCount(for: .current, segments: LampGradient.segmentCount),
                 orientation: LampGradient.orientation,
                 flipped: LampGradient.flipped,
                 followBrightness: UserDefaults.standard.bool(forKey: "videoSyncBrightness")
