@@ -80,6 +80,10 @@ LightStarCore/          Swift package, macOS + iOS
   AlexaHueBridge.swift          SSDP + Hue HTTP API; Mac remains BLE brain
   HueColorMapping.swift         Hue bri/hue/sat/ct ↔ LightStar 0…1 values
 
+  # WiZ lamp (Philips Gradient Floor Lamp) — macOS only
+  WizProtocol.swift             UDP 38899 JSON: setPilot colour/scene, RGBIC `elm` segments, flush, discovery
+  WizLampController.swift       Broadcast getSystemConfig discovery, ~30 fps send; follows strip via onLampMirror
+
 LightStar/              macOS app (menu bar + control window)
 LightStariOS/           iOS remote (sideload)
 LightStarWidget/        WidgetKit source shared by both widget extensions

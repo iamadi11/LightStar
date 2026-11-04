@@ -91,9 +91,15 @@ struct SettingsView: View {
 
             Section("Lights") {
                 LightTargetSection()
-                Text("LED strip is the Bluetooth bar. Mi lamp is the bedside lamp. Both sends the same colour, brightness, and power to each.")
+                Text("LED strip is the Bluetooth bar. Lamps are the Mi bedside lamp and any WiZ lamp on the network. Both sends the same colour, brightness, and power to each.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+            }
+
+            if ble.outputTarget.sendsToLamp {
+                Section("WiZ Lamp") {
+                    WizLampSection()
+                }
             }
 
             Section("Alexa") {

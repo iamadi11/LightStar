@@ -54,6 +54,7 @@ extension LightBLEManager {
 struct LightTargetSection: View {
     @Environment(LightBLEManager.self) private var ble
     @Environment(HomeKitLampController.self) private var homeKitLamp
+    @Environment(WizLampController.self) private var wizLamp
     @State private var lampSetupCode = ""
 
     var body: some View {
@@ -75,6 +76,7 @@ struct LightTargetSection: View {
             }
             if ble.outputTarget.sendsToLamp {
                 lampRow
+                wizRow
             }
         }
     }
@@ -132,6 +134,27 @@ struct LightTargetSection: View {
                     .monospacedDigit()
                     .onAppear { prefillCode() }
             }
+        }
+    }
+
+    private var wizRow: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "lamp.floor")
+                .frame(width: 16)
+                .foregroundStyle(.secondary)
+            Text(wizStatus)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+        }
+    }
+
+    private var wizStatus: String {
+        switch wizLamp.state {
+        case .following(let name): return "\(name) · Connected"
+        case .searching: return "Looking for a WiZ lamp…"
+        case .notFound: return "No WiZ lamp on this network"
+        case .stopped: return "WiZ lamp"
         }
     }
 
