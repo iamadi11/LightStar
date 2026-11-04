@@ -35,6 +35,10 @@ public final class ScreenCaptureKitProvider: NSObject, ScreenFrameProvider {
     private var lastFrameTime: Double = 0
     private var lastBlackPercentage: Double = 0
     private var usingMetal = false
+    nonisolated let lampFrame = LampFrameStore()
+
+    /// Lightbar zones of the latest frame under the current settings.
+    public func currentLampZones() -> [WizRGB] { lampFrame.zones() }
     
     @MainActor
     public static func availableDisplays() async -> [(id: CGDirectDisplayID, name: String)] {
@@ -99,6 +103,7 @@ public final class ScreenCaptureKitProvider: NSObject, ScreenFrameProvider {
     
     public func stop() async {
         generation &+= 1  // invalidate any concurrent start(), even if idle
+        lampFrame.clear()
         guard isRunning else { return }
         try? await stream?.stopCapture()
         stream = nil
@@ -155,7 +160,8 @@ extension ScreenCaptureKitProvider: SCStreamOutput {
             analysis = analyzePixelBuffer(pb)
             usedMetal = false
         }
-        analysis.zones = lampZones(pb)
+        lampFrame.store(pb)
+        analysis.zones = lampFrame.zones()
         
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
@@ -170,21 +176,45 @@ extension ScreenCaptureKitProvider: SCStreamOutput {
 
 // MARK: - Pixel Analysis
 
-/// 48×27 frame: about 1.3k pixels, cheap enough on the capture queue.
-private func lampZones(_ pb: CVPixelBuffer) -> [WizRGB] {
-    CVPixelBufferLockBaseAddress(pb, .readOnly)
-    defer { CVPixelBufferUnlockBaseAddress(pb, .readOnly) }
-    guard let base = CVPixelBufferGetBaseAddress(pb) else { return [] }
-    return LampGradient.screenZones(
-        bgra: base.assumingMemoryBound(to: UInt8.self),
-        width: CVPixelBufferGetWidth(pb),
-        height: CVPixelBufferGetHeight(pb),
-        bytesPerRow: CVPixelBufferGetBytesPerRow(pb),
-        orientation: LampGradient.orientation,
-        flipped: LampGradient.flipped,
-        followBrightness: UserDefaults.standard.bool(forKey: "videoSyncBrightness"),
-        centre: LampGradient.centre
-    )
+/// The latest captured frame (48×27, ~5 KB), kept so lightbar settings —
+/// centre, swap, orientation — apply at once. On a still screen (a paused
+/// video, while lining the lightbar up) ScreenCaptureKit sends no new frames.
+final class LampFrameStore: @unchecked Sendable {
+    private let lock = NSLock()
+    private var bytes: [UInt8] = []
+    private var width = 0, height = 0, bytesPerRow = 0
+
+    func store(_ pb: CVPixelBuffer) {
+        CVPixelBufferLockBaseAddress(pb, .readOnly)
+        defer { CVPixelBufferUnlockBaseAddress(pb, .readOnly) }
+        guard let base = CVPixelBufferGetBaseAddress(pb) else { return }
+        let w = CVPixelBufferGetWidth(pb), h = CVPixelBufferGetHeight(pb), bpr = CVPixelBufferGetBytesPerRow(pb)
+        let copy = Array(UnsafeBufferPointer(start: base.assumingMemoryBound(to: UInt8.self), count: bpr * h))
+        lock.lock()
+        bytes = copy; width = w; height = h; bytesPerRow = bpr
+        lock.unlock()
+    }
+
+    func clear() {
+        lock.lock(); bytes = []; lock.unlock()
+    }
+
+    /// Zones of the latest frame under the current lightbar settings.
+    func zones() -> [WizRGB] {
+        lock.lock()
+        let (b, w, h, bpr) = (bytes, width, height, bytesPerRow)
+        lock.unlock()
+        guard !b.isEmpty else { return [] }
+        return b.withUnsafeBufferPointer {
+            LampGradient.screenZones(
+                bgra: $0.baseAddress!, width: w, height: h, bytesPerRow: bpr,
+                orientation: LampGradient.orientation,
+                flipped: LampGradient.flipped,
+                followBrightness: UserDefaults.standard.bool(forKey: "videoSyncBrightness"),
+                centre: LampGradient.centre
+            )
+        }
+    }
 }
 
 private func analyzePixelBuffer(_ pb: CVPixelBuffer) -> FrameAnalysis {
