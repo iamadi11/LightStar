@@ -53,6 +53,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Mi Bedside Lamp on the LAN. Follows strip colour without writing BLE.
     lazy var yeelight = YeelightLampController()
     lazy var homeKitLamp = HomeKitLampController()
+    /// Philips / WiZ gradient floor lamp over WiZ UDP. Follows the strip and takes segments.
+    lazy var wizLamp = WizLampController()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
@@ -126,6 +128,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         yeelight.stop()
         homeKitLamp.stop()
+        wizLamp.stop()
     }
 
     private func configureAlexaBridge() {
@@ -166,6 +169,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         ble.onLampMirror = { [weak self] update in
             self?.yeelight.submit(update)
             self?.homeKitLamp.submit(update)
+            self?.wizLamp.submit(update)
         }
         let push = { [weak self] in
             guard let self else { return }
@@ -177,10 +181,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             for update in updates {
                 self.yeelight.submit(update)
                 self.homeKitLamp.submit(update)
+                self.wizLamp.submit(update)
             }
         }
         yeelight.onFollowing = push
         homeKitLamp.onFollowing = push
+        wizLamp.onFollowing = push
     }
 
     func setYeelightMirrorEnabled(_ enabled: Bool) {
@@ -193,9 +199,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             configureYeelight()
             yeelight.start()
             homeKitLamp.start()
+            wizLamp.start()
         } else {
             yeelight.stop()
             homeKitLamp.stop()
+            wizLamp.stop()
         }
     }
 
@@ -229,6 +237,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             rootView: MenuBarView()
                 .environment(ble)
                 .environment(homeKitLamp)
+                .environment(wizLamp)
                 .environment(presets)
                 .environment(schedules)
         )
@@ -482,6 +491,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let root = ControlWindowView()
             .environment(ble)
             .environment(homeKitLamp)
+            .environment(wizLamp)
             .environment(presets)
             .environment(schedules)
         let vc = NSHostingController(rootView: root)
@@ -519,6 +529,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .environment(schedules)
             .environment(yeelight)
             .environment(homeKitLamp)
+            .environment(wizLamp)
         let hosting = NSHostingController(rootView: root)
         let window = NSWindow(contentViewController: hosting)
         window.title = "Settings"

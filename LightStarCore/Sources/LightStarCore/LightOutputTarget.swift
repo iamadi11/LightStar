@@ -15,7 +15,7 @@ public enum LightOutputTarget: String, CaseIterable, Sendable, Identifiable {
     public var title: String {
         switch self {
         case .strip: return "LED strip"
-        case .lamp: return "Mi lamp"
+        case .lamp: return "Lamps"
         case .both: return "Both"
         }
     }
@@ -50,8 +50,8 @@ public enum RemoteLightControls {
     public static func powerDetail(target: LightOutputTarget) -> String {
         switch target {
         case .strip: return "Turns the LED strip on and off."
-        case .lamp: return "Turns the Mi lamp on and off."
-        case .both: return "Turns the LED strip and the Mi lamp on and off together."
+        case .lamp: return "Turns the lamps on and off."
+        case .both: return "Turns the LED strip and the lamps on and off together."
         }
     }
 
