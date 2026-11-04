@@ -385,7 +385,8 @@ public extension LightBLEManager {
 
             if self.sendsLampGradient {
                 let level = meter.next(bands)
-                self.onLampZones?(LampGradient.scaled(LampGradient.vu(level: level), by: self.brightness), nil)
+                let count = LampGradient.colourCount(for: LampGradient.Placement(), segments: LampGradient.segmentCount)
+                self.onLampZones?(LampGradient.scaled(LampGradient.vu(level: level, count: count), by: self.brightness), nil)
             }
 
             switch self.audioSyncMode {

@@ -85,6 +85,17 @@ final class LampGradientTests: XCTestCase {
         XCTAssertEqual(both.reduce(0, +), 18)
     }
 
+    func testUsesAsManyColoursAsWiZAllows() {
+        XCTAssertEqual(LampGradient.colourCount(for: .init(), segments: 18), 12, "whole bar: WiZ's 12-step limit")
+        XCTAssertEqual(LampGradient.colourCount(for: .init(trimStart: 0.1), segments: 18), 11, "one dark end")
+        XCTAssertEqual(LampGradient.colourCount(for: .init(trimStart: 0.1, trimEnd: 0.1), segments: 18), 10)
+        XCTAssertEqual(LampGradient.colourCount(for: .init(trimStart: 0.4, trimEnd: 0.4), segments: 18), 4,
+                       "never more colours than lit segments")
+        let w = LampGradient.Placement().widths(zones: 12, segments: 18)
+        XCTAssertEqual(w.filter { $0 > 0 }.count, 12)
+        XCTAssertTrue(w[1...12].allSatisfy { $0 == 1 || $0 == 2 }, "12 colours over 18 segments")
+    }
+
     func testTrimsNeverSwallowTheWholeBar() {
         let p = LampGradient.Placement(trimStart: 0.7, trimEnd: 0.7)
         XCTAssertEqual(p.end - p.start, LampGradient.minLit, accuracy: 1e-9, "a fifth stays lit")

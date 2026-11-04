@@ -5,6 +5,18 @@ import Foundation
 /// sync is a VU meter that fills from the floor.
 public enum LampGradient {
     public static let zoneCount = WizSegmentLayout.zones
+
+    /// Colours a sync frame can carry: WiZ takes at most 12 steps, each dark
+    /// (trimmed) end uses one, and there can't be more colours than lit
+    /// segments. The 18-segment lightbar gets 12 untrimmed, 10 with both ends off.
+    public static func colourCount(for placement: Placement, segments: Int) -> Int {
+        let darkEnds = (placement.start > 0 ? 1 : 0) + (placement.end < 1 ? 1 : 0)
+        let lit = Int(((placement.end - placement.start) * Double(segments)).rounded())
+        return max(1, min(WizSegmentLayout.maxSteps - darkEnds, lit))
+    }
+
+    /// Physical segments of the connected lightbar (detected, or saved widths).
+    public static var segmentCount: Int { WizSegmentLayout.stored.widths.reduce(0, +) }
     public static let enabledDefaultsKey = "lampGradientSync"
     /// Mean brightness below this is black on screen: the zone goes dark.
     public static let blackLevel = 0.1
