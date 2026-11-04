@@ -55,13 +55,22 @@ struct WizLampSection: View {
                 Stepper("Slot \(slot)", value: $slot, in: WizSegmentLayout.slots)
                 Button("Save Layout") { saveLayout() }
                     .disabled(WizSegmentLayout.parse(widthsText) == nil)
+                Button("Reset") {
+                    wizLamp.resetLayout()
+                    load(.stored)
+                }
             }
-            Text("Widths: segments each step covers, bottom first. Slot: an empty WiZ custom mode (256–265). Allow local communication in the WiZ app.")
+            Text("Widths: segments each colour covers, bottom first\(detectedText). Slot: an empty WiZ custom mode (256–265). Allow local communication in the WiZ app.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
         .disabled(!ready)
         .onAppear { load(WizSegmentLayout.stored) }
+    }
+
+    private var detectedText: String {
+        let count = UserDefaults.standard.integer(forKey: WizSegmentLayout.countDefaultsKey)
+        return count > 0 ? "; the lamp reports \(count)" : ""
     }
 
     private func load(_ layout: WizSegmentLayout) {

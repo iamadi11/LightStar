@@ -5,7 +5,8 @@ import Foundation
 /// `elm` block written to an empty custom scene slot (256…265). Firmware never
 /// reads segment colours back, so what we sent is the only state there is.
 /// Wire findings: github.com/TechAntohere/WizScreenSyncController (verified on
-/// an RGBIC strip, ESP25_MHORGB_01 fw 1.38.0, not yet on the floor lamp).
+/// an RGBIC strip, ESP25_MHORGB_01 fw 1.38.0, and on the Gradient Floor Lamp
+/// with the same module: 18 addressable segments, reported as `swHead`).
 public struct WizRGB: Equatable, Hashable, Sendable {
     public var r: Int
     public var g: Int
@@ -58,11 +59,15 @@ public struct WizPilot: Equatable, Sendable {
     }
 }
 
-/// Where the lamp's segments sit on the wire. Calibration knob: width is a count
-/// of physical segments per step and the device can't report its own count.
+/// Where the lamp's segments sit on the wire. Width is a count of physical
+/// segments per step. Gradient lamps report their count in getModelConfig;
+/// saved widths are the calibration knob for anything that doesn't.
 public struct WizSegmentLayout: Equatable, Sendable {
     public static let defaultsKey = "wizSegmentWidths"
     public static let slotDefaultsKey = "wizSegmentSlot"
+    public static let countDefaultsKey = "wizSegmentCount"
+    /// Colours the UI offers. Philips sells the floor lamp as "7 colour segments".
+    public static let zones = 7
     public static let maxSteps = 12
     public static let slots = 256...265
 
@@ -76,7 +81,9 @@ public struct WizSegmentLayout: Equatable, Sendable {
 
     public static var stored: WizSegmentLayout {
         let defaults = UserDefaults.standard
-        let widths = (defaults.array(forKey: defaultsKey) as? [Int]).flatMap(parse) ?? WizSegmentLayout().widths
+        let count = defaults.integer(forKey: countDefaultsKey)
+        let detected = count > 0 ? even(segments: count, steps: zones) : WizSegmentLayout().widths
+        let widths = (defaults.array(forKey: defaultsKey) as? [Int]).flatMap(parse) ?? detected
         let slot = defaults.object(forKey: slotDefaultsKey) as? Int ?? 258
         return WizSegmentLayout(widths: widths, slot: slots.contains(slot) ? slot : 258)
     }
@@ -84,6 +91,14 @@ public struct WizSegmentLayout: Equatable, Sendable {
     public func save() {
         UserDefaults.standard.set(widths, forKey: Self.defaultsKey)
         UserDefaults.standard.set(slot, forKey: Self.slotDefaultsKey)
+    }
+
+    /// Widths summing to exactly `segments`, as even as integers allow, so the
+    /// whole lamp lights. 18 over 7 → [2, 3, 2, 3, 2, 3, 3].
+    public static func even(segments: Int, steps: Int) -> [Int] {
+        let n = max(1, segments)
+        let k = max(1, min(steps, maxSteps, n))
+        return (0..<k).map { (($0 + 1) * n) / k - ($0 * n) / k }
     }
 
     /// "1,1,2,1" → widths. Rejects empty, negative, or more than 12 steps.
@@ -147,6 +162,7 @@ public enum WizCommand {
     }
 
     public static let systemConfig = encode("getSystemConfig", [:])
+    public static let modelConfig = encode("getModelConfig", [:])
 
     static func encode(_ method: String, _ params: [String: Any]) -> Data {
         let object: [String: Any] = ["method": method, "params": params]
@@ -203,6 +219,16 @@ public enum WizDiscovery {
               let result = object["result"] as? [String: Any],
               let mac = result["mac"] as? String, !mac.isEmpty else { return nil }
         return WizDevice(host: host, mac: mac, module: result["moduleName"] as? String ?? "")
+    }
+
+    /// Addressable segments from a `getModelConfig` reply; nil for non-gradient lights.
+    public static func segmentCount(_ data: Data) -> Int? {
+        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              object["method"] as? String == "getModelConfig",
+              let result = object["result"] as? [String: Any],
+              result["hasGradient"] as? Int == 1,
+              let count = result["swHead"] as? Int, count > 0 else { return nil }
+        return count
     }
 
     /// Same lamp as last time, otherwise the first reply.

@@ -69,6 +69,12 @@ public final class WizLampController {
         layout.save()
         engine.relayout(layout)
     }
+
+    /// Drop saved widths and go back to the count the lamp reports.
+    public func resetLayout() {
+        UserDefaults.standard.removeObject(forKey: WizSegmentLayout.defaultsKey)
+        engine.relayout(.stored)
+    }
 }
 
 private final class WizEngine: @unchecked Sendable {
@@ -150,11 +156,21 @@ private final class WizEngine: @unchecked Sendable {
             self.device = choice
             self.sent = WizPilot()
             self.handler?(.following(choice.displayName))
+            self.socket.send(WizCommand.modelConfig, to: choice.host)
             self.flush()
         }
     }
 
     private func received(_ data: Data, from host: String) {
+        if let device, host == device.host {
+            guard let count = WizDiscovery.segmentCount(data),
+                  count != UserDefaults.standard.integer(forKey: WizSegmentLayout.countDefaultsKey) else { return }
+            UserDefaults.standard.set(count, forKey: WizSegmentLayout.countDefaultsKey)
+            layout = WizSegmentLayout.stored
+            sent.mode = nil
+            flush()
+            return
+        }
         guard running, device == nil, let lamp = WizDiscovery.parse(data, host: host),
               !found.contains(where: { $0.mac == lamp.mac }) else { return }
         found.append(lamp)
