@@ -80,9 +80,12 @@ LightStarCore/          Swift package, macOS + iOS
   AlexaHueBridge.swift          SSDP + Hue HTTP API; Mac remains BLE brain
   HueColorMapping.swift         Hue bri/hue/sat/ct ↔ LightStar 0…1 values
 
-  # WiZ lamp (Philips Gradient Floor Lamp) — macOS only
-  WizProtocol.swift             UDP 38899 JSON: setPilot colour/scene, RGBIC `elm` segments, flush, discovery
-  WizLampController.swift       Broadcast getSystemConfig discovery, ~30 fps send; follows strip via onLampMirror
+  # WiZ lightbar (Philips Gradient Floor Lamp) — see "WiZ Lightbar" below
+  WizProtocol.swift             Pure: setPilot/elm encoding, RGB→RGBW split, flush, discovery, link health
+  WizLampController.swift       macOS: multi-light UDP engine (one link per light), heartbeat, discovery
+  LampGradient.swift            Pure: screen bands → zones, placement/trims, VU meter, spectrum, colour count
+  LampEffect.swift              Pure: animated effects as frame(time:) functions; strip-effect mapping
+  LightBLEManager+Lamp.swift    Effect runner (25 fps) and strip-effect follow
 
 LightStar/              macOS app (menu bar + control window)
 LightStariOS/           iOS remote (sideload)
@@ -170,7 +173,7 @@ Enable in Settings → **Echo Hue bridge**. UserDefaults key: `alexaHueBridgeEna
 
 ### Mi Bedside Lamp 2 (Yeelight LAN)
 
-Settings → **Follow the light bar**. The Mac copies each accepted strip colour, brightness, and power change to the lamp. The copy uses the app’s hue, not the strip hue LUT, and it never writes BLE. Connect-sequence power cycles are not copied, so pairing the bar does not blink the lamp. Mi Bedside Lamp 2 (`MJCTD02YL`) no longer has Yeelight LAN Control; it is paired once with the 8-digit HomeKit code on the lamp base (`HomeKitLampController`). The menu-bar picker `LightOutputTarget` (`lightOutputTarget`) chooses the LED strip, the Mi lamp, or both. HomeKit colour flushes about every 60 ms. A saved code (`homekitLampSetupCode`) is used as soon as the lamp is found. Other Yeelight bulbs that still answer SSDP use `YeelightLampController`. `yeelightMirrorEnabled` follows the picker. Pairing record: `homekitLampPairing`.
+Settings → **Follow the light bar**. The Mac copies each accepted strip colour, brightness, and power change to the lamp. The copy uses the app’s hue, not the strip hue LUT, and it never writes BLE. Connect-sequence power cycles are not copied, so pairing the bar does not blink the lamp. Mi Bedside Lamp 2 (`MJCTD02YL`) no longer has Yeelight LAN Control; it is paired once with the 8-digit HomeKit code on the lamp base (`HomeKitLampController`). The menu-bar picker `LightOutputTarget` (`lightOutputTarget`) chooses the LED strip, the Mi lamp, the lightbar, or all (`.both` keeps its raw value and reads "All"). Only the chosen lights run and follow (`AppDelegate.mirrorToLamps`, `applyLampFollow`). HomeKit colour flushes about every 60 ms. A saved code (`homekitLampSetupCode`) is used as soon as the lamp is found. Other Yeelight bulbs that still answer SSDP use `YeelightLampController`. `yeelightMirrorEnabled` follows the picker. Pairing record: `homekitLampPairing`.
 
 ### Permissions
 
@@ -208,6 +211,49 @@ iPhone requires:
 - Hardened runtime (sandbox off) needs `com.apple.security.device.audio-input` for the macOS mic TCC prompt. `device.microphone` alone is the sandbox key and does not register LightStar in System Settings → Microphone.
 - `MicAudioSampler` tap must use a handler created in non-isolated `TapCore.init`. A closure literal in `@MainActor start()` inherits MainActor even if it only captures Sendable state — `AVAudioNodeTapBlock` is not `@Sendable`, so the realtime queue SIGTRAPs (`_dispatch_assert_queue_fail`).
 - Trackpad double-tap: first tap `clickCount` 1, second tap one down+up with `clickCount` 2 (`kCGMouseEventClickState`). Never emit extra singles for the second tap — YouTube/Safari ignore clickCount 1 storms.
+
+---
+
+## WiZ Lightbar (Philips Gradient Floor Lamp)
+
+Philips sells it as "LightTheatre Wi-Fi Gradient Floor Lamp"; it is a WiZ gradient light (`ESP25_MHORGB_01`, fw 1.38.0). Local UDP on **38899**, compact JSON, no pairing. Local control must be allowed in the WiZ app.
+
+### Protocol facts (verified on the device)
+
+| Fact | Detail |
+|------|--------|
+| Discovery | Broadcast `getSystemConfig` → reply with `mac`, `moduleName`. |
+| Shape | `getModelConfig` → `swHead: 18` addressable segments (`headTotal: 36` LEDs), `hasGradient: 1`. Philips' "7 colour segments" is marketing. Plain bulbs report `hasGradient: 0`. |
+| Segments | `setPilot` with `sceneId` 256–265 (empty custom slot, default **258**) + `elm {modifier:100, support:17, steps}`. Step = `[0, R, G, B, warm, cool, 0, dimming, 0,0,0,0, width]`. |
+| Step cap | **12 steps max**; 13+ returns `-32602 Invalid params` for any `support`. So ≤12 colours per frame. |
+| White | Step index 4 = warm-white LEDs, 5 = cool; `w` / `c` in plain `setPilot`. |
+| Dimming | 10…100. Power-off is `{"state": false}` only. |
+| Readback | Never echoes `elm`; `success: true` means "parsed", not "shown". Verify by eye. |
+| Rate | 30+ fps with no loss on a normal LAN. |
+
+### Pipeline
+
+- **Mirror:** strip colour/brightness/power → `onLampMirror` → `WizLampController.submit` (only when the lightbar is chosen). App hue, never the strip LUT.
+- **Sync / effects:** `onLampZones(zones, placement?)` → `stream`. While streaming, mirrored colour/brightness are held back (power still follows); `stream(nil)` hands the light back. Effects and sync stop each other; a plain colour, scene, or segment colours stop an effect.
+- **Screen sync:** `ScreenCaptureKitProvider` keeps the latest 48×27 frame (`LampFrameStore`) and computes zones per frame: dominant hue per band (strip's histogram, mean hue of the winning bin), brightest pixels of that colour, black bands (<10% mean) off, greys neutral. Orientation, flip, and per-end trims (`Placement`) apply here; `colourCount` = 12, minus one per dark end, never more than lit segments. Any `UserDefaults` change repaints from the cached frame (ScreenCaptureKit sends no frames on a still screen).
+- **Encoding:** `WizMode.gradient(colors, placement)` → per light: widths for its own segment count, zero-width steps **dropped before** the 12-step check, `WizChannels` puts `min(R,G,B)` on the white LEDs (only when it's ≥¼ of the peak — strong colours stay pure) and brightness in `dimming`.
+- **Music:** level meter (`VUMeter`) or spectrum (bass at base → treble at top). Combined pulses the cached screen zones at `combinedBrightness`.
+- **Effects:** `LampEffect` motions flow / chase / fade / openClose / sparkle / fire; picking a strip effect runs `LampEffect.matching` (group → motion, name → colours). Shared speed and direction with the strip; custom palette in Settings.
+
+### Engine (`WizEngine`)
+
+One link per enabled light: its own `sent`, segment count, heartbeat. Only the lightbar already in use (`wizLampMAC`) is driven until the user switches others on (`wizEnabledLights`). Plain bulbs get one colour (`WizMode.flattened`). Heartbeat (`WizLink`): resend unanswered after 0.5 s, ping after 3 s quiet, drop after 8 s silence; re-discovery every 30 s.
+
+### Gotchas (each cost a debugging round)
+
+- **Launch:** macOS refuses the app's first UDP packets with `errno 65 No route to host` for ~300 ms while the Local Network check settles. Discovery probes 6× over 2 s; all-refused → `.blocked` (Local Network off), not "not found".
+- **Zero-width steps:** 12 colours + 2 empty dark ends = 14 entries → refused → nothing sent. Filter before validating.
+- **Testing against the device:** quit LightStar first. A running app keeps streaming and overwrites whatever a test sends, which looks exactly like a firmware bug.
+- **Rounding:** a half-lit bar meant the segment count was wrong — read `swHead`, never assume.
+
+### Settings keys
+
+`lightbarOrientation`, `lightbarFlipped`, `lightbarTrimStart`, `lightbarTrimEnd`, `lampGradientSync`, `lightbarMusicStyle`, `lightbarWhiteTone`, `lightbarEffectCustomColours`, `lightbarEffectPalette`, `wizSegmentCount`, `wizSegmentWidths`, `wizSegmentSlot`, `wizLampMAC`, `wizLampHost`, `wizLightHosts`, `wizEnabledLights`. Presets store `LightbarLook` (effect + optional palette, scene, or segments) — Optional, like every new `Preset` field.
 
 ---
 
@@ -254,7 +300,7 @@ See `docs/display-capture-research.md` for full research. Summary:
 
 **Product path** (do not attempt WindowServer/IOSurface/private APIs, virtual displays, or HDCP bypass):
 
-1. Persistent rectangular black frames (`ProtectedContentPolicy`) **hold last good HSV + brightness**. They must not write near-black to the strip. Combined still pulses brightness from the Music audio sampler.
+1. Persistent rectangular black frames (`ProtectedContentPolicy`) **hold last good HSV + brightness**. They must not write near-black to the strip. Combined still pulses brightness from the Music audio sampler. The **lightbar** is the exception: a held frame with anything visible (a logo on black, the Netflix intro) is still painted, black zones off; only an all-black frame is held (`LampGradient.shouldPaint`). Don't loosen the strip's rule — Netflix's red scrubber would recolour it during DRM playback.
 2. After `confirmationFrameCount` consecutive protected frames, the Mac popover shows the hardware-acceleration-off guide (Chrome/Edge/Brave). Safari / native apps / HW-on Chrome stay black — say so. Dark IDE chrome (VS Code) is not a DRM rectangle and must not trip the guide.
 3. One tracker: `ProtectedContentTracker` in `ScreenColorSampler`. `CaptureDiagnostics` only supplies browser + copy. Do not start its 2s frontmost-app Timer unless Screen/Both is running. No `print()`.
 4. **Chromium Local State toggle** (user-requested): when the strip is on, Screen/Both is running, protected frames are detected, **and** the Chromium tab or window is Netflix or Prime Video, LightStar **Apple-Event quits** Chrome/Edge/Brave (never `forceTerminate` — that drops tabs), waits for session files, patches only `hardware_acceleration_mode.enabled` in `Local State` (do not JSON-round-trip the whole file), then relaunches with `--restore-last-session`. Other DRM and ordinary black frames do not restart the browser. Restore the previous value when leaving Screen/Both, powering off, or quitting LightStar. Do this once per Screen session (no relaunch loop). Safari is not touched. Skip all process control under XCTest.
@@ -270,4 +316,5 @@ A GPU/HDMI/DisplayPort **driver** also cannot see those pixels (DCP + WindowServ
 
 - Comments explain non-obvious **why**. No multi-line docstrings.
 - A new `Cmd` builder must be added to `allFrames` in `LightStarCore/Tests`.
+- Lightbar changes: pure logic goes in `WizProtocol` / `LampGradient` / `LampEffect` with a unit test; then check on the device by eye (`success` replies prove nothing). `FrameAnalysisParityTests` only runs under `xcodebuild test` (SwiftPM's CLI doesn't build the Metal shader).
 - Recalibration procedure for the hue LUT: sweep 10° steps, fixed WB/exposure, keep `obs` strictly increasing.
