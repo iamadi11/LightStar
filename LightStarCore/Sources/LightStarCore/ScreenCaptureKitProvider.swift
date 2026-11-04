@@ -179,7 +179,9 @@ private func lampZones(_ pb: CVPixelBuffer) -> [WizRGB] {
         bgra: base.assumingMemoryBound(to: UInt8.self),
         width: CVPixelBufferGetWidth(pb),
         height: CVPixelBufferGetHeight(pb),
-        bytesPerRow: CVPixelBufferGetBytesPerRow(pb)
+        bytesPerRow: CVPixelBufferGetBytesPerRow(pb),
+        orientation: LampGradient.orientation,
+        flipped: LampGradient.flipped
     )
 }
 
