@@ -142,7 +142,10 @@ public struct WizChannels: Equatable, Sendable {
         let level = Double(max(0, min(100, dimming))) * Double(peak) / 255
         guard peak >= 4, level >= 1 else { return }
         let scale = (level < 10 ? level / 10 : 1) * 255 / Double(peak)
-        let white = min(color.r, color.g, color.b)
+        // Strong colours stay on RGB alone: a sliver of white (Netflix red is
+        // 229, 9, 20) only washes them out. Pastels and greys use the white LEDs.
+        let minimum = min(color.r, color.g, color.b)
+        let white = minimum * 4 >= peak ? minimum : 0
         func channel(_ v: Int) -> Int { max(0, min(255, Int((Double(v) * scale).rounded()))) }
         r = channel(color.r - white)
         g = channel(color.g - white)

@@ -113,6 +113,9 @@ final class WizProtocolTests: XCTestCase {
                        { var c = WizChannels(.off, dimming: 0); c.cold = 255; c.dimming = 100; return c }())
         let pink = WizChannels(WizRGB(r: 255, g: 180, b: 180), dimming: 100)
         XCTAssertEqual([pink.r, pink.g, pink.b, pink.cold], [75, 0, 0, 180])
+        let netflix = WizChannels(WizRGB(r: 229, g: 9, b: 20), dimming: 100)
+        XCTAssertEqual(netflix.cold, 0, "a strong colour gets no white wash")
+        XCTAssertEqual(netflix.r, 255)
         let red = WizChannels(WizRGB(r: 255, g: 0, b: 0), dimming: 50)
         XCTAssertEqual([red.r, red.g, red.b, red.cold, red.dimming], [255, 0, 0, 0, 50], "pure colours untouched")
         let p = try! JSONSerialization.jsonObject(with: WizCommand.color(WizRGB(r: 255, g: 255, b: 255), dimming: 80)) as! [String: Any]

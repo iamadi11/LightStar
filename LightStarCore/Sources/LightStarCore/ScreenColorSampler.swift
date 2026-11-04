@@ -90,9 +90,13 @@ public final class ScreenColorSampler: NSObject {
 
         onFrameAnalysis?(analysis)
 
+        var writable = false
         if case .write(let hsv) = write {
+            writable = true
             onColor?(hsv.hue, hsv.saturation, hsv.brightness)
-            if !analysis.zones.isEmpty { onZones?(analysis.zones) }
+        }
+        if !analysis.zones.isEmpty, LampGradient.shouldPaint(analysis.zones, frameWritable: writable) {
+            onZones?(analysis.zones)
         }
     }
 
