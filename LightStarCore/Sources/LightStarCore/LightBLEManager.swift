@@ -61,6 +61,8 @@ public final class LightBLEManager: NSObject {
     /// Combined sync: latest screen zones (unscaled) and the music's
     /// brightness, so beats can pulse the lightbar between screen frames.
     @ObservationIgnored var lampScreenZones: [WizRGB]?
+    /// A preset's scene or segment colours for the lightbar (the app routes them).
+    @ObservationIgnored public var onLightbarLook: ((LightbarLook) -> Void)?
     @ObservationIgnored var lampCombinedLevel: Double?
     public var colorTemperature: Double = 0.5  // 0=warm 2700K … 1=cool 6500K; not persisted as a mode flag
     // Sync state machine

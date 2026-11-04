@@ -18,6 +18,8 @@ public struct LightSchedule: Codable, Identifiable, Equatable {
         case powerOn
         case powerOff
         case preset(colorHue: Double, colorSat: Double, brightness: Double)
+        /// A saved preset by id, lightbar look included.
+        case savedPreset(UUID)
     }
 
     public init(
@@ -223,6 +225,9 @@ public final class ScheduleStore {
             if !ble.isOn { ble.setPower(on: true) }
             ble.setHue(h, saturation: s)
             ble.setBrightness(bri)
+        case .savedPreset(let id):
+            guard let preset = LightStarRuntime.presets?.presets.first(where: { $0.id == id }) else { return }
+            ble.apply(preset: preset)
         }
     }
 
@@ -283,7 +288,7 @@ public enum FirmwareTimerSync: Sendable {
             let minute = UInt8(hm.minute ?? 0)
             let powerOn: Bool
             switch schedule.action {
-            case .powerOn, .preset: powerOn = true
+            case .powerOn, .preset, .savedPreset: powerOn = true
             case .powerOff: powerOn = false
             }
             // Day byte is an OEM bitmask: bit0=Mon … bit6=Sun.

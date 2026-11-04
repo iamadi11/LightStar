@@ -47,6 +47,9 @@ public final class WizLampController {
     public private(set) var lights: [WizLight] = []
     /// Last segment colours sent from LightStar. Firmware cannot report them.
     public private(set) var segments: [WizRGB] = Array(repeating: .off, count: 7)
+    /// The scene or segment colours chosen for the lightbar, until a plain
+    /// colour replaces them. Saved into presets.
+    public private(set) var look: LightbarLook?
     public var onFollowing: (() -> Void)?
     public var onStateChange: (() -> Void)?
 
@@ -102,16 +105,19 @@ public final class WizLampController {
     }
 
     public func submit(_ update: YeelightMirrorUpdate) {
+        if case .color = update { look = nil }
         engine.mirror(update)
     }
 
     public func setScene(_ id: Int) {
+        look = LightbarLook(scene: id)
         engine.choose(.scene(id))
     }
 
     /// One colour per segment; `.off` turns that segment dark.
     public func setSegments(_ colors: [WizRGB]) {
         segments = colors
+        look = LightbarLook(segments: colors.map { [$0.r, $0.g, $0.b] })
         engine.choose(.segments(colors))
     }
 

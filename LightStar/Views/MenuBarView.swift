@@ -718,12 +718,10 @@ private extension MenuBarView {
     }
 
     func applyPreset(_ preset: Preset) {
-        if !ble.isOn { ble.setPower(on: true) }
         // setColor → setHue already calls stopSyncInline() when sync is active.
         // Calling setSyncMode(.off) first would queue a fade that competes with
         // the incoming preset color (fade writes old color for 300ms).
-        ble.setColor(preset.color)
-        ble.setBrightness(preset.brightness)
+        ble.apply(preset: preset)
     }
 
     func saveCurrentAsPreset(named name: String) {
@@ -738,9 +736,18 @@ private extension MenuBarView {
             c.getRed(&r, green: &g, blue: &b, alpha: &a)
         }
         let p = Preset(name: name, red: Double(r), green: Double(g),
-                       blue: Double(b), brightness: ble.brightness)
+                       blue: Double(b), brightness: ble.brightness, lightbar: currentLightbarLook)
         presets.presets.append(p)
         presets.save()
+    }
+
+    /// What the lightbar shows beyond the strip colour, to keep in a preset.
+    var currentLightbarLook: LightbarLook? {
+        guard ble.outputTarget.sendsToLightbar else { return nil }
+        if let effect = ble.lampEffect, LampEffect.builtIn.contains(effect) {
+            return LightbarLook(effect: effect.name)
+        }
+        return wizLamp.look
     }
 
     var connectionButtonLabel: String {

@@ -40,8 +40,6 @@ struct PresetsView: View {
     }
 
     private func applyPreset(_ preset: Preset) {
-        if !ble.isOn { ble.setPower(on: true) }
-        ble.setColor(preset.color)
-        ble.setBrightness(preset.brightness)
+        ble.apply(preset: preset)
     }
 }
