@@ -36,6 +36,15 @@ public enum LampGradient {
     }
     public static var flipped: Bool { UserDefaults.standard.bool(forKey: flippedDefaultsKey) }
 
+    /// Where the lightbar's middle sits along the screen, as a share of the
+    /// screen: 0 is the screen's centre, +0.25 a quarter further right (or up).
+    public static let centreDefaultsKey = "lightbarCentre"
+    public static let centreRange = -0.5...0.5
+    public static var centre: Double {
+        let v = UserDefaults.standard.double(forKey: centreDefaultsKey)
+        return min(centreRange.upperBound, max(centreRange.lowerBound, v.isFinite ? v : 0))
+    }
+
     public static var enabled: Bool {
         UserDefaults.standard.object(forKey: enabledDefaultsKey) as? Bool ?? true
     }
@@ -49,7 +58,8 @@ public enum LampGradient {
     /// averaging instead would mix colours into grey.
     public static func screenZones(
         bgra: UnsafePointer<UInt8>, width: Int, height: Int, bytesPerRow: Int, count: Int = zoneCount,
-        orientation: Orientation = .vertical, flipped: Bool = false, followBrightness: Bool = true
+        orientation: Orientation = .vertical, flipped: Bool = false, followBrightness: Bool = true,
+        centre: Double = 0
     ) -> [WizRGB] {
         guard width > 0, height > 0, count > 0 else { return [] }
         let bins = 36
@@ -58,9 +68,9 @@ public enum LampGradient {
             var rows = 0..<height, cols = 0..<width
             switch orientation {
             case .vertical:
-                rows = band(zone, of: height, count: count, fromEnd: true)
+                rows = band(zone, of: height, count: count, shift: centre, fromEnd: true)
             case .horizontal:
-                cols = band(zone, of: width, count: count, fromEnd: false)
+                cols = band(zone, of: width, count: count, shift: centre, fromEnd: false)
             }
             var histogram = [Double](repeating: 0, count: bins)
             var satSum = [Double](repeating: 0, count: bins)
@@ -110,11 +120,15 @@ public enum LampGradient {
         return flipped ? zones.reversed() : zones
     }
 
-    /// Slice `zone` of `count` along a side `length` long, never empty.
-    private static func band(_ zone: Int, of length: Int, count: Int, fromEnd: Bool) -> Range<Int> {
-        let start = zone * length / count
-        let end = max(start + 1, (zone + 1) * length / count)
-        let range = min(start, length - 1)..<min(end, length)
+    /// Slice `zone` of `count` along a side `length` long, moved by `shift`
+    /// (share of the side), never empty. A slice pushed past the screen's edge
+    /// reads the edge row/column rather than going dark.
+    private static func band(_ zone: Int, of length: Int, count: Int, shift: Double, fromEnd: Bool) -> Range<Int> {
+        let start = (Double(zone) / Double(count) + shift) * Double(length)
+        let end = (Double(zone + 1) / Double(count) + shift) * Double(length)
+        let lo = min(length - 1, max(0, Int(start.rounded(.down))))
+        let hi = min(length, max(lo + 1, Int(end.rounded(.down))))
+        let range = lo..<hi
         return fromEnd ? (length - range.upperBound)..<(length - range.lowerBound) : range
     }
 

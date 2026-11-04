@@ -30,6 +30,8 @@ struct WizLampSection: View {
             .disabled(!gradientSync)
             Toggle(orientation.flipTitle, isOn: $flipped)
                 .disabled(!gradientSync)
+            LightbarCentreSlider(orientation: orientation)
+                .disabled(!gradientSync)
             Text(orientationHint)
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -123,5 +125,31 @@ struct WizLampSection: View {
         let layout = WizSegmentLayout(widths: widths, slot: slot)
         wizLamp.setLayout(layout)
         load(layout)
+    }
+}
+
+/// Moves which part of the screen feeds the lightbar's middle, for a lightbar
+/// that isn't centred on the screen.
+struct LightbarCentreSlider: View {
+    let orientation: LampGradient.Orientation
+    @AppStorage(LampGradient.centreDefaultsKey) private var centre = 0.0
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Text(orientation == .vertical ? "Bottom" : "Left")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+            Slider(value: $centre, in: LampGradient.centreRange)
+                .controlSize(.small)
+                .accessibilityLabel("Lightbar centre")
+                .accessibilityValue(centre == 0 ? "Screen centre" : "\(Int((centre * 100).rounded()))% from centre")
+            Text(orientation == .vertical ? "Top" : "Right")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+            Button("Centre") { centre = 0 }
+                .controlSize(.small)
+                .disabled(centre == 0)
+                .help("Line the lightbar's middle up with the screen's centre")
+        }
     }
 }
