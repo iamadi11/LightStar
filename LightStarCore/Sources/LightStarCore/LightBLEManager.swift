@@ -53,6 +53,11 @@ public final class LightBLEManager: NSObject {
     public var effectSpeed: Double = 0.5   // 0–1 mapped to 0–100
     public var effectForward: Bool = true
     public var effectModeActive = false
+    /// Effect LightStar is running across the lightbar, if any.
+    public internal(set) var lampEffect: LampEffect?
+    /// The lightbar effect was started by a strip effect and ends with it.
+    var lampEffectFollowsStrip = false
+    @ObservationIgnored var lampEffectTask: Task<Void, Never>?
     public var colorTemperature: Double = 0.5  // 0=warm 2700K … 1=cool 6500K; not persisted as a mode flag
     // Sync state machine
     public var syncMode: SyncMode = .off

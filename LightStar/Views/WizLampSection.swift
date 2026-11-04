@@ -6,6 +6,7 @@ import LightStarCore
 /// segment layout (detected from the lamp; saved widths override it).
 struct WizLampSection: View {
     @Environment(WizLampController.self) private var wizLamp
+    @Environment(LightBLEManager.self) private var ble
     @State private var colors: [Color] = []
     @State private var lit: [Bool] = []
     @State private var sceneID = 0
@@ -36,6 +37,8 @@ struct WizLampSection: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
+            effectControls
+
             Picker("Scene", selection: $sceneID) {
                 Text("None").tag(0)
                 ForEach(WizScene.all, id: \.id) { scene in
@@ -43,7 +46,10 @@ struct WizLampSection: View {
                 }
             }
             .onChange(of: sceneID) { _, id in
-                if id > 0 { wizLamp.setScene(id) }
+                if id > 0 {
+                    ble.setLampEffect(nil)
+                    wizLamp.setScene(id)
+                }
             }
 
             HStack(spacing: 6) {
@@ -90,6 +96,36 @@ struct WizLampSection: View {
         return count > 0 ? "; the lamp reports \(count)" : ""
     }
 
+    @ViewBuilder
+    private var effectControls: some View {
+        Picker("Effect", selection: Binding(
+            get: { ble.lampEffect.flatMap { e in LampEffect.builtIn.first { $0 == e }?.name } ?? "" },
+            set: { name in
+                sceneID = 0
+                ble.setLampEffect(LampEffect.builtIn.first { $0.name == name })
+            }
+        )) {
+            Text("None").tag("")
+            ForEach(LampEffect.builtIn) { Text($0.name).tag($0.name) }
+        }
+        if let effect = ble.lampEffect {
+            if !LampEffect.builtIn.contains(effect) {
+                Text("Following the strip: \(effect.name)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            HStack {
+                Text("Speed").font(.caption)
+                Slider(value: Binding(get: { ble.effectSpeed }, set: { ble.setEffectSpeed($0) }), in: 0...1)
+                    .controlSize(.small)
+                    .accessibilityLabel("Effect speed")
+            }
+        }
+        Text("Strip effects you pick also run on the lightbar in matching colours.")
+            .font(.caption2)
+            .foregroundStyle(.secondary)
+    }
+
     private var orientationHint: String {
         let screen = orientation == .vertical
             ? "reads the screen top to bottom"
@@ -117,6 +153,7 @@ struct WizLampSection: View {
                           g: Int((c.greenComponent * 255).rounded()),
                           b: Int((c.blueComponent * 255).rounded()))
         }
+        ble.setLampEffect(nil)
         wizLamp.setSegments(rgb)
     }
 

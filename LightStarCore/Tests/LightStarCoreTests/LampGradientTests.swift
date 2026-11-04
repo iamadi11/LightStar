@@ -193,4 +193,47 @@ final class LampGradientTests: XCTestCase {
         XCTAssertEqual(smoother.next([WizRGB(r: 140, g: 0, b: 0)], alpha: 0.5), [WizRGB(r: 120, g: 0, b: 0)])
         XCTAssertEqual(smoother.next([WizRGB(r: 0, g: 0, b: 255)], alpha: 0.5), [WizRGB(r: 0, g: 0, b: 255)])
     }
+
+    // MARK: Lightbar effects
+
+    func testEffectsFillEverySegmentAndMove() {
+        for effect in LampEffect.builtIn {
+            let a = effect.frame(time: 0.3, speed: 0.5, count: 12)
+            let b = effect.frame(time: 1.1, speed: 0.5, count: 12)
+            XCTAssertEqual(a.count, 12, effect.name)
+            XCTAssertNotEqual(a, b, "\(effect.name) animates")
+        }
+    }
+
+    func testChaseRunsFromTheBase() {
+        let chase = LampEffect(name: "t", motion: .chase, palette: [WizRGB(r: 255, g: 0, b: 0)])
+        let early = chase.frame(time: 0.05, speed: 0.5, count: 12)
+        XCTAssertFalse(early[0].isOff, "head starts at the base")
+        XCTAssertTrue(early[6...].allSatisfy(\.isOff), "far end still dark")
+    }
+
+    func testOpenCloseOpensFromTheCentre() {
+        let e = LampEffect(name: "t", motion: .openClose, palette: [WizRGB(r: 0, g: 0, b: 255)])
+        // A quarter of the way open: centre lit, ends dark.
+        let t = 0.25 / LampEffect.rate(0.5)
+        let f = e.frame(time: t, speed: 0.5, count: 12)
+        XCTAssertFalse(f[5].isOff); XCTAssertFalse(f[6].isOff)
+        XCTAssertTrue(f[0].isOff); XCTAssertTrue(f[11].isOff)
+    }
+
+    func testStripEffectsMapToMatchingColoursAndMotion() {
+        func find(_ id: UInt8) -> LampEffect {
+            for (group, effects) in knownEffects { if let e = effects.first(where: { $0.id == id }) { return .matching(e, in: group) } }
+            fatalError()
+        }
+        let tail = find(0x4D) // Tailing · Red
+        XCTAssertEqual(tail.motion, .chase)
+        XCTAssertEqual(tail.palette, [WizRGB(r: 255, g: 0, b: 0)])
+        let water = find(0x3E) // Flowing Water · Blue-Purple
+        XCTAssertEqual(water.motion, .flow)
+        XCTAssertEqual(water.palette.count, 2)
+        XCTAssertEqual(find(0x23).motion, .openClose) // Opening / Closing · 7 Colors
+        XCTAssertEqual(find(0x23).palette, LampEffect.rainbow)
+        XCTAssertEqual(find(0x36).palette, LampEffect.white) // Transition · White
+    }
 }

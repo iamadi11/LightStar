@@ -58,6 +58,7 @@ public extension LightBLEManager {
         recordColorHistory(h, s)
         audioPulseH = h
         effectModeActive = false
+        if lampEffect != nil { setLampEffect(nil) }
         fadeTask?.cancel()
         colorDebounce?.cancel()
         colorDebounce = Task { @MainActor in
@@ -97,6 +98,7 @@ public extension LightBLEManager {
         effectModeActive = true
         write(Cmd.effect(id: id))
         write(Cmd.speed(effectSpeed))
+        followStripEffect(id: id)
     }
 
     public func setEffectSpeed(_ value: Double) {
@@ -111,6 +113,7 @@ public extension LightBLEManager {
 
     public func exitEffectMode() {
         effectModeActive = false
+        if lampEffectFollowsStrip { setLampEffect(nil) }
         fadeTask?.cancel()
         fadeTask = Task { @MainActor in
             // BC06 effects run in device firmware — power-cycle is the only reliable reset.

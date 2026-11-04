@@ -18,6 +18,12 @@ public extension LightBLEManager {
     public func setSyncMode(_ mode: SyncMode) {
         silenceTask?.cancel()
         silenceTask = nil
+        // Sync takes the lightbar's segments; a running effect would fight it.
+        if mode != .off, lampEffect != nil {
+            lampEffectTask?.cancel()
+            lampEffectTask = nil
+            lampEffect = nil
+        }
         if let persist = SyncModePersistence.lastSyncModeToPersist(previous: syncMode, next: mode) {
             lastSyncMode = persist
             UserDefaults.standard.set(persist.rawValue, forKey: "lastSyncMode")

@@ -134,6 +134,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.remoteControl.publishState()
         }
         ble.onOutputTargetChange = { [weak self] target in
+            if !target.sendsToLightbar { self?.ble.setLampEffect(nil) }
             self?.applyLampFollow(target)
             self?.remoteControl.publishState()
         }
