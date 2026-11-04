@@ -460,6 +460,9 @@ struct MenuBarView: View {
 struct SyncControlView: View {
     @Environment(LightBLEManager.self) private var ble
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @AppStorage(LampGradient.enabledDefaultsKey) private var gradientSync = true
+    @AppStorage(LampGradient.orientationDefaultsKey) private var orientation = LampGradient.Orientation.vertical
+    @AppStorage(LampGradient.flippedDefaultsKey) private var flipped = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -565,6 +568,22 @@ struct SyncControlView: View {
             Text(modeDescription)
                 .font(.caption2)
                 .foregroundStyle(.secondary)
+
+            if ble.isSyncingVideo, ble.outputTarget.sendsToLightbar, gradientSync {
+                // Right here, so the lightbar can be flipped while watching it.
+                HStack(spacing: 8) {
+                    Picker("Lightbar orientation", selection: $orientation) {
+                        ForEach(LampGradient.Orientation.allCases) { Text($0.title).tag($0) }
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.segmented)
+                    .controlSize(.small)
+                    .fixedSize()
+                    Toggle(orientation.flipTitle, isOn: $flipped)
+                        .toggleStyle(.checkbox)
+                        .font(.caption)
+                }
+            }
 
             if ble.isSyncingVideo {
                 HStack(spacing: 4) {

@@ -28,7 +28,7 @@ struct WizLampSection: View {
             }
             .pickerStyle(.segmented)
             .disabled(!gradientSync)
-            Toggle(orientation == .vertical ? "Base at the top" : "Base on the right", isOn: $flipped)
+            Toggle(orientation.flipTitle, isOn: $flipped)
                 .disabled(!gradientSync)
             Text(orientationHint)
                 .font(.caption)
