@@ -24,6 +24,8 @@ public enum LampGradient {
         case vertical, horizontal
         public var id: String { rawValue }
         public var title: String { self == .vertical ? "Vertical" : "Horizontal" }
+        /// Label for the flip switch in this orientation.
+        public var flipTitle: String { self == .vertical ? "Swap top and bottom" : "Swap left and right" }
     }
     public static let orientationDefaultsKey = "lightbarOrientation"
     /// Base at the top (vertical) or on the right (horizontal).
