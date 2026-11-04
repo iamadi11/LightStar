@@ -109,8 +109,8 @@ final class WizProtocolTests: XCTestCase {
     }
 
     func testWhiteUsesTheWhiteLEDsAndPastelsMixBoth() {
-        XCTAssertEqual(WizChannels(WizRGB(r: 255, g: 255, b: 255), dimming: 100),
-                       { var c = WizChannels(.off, dimming: 0); c.cold = 255; c.dimming = 100; return c }())
+        let white = WizChannels(WizRGB(r: 255, g: 255, b: 255), dimming: 100)
+        XCTAssertEqual([white.r, white.g, white.b, white.warm, white.cold, white.dimming], [0, 0, 0, 0, 255, 100])
         let pink = WizChannels(WizRGB(r: 255, g: 180, b: 180), dimming: 100)
         XCTAssertEqual([pink.r, pink.g, pink.b, pink.cold], [75, 0, 0, 180])
         let netflix = WizChannels(WizRGB(r: 229, g: 9, b: 20), dimming: 100)
@@ -120,7 +120,46 @@ final class WizProtocolTests: XCTestCase {
         XCTAssertEqual([red.r, red.g, red.b, red.cold, red.dimming], [255, 0, 0, 0, 50], "pure colours untouched")
         let p = try! JSONSerialization.jsonObject(with: WizCommand.color(WizRGB(r: 255, g: 255, b: 255), dimming: 80)) as! [String: Any]
         let params = p["params"] as! [String: Int]
-        XCTAssertEqual(params, ["r": 0, "g": 0, "b": 0, "c": 255, "dimming": 80])
+        XCTAssertEqual(params, ["r": 0, "g": 0, "b": 0, "c": 255, "w": 0, "dimming": 80])
+    }
+
+    func testWhiteToneSplitsWhiteBetweenWarmAndCoolLEDs() {
+        let warm = WizChannels(WizRGB(r: 200, g: 200, b: 200), dimming: 100, whiteTone: 0)
+        XCTAssertEqual([warm.warm, warm.cold], [255, 0])
+        let mid = WizChannels(WizRGB(r: 200, g: 200, b: 200), dimming: 100, whiteTone: 0.5)
+        XCTAssertEqual(mid.warm, mid.cold)
+        let red = WizChannels(WizRGB(r: 255, g: 0, b: 0), dimming: 100, whiteTone: 0)
+        XCTAssertEqual([red.warm, red.cold], [0, 0], "pure colours never use white")
+        let steps = WizSegmentLayout(widths: [1]).steps([WizRGB(r: 255, g: 255, b: 255)], dimming: 100, whiteTone: 0)!
+        XCTAssertEqual(steps[0][4], 255, "warm white is step index 4")
+    }
+
+    func testPlainBulbsGetOneColourFromTheZones() {
+        let red = WizRGB(r: 255, g: 0, b: 0), blue = WizRGB(r: 0, g: 0, b: 255)
+        XCTAssertEqual(WizMode.segments([red, .off, blue]).flattened, .color(WizRGB(r: 128, g: 0, b: 128)), "lit zones only")
+        let desired = WizPilot(power: true, mode: .segments([red, red]), dimming: 100)
+        let data = WizFlush.messages(desired: desired, sent: WizPilot(power: true), layout: WizSegmentLayout(), mac: nil,
+                                     gradientCapable: false).first!.0
+        let params = (try! JSONSerialization.jsonObject(with: data) as! [String: Any])["params"] as! [String: Any]
+        XCTAssertNil(params["elm"], "no elm frame: it would blank a bulb")
+        XCTAssertEqual(params["r"] as? Int, 255)
+    }
+
+    func testModelConfigTellsBulbsFromGradientLights() {
+        let bar = Data(#"{"method":"getModelConfig","result":{"swHead":18,"hasGradient":1}}"#.utf8)
+        XCTAssertEqual(WizDiscovery.modelConfig(bar)?.gradient, true)
+        XCTAssertEqual(WizDiscovery.modelConfig(bar)?.segments, 18)
+        let bulb = Data(#"{"method":"getModelConfig","result":{"swHead":1,"hasGradient":0}}"#.utf8)
+        XCTAssertEqual(WizDiscovery.modelConfig(bulb)?.gradient, false)
+        XCTAssertNil(WizDiscovery.modelConfig(bulb)?.segments)
+        XCTAssertNil(WizDiscovery.modelConfig(Data(#"{"method":"getPilot","result":{}}"#.utf8)))
+    }
+
+    func testOnlyTheKnownLightbarIsDrivenUntilTheUserPicks() {
+        XCTAssertEqual(WizDiscovery.enabledLights(found: ["b", "a"], stored: nil, saved: "b"), ["b"])
+        XCTAssertEqual(WizDiscovery.enabledLights(found: ["b", "a"], stored: nil, saved: nil), ["a"])
+        XCTAssertEqual(WizDiscovery.enabledLights(found: ["b", "a"], stored: ["a", "b"], saved: "b"), ["a", "b"])
+        XCTAssertEqual(WizDiscovery.enabledLights(found: ["a"], stored: [], saved: "a"), [], "the user turned them all off")
     }
 
     func testLinkResendsUnansweredCommandsAndNoticesALostLightbar() {

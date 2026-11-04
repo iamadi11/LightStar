@@ -108,11 +108,24 @@ final class LampGradientTests: XCTestCase {
         XCTAssertEqual(w.last, 0)
     }
 
+    func testTwelveColoursAcrossTheWholeBarAreActuallySent() throws {
+        // Regression: 12 colours + 2 zero-width ends were 14 entries, refused
+        // by the 12-step check, so nothing went out.
+        let zones = (0..<12).map { WizRGB(hue: Double($0) / 12, saturation: 1) }
+        let desired = WizPilot(power: true, mode: .gradient(zones, placement: .init()), dimming: 100)
+        let layout = WizSegmentLayout(widths: WizSegmentLayout.even(segments: 18, steps: 7))
+        let data = try XCTUnwrap(WizFlush.messages(desired: desired, sent: WizPilot(power: true), layout: layout, mac: nil).first?.0)
+        let params = try XCTUnwrap((JSONSerialization.jsonObject(with: data) as? [String: Any])?["params"] as? [String: Any])
+        let steps = try XCTUnwrap((params["elm"] as? [String: Any])?["steps"] as? [[Int]])
+        XCTAssertEqual(steps.count, 12)
+        XCTAssertEqual(steps.map { $0[12] }.reduce(0, +), 18)
+    }
+
     func testPlacedGradientEncodesDarkEnds() throws {
         let red = WizRGB(r: 255, g: 0, b: 0)
-        let widths = LampGradient.Placement(trimStart: 0.5).widths(zones: 7, segments: 18)
-        let desired = WizPilot(power: true, mode: .gradient([.off] + Array(repeating: red, count: 7) + [.off], widths: widths), dimming: 100)
-        let data = try XCTUnwrap(WizFlush.messages(desired: desired, sent: WizPilot(power: true), layout: WizSegmentLayout(), mac: nil).first?.0)
+        let desired = WizPilot(power: true, mode: .gradient(Array(repeating: red, count: 7), placement: .init(trimStart: 0.5)), dimming: 100)
+        let layout = WizSegmentLayout(widths: WizSegmentLayout.even(segments: 18, steps: 7))
+        let data = try XCTUnwrap(WizFlush.messages(desired: desired, sent: WizPilot(power: true), layout: layout, mac: nil).first?.0)
         let params = try XCTUnwrap((JSONSerialization.jsonObject(with: data) as? [String: Any])?["params"] as? [String: Any])
         let steps = try XCTUnwrap((params["elm"] as? [String: Any])?["steps"] as? [[Int]])
         XCTAssertEqual(steps.first?[7], 0, "dark stretch first")
