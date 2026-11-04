@@ -181,7 +181,8 @@ private func lampZones(_ pb: CVPixelBuffer) -> [WizRGB] {
         height: CVPixelBufferGetHeight(pb),
         bytesPerRow: CVPixelBufferGetBytesPerRow(pb),
         orientation: LampGradient.orientation,
-        flipped: LampGradient.flipped
+        flipped: LampGradient.flipped,
+        followBrightness: UserDefaults.standard.bool(forKey: "videoSyncBrightness")
     )
 }
 

@@ -32,6 +32,17 @@ final class LampGradientTests: XCTestCase {
         XCTAssertEqual(band, [WizRGB(r: 255, g: 0, b: 0)])
     }
 
+    func testLogoOnBlackComesThroughAtItsBrightest() {
+        // Mostly black band; a red stroke whose edge pixels blended with black.
+        let band = zones { $0 % 4 == 0 ? [0, 0, 255, 255] : ($0 % 4 == 1 ? [0, 0, 110, 255] : [0, 0, 0, 255]) }
+        XCTAssertEqual(band, [WizRGB(r: 255, g: 0, b: 0)], "not the dim mean of stroke and edge")
+        let frame = (0..<28).flatMap { $0 % 4 == 0 ? [0, 0, 128, 255] : [0, 0, 0, 255] as [UInt8] }
+        let full = frame.withUnsafeBufferPointer {
+            LampGradient.screenZones(bgra: $0.baseAddress!, width: 4, height: 7, bytesPerRow: 16, count: 1, followBrightness: false)
+        }
+        XCTAssertEqual(full, [WizRGB(r: 255, g: 0, b: 0)], "full strength when not following screen brightness")
+    }
+
     func testBlackBandIsOffNotDimGrey() {
         XCTAssertEqual(zones { _ in [12, 12, 12, 255] }, [.off])
     }

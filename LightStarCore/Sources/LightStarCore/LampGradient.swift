@@ -38,7 +38,7 @@ public enum LampGradient {
     /// averaging instead would mix colours into grey.
     public static func screenZones(
         bgra: UnsafePointer<UInt8>, width: Int, height: Int, bytesPerRow: Int, count: Int = zoneCount,
-        orientation: Orientation = .vertical, flipped: Bool = false
+        orientation: Orientation = .vertical, flipped: Bool = false, followBrightness: Bool = true
     ) -> [WizRGB] {
         guard width > 0, height > 0, count > 0 else { return [] }
         let bins = 36
@@ -54,6 +54,7 @@ public enum LampGradient {
             var histogram = [Double](repeating: 0, count: bins)
             var satSum = [Double](repeating: 0, count: bins)
             var valSum = [Double](repeating: 0, count: bins)
+            var valMax = [Double](repeating: 0, count: bins)
             var hueSum = [Double](repeating: 0, count: bins)
             var binCount = [Int](repeating: 0, count: bins)
             var pixels = 0, colourful = 0
@@ -71,6 +72,7 @@ public enum LampGradient {
                     histogram[bin] += s * v
                     satSum[bin] += s
                     valSum[bin] += v
+                    valMax[bin] = max(valMax[bin], v)
                     hueSum[bin] += h
                     binCount[bin] += 1
                 }
@@ -82,7 +84,11 @@ public enum LampGradient {
                 let n = Double(binCount[peak])
                 let hue = hueSum[peak] / n
                 let saturation = min(1, satSum[peak] / n * 1.15)
-                return scaled([WizRGB(hue: hue, saturation: saturation)], by: valSum[peak] / n)[0]
+                // Brightest pixels of the winning colour, not their mean: at 48×27 thin
+                // bright strokes (a logo on black) blend into the dark around them.
+                // Without "Follow screen brightness" colour runs at full, like the strip.
+                let value = followBrightness ? valMax[peak] : 1
+                return scaled([WizRGB(hue: hue, saturation: saturation)], by: value)[0]
             }
             // A black band is off, not the dimmest grey the lamp can make.
             let mean = valueTotal / Double(pixels)
