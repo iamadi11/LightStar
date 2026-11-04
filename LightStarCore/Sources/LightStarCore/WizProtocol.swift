@@ -208,7 +208,7 @@ public struct WizDevice: Equatable, Sendable {
     public var mac: String
     public var module: String
 
-    public var displayName: String { "WiZ lamp" }
+    public var displayName: String { "Lightbar" }
 }
 
 public enum WizDiscovery {

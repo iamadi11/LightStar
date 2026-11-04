@@ -98,6 +98,17 @@ final class WizProtocolTests: XCTestCase {
         XCTAssertEqual(WizSegmentLayout.stored.widths, [1, 1])
     }
 
+    func testLightbarIsItsOwnTarget() {
+        XCTAssertTrue(LightOutputTarget.lightbar.sendsToLightbar)
+        XCTAssertFalse(LightOutputTarget.lightbar.sendsToStrip)
+        XCTAssertFalse(LightOutputTarget.lightbar.sendsToMiLamp)
+        XCTAssertTrue(LightOutputTarget.lightbar.sendsToLamp, "mirror path runs for the lightbar")
+        XCTAssertFalse(LightOutputTarget.lamp.sendsToLightbar, "Mi lamp alone leaves the lightbar out")
+        XCTAssertTrue(LightOutputTarget.both.sendsToStrip && LightOutputTarget.both.sendsToMiLamp && LightOutputTarget.both.sendsToLightbar)
+        XCTAssertEqual(RemoteLightControls.target(from: "lightbar"), .lightbar)
+        XCTAssertTrue(RemoteLightControls.canPower(target: .lightbar, stripConnected: false))
+    }
+
     func testDiscoveryParsesSystemConfigAndPrefersSavedLamp() {
         let reply = Data(#"{"method":"getSystemConfig","env":"pro","result":{"mac":"a8bb50000002","moduleName":"ESP25_MHORGB_01","fwVersion":"1.38.0"}}"#.utf8)
         let lamp = WizDiscovery.parse(reply, host: "192.168.1.40")

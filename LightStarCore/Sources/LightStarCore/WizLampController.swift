@@ -46,6 +46,12 @@ public final class WizLampController {
         engine.start()
     }
 
+    /// Look for the lightbar again, e.g. after it was unplugged or changed IP.
+    public func searchAgain() {
+        stop()
+        start()
+    }
+
     public func stop() {
         guard started else { return }
         started = false

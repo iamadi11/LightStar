@@ -101,10 +101,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         configureYeelight()
         remoteControl.lampStatus = { [weak self] in
             guard let self else { return ("stopped", nil) }
-            // The phone has one lamp row; a connected WiZ lamp shows there too.
-            if case .following(let wiz) = self.wizLamp.state {
-                if case .following(let mi) = self.homeKitLamp.state { return ("following", "\(mi) & \(wiz)") }
-                return ("following", wiz)
+            // The phone has one lamp row: the lightbar when it is chosen, joined
+            // with the Mi lamp's name when both are on.
+            let target = self.ble.outputTarget
+            if target.sendsToLightbar, case .following(let bar) = self.wizLamp.state {
+                if target.sendsToMiLamp, case .following(let mi) = self.homeKitLamp.state {
+                    return ("following", "\(mi) & \(bar)")
+                }
+                return ("following", bar)
+            }
+            if !target.sendsToMiLamp {
+                if case .notFound = self.wizLamp.state { return ("failed", "No lightbar on this network") }
+                return ("searching", nil)
             }
             switch self.homeKitLamp.state {
             case .stopped: return ("stopped", nil)
@@ -125,12 +133,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.remoteControl.publishState()
         }
         ble.onOutputTargetChange = { [weak self] target in
-            self?.applyLampFollow(target.sendsToLamp)
+            self?.applyLampFollow(target)
             self?.remoteControl.publishState()
         }
-        if ble.outputTarget.sendsToLamp {
-            applyLampFollow(true)
-        }
+        applyLampFollow(ble.outputTarget)
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -178,9 +184,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.wizLamp.stream(zones)
         }
         ble.onLampMirror = { [weak self] update in
-            self?.yeelight.submit(update)
-            self?.homeKitLamp.submit(update)
-            self?.wizLamp.submit(update)
+            self?.mirrorToLamps(update)
         }
         let push = { [weak self] in
             guard let self else { return }
@@ -190,9 +194,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 .brightness(self.ble.brightness)
             ]
             for update in updates {
-                self.yeelight.submit(update)
-                self.homeKitLamp.submit(update)
-                self.wizLamp.submit(update)
+                self.mirrorToLamps(update)
             }
         }
         yeelight.onFollowing = push
@@ -204,16 +206,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         ble.outputTarget = enabled ? .both : .strip
     }
 
-    private func applyLampFollow(_ enabled: Bool) {
-        UserDefaults.standard.set(enabled, forKey: YeelightLampController.enabledDefaultsKey)
-        if enabled {
-            configureYeelight()
+    /// Only the lamps chosen under Control follow the strip.
+    private func mirrorToLamps(_ update: YeelightMirrorUpdate) {
+        if ble.outputTarget.sendsToMiLamp {
+            yeelight.submit(update)
+            homeKitLamp.submit(update)
+        }
+        if ble.outputTarget.sendsToLightbar {
+            wizLamp.submit(update)
+        }
+    }
+
+    /// Each lamp runs only while it is a chosen light.
+    private func applyLampFollow(_ target: LightOutputTarget) {
+        UserDefaults.standard.set(target.sendsToMiLamp, forKey: YeelightLampController.enabledDefaultsKey)
+        if target.sendsToLamp { configureYeelight() }
+        if target.sendsToMiLamp {
             yeelight.start()
             homeKitLamp.start()
-            wizLamp.start()
         } else {
             yeelight.stop()
             homeKitLamp.stop()
+        }
+        if target.sendsToLightbar {
+            wizLamp.start()
+        } else {
             wizLamp.stop()
         }
     }
