@@ -120,12 +120,25 @@ public struct WizSegmentLayout: Equatable, Sendable {
     /// Missing colours are dark; zero-width steps are dropped.
     public func steps(_ colors: [WizRGB], dimming: Int) -> [[Int]]? {
         guard Self.parse(widths) != nil else { return nil }
-        let level = max(10, min(100, dimming))
         return widths.enumerated().compactMap { index, width in
             guard width > 0 else { return nil }
-            let color = index < colors.count ? colors[index] : .off
-            return [0, color.r, color.g, color.b, 0, 0, 0, color.isOff ? 0 : level, 0, 0, 0, 0, width]
+            let (rgb, level) = Self.split(index < colors.count ? colors[index] : .off, dimming: dimming)
+            return [0, rgb.r, rgb.g, rgb.b, 0, 0, 0, level, 0, 0, 0, 0, width]
         }
+    }
+
+    /// WiZ renders a dark RGB like (30, 30, 30) badly; it wants the colour at
+    /// full scale and the brightness in the step's dimming. Below the 10%
+    /// dimming floor the colour itself is darkened for the rest.
+    static func split(_ color: WizRGB, dimming: Int) -> (WizRGB, Int) {
+        let peak = max(color.r, color.g, color.b)
+        let level = Double(max(0, min(100, dimming))) * Double(peak) / 255
+        guard peak >= 4, level >= 1 else { return (.off, 0) }
+        let scale = (level < 10 ? level / 10 : 1) * 255 / Double(peak)
+        let rgb = WizRGB(r: Int((Double(color.r) * scale).rounded()),
+                         g: Int((Double(color.g) * scale).rounded()),
+                         b: Int((Double(color.b) * scale).rounded()))
+        return (rgb, max(10, Int(level.rounded())))
     }
 }
 
@@ -163,6 +176,7 @@ public enum WizCommand {
 
     public static let systemConfig = encode("getSystemConfig", [:])
     public static let modelConfig = encode("getModelConfig", [:])
+    public static let pilot = encode("getPilot", [:])
 
     static func encode(_ method: String, _ params: [String: Any]) -> Data {
         let object: [String: Any] = ["method": method, "params": params]
@@ -235,6 +249,27 @@ public enum WizDiscovery {
     public static func choose(_ found: [WizDevice], savedMAC: String?) -> WizDevice? {
         if let savedMAC, let match = found.first(where: { $0.mac == savedMAC }) { return match }
         return found.sorted { $0.mac < $1.mac }.first
+    }
+}
+
+/// UDP never says whether a command landed; the lightbar's reply is the only
+/// proof. Checked on every heartbeat while the lightbar is connected.
+public enum WizLink {
+    public enum Action: Equatable, Sendable { case none, resend, ping, lost }
+
+    /// A command with no reply this long is sent again.
+    public static let resendAfter: TimeInterval = 0.5
+    /// Quiet this long, ask the lightbar for its state to prove it's there.
+    public static let pingAfter: TimeInterval = 3
+    /// No reply at all this long: it's gone (unplugged, new IP). Search again.
+    public static let lostAfter: TimeInterval = 8
+
+    public static func action(now: Date, lastCommand: Date, lastReply: Date, lastPing: Date) -> Action {
+        let silence = now.timeIntervalSince(lastReply)
+        if silence > lostAfter { return .lost }
+        if lastCommand > lastReply, now.timeIntervalSince(lastCommand) > resendAfter { return .resend }
+        if silence > pingAfter, now.timeIntervalSince(lastPing) > 2 { return .ping }
+        return .none
     }
 }
 

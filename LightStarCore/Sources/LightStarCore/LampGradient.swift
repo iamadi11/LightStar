@@ -11,30 +11,69 @@ public enum LampGradient {
         UserDefaults.standard.object(forKey: enabledDefaultsKey) as? Bool ?? true
     }
 
-    /// Average horizontal bands of a BGRA frame. Saturated, bright pixels weigh
-    /// more so a coloured window on a grey desktop still tints its band.
+    /// Dominant colour of each horizontal band of a BGRA frame, picked the way
+    /// the strip picks its single colour (hue histogram weighted by
+    /// saturation × brightness), so the lightbar and the bar agree. The hue is
+    /// the mean of the winning bin's pixels, not the bin centre, so pure
+    /// colours land exactly. A band with
+    /// almost nothing colourful in it shows neutral white at its brightness;
+    /// averaging instead would mix colours into grey.
     public static func screenZones(
         bgra: UnsafePointer<UInt8>, width: Int, height: Int, bytesPerRow: Int, count: Int = zoneCount
     ) -> [WizRGB] {
         guard width > 0, height > 0, count > 0 else { return [] }
+        let bins = 36
         return (0..<count).map { zone in
             // Bottom zone comes from the bottom rows of the screen.
             let top = height - (zone + 1) * height / count
             let bottom = height - zone * height / count
-            var r = 0.0, g = 0.0, b = 0.0, weight = 0.0
+            var histogram = [Double](repeating: 0, count: bins)
+            var satSum = [Double](repeating: 0, count: bins)
+            var valSum = [Double](repeating: 0, count: bins)
+            var hueSum = [Double](repeating: 0, count: bins)
+            var binCount = [Int](repeating: 0, count: bins)
+            var pixels = 0, colourful = 0
+            var valueTotal = 0.0
             for row in max(0, top)..<max(top + 1, bottom) where row < height {
                 for col in 0..<width {
                     let i = row * bytesPerRow + col * 4
-                    let pb = Double(bgra[i]), pg = Double(bgra[i + 1]), pr = Double(bgra[i + 2])
-                    let hi = max(pr, pg, pb), lo = min(pr, pg, pb)
-                    let sat = hi > 0 ? (hi - lo) / hi : 0
-                    let w = 0.05 + sat * hi / 255
-                    r += pr * w; g += pg * w; b += pb * w; weight += w
+                    let (h, s, v) = hsv(r: bgra[i + 2], g: bgra[i + 1], b: bgra[i])
+                    pixels += 1
+                    valueTotal += v
+                    // Same floor as the strip's analyser: ignore near-black and greys.
+                    guard v > 0.12, s > 0.15 else { continue }
+                    colourful += 1
+                    let bin = min(bins - 1, Int(h * Double(bins)))
+                    histogram[bin] += s * v
+                    satSum[bin] += s
+                    valSum[bin] += v
+                    hueSum[bin] += h
+                    binCount[bin] += 1
                 }
             }
-            guard weight > 0 else { return .off }
-            return WizRGB(r: Int((r / weight).rounded()), g: Int((g / weight).rounded()), b: Int((b / weight).rounded()))
+            guard pixels > 0 else { return .off }
+            // ponytail: 2% colourful pixels claims the band; a lone icon shouldn't.
+            if colourful * 50 >= pixels,
+               let peak = histogram.indices.max(by: { histogram[$0] < histogram[$1] }), binCount[peak] > 0 {
+                let n = Double(binCount[peak])
+                let hue = hueSum[peak] / n
+                let saturation = min(1, satSum[peak] / n * 1.15)
+                return scaled([WizRGB(hue: hue, saturation: saturation)], by: valSum[peak] / n)[0]
+            }
+            let grey = Int((valueTotal / Double(pixels) * 255).rounded())
+            return WizRGB(r: grey, g: grey, b: grey)
         }
+    }
+
+    private static func hsv(r: UInt8, g: UInt8, b: UInt8) -> (Double, Double, Double) {
+        let rf = Double(r) / 255, gf = Double(g) / 255, bf = Double(b) / 255
+        let hi = max(rf, gf, bf), lo = min(rf, gf, bf), d = hi - lo
+        guard d > 0 else { return (0, 0, hi) }
+        var h: Double
+        if hi == rf { h = (gf - bf) / d } else if hi == gf { h = (bf - rf) / d + 2 } else { h = (rf - gf) / d + 4 }
+        h /= 6
+        if h < 0 { h += 1 }
+        return (h, d / hi, hi)
     }
 
     /// Level bar: green at the floor, yellow, red at the top. The zone the level
