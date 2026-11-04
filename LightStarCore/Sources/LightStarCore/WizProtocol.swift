@@ -32,8 +32,23 @@ public enum WizMode: Equatable, Sendable {
     case color(WizRGB)
     case scene(Int)
     case segments([WizRGB])
-    /// Colours with their own segment widths (screen sync placed on part of the bar).
-    case gradient([WizRGB], widths: [Int])
+    /// Sync colours placed on part of the bar; each light works out the
+    /// widths for its own segment count.
+    case gradient([WizRGB], placement: LampGradient.Placement)
+
+    /// One colour for a light that can't show segments (a plain WiZ bulb):
+    /// the average of the lit zones, as bright as they are.
+    public var flattened: WizMode {
+        switch self {
+        case .segments(let colors), .gradient(let colors, _):
+            let lit = colors.filter { !$0.isOff }
+            guard !lit.isEmpty else { return .color(.off) }
+            func mean(_ v: (WizRGB) -> Int) -> Int { Int((Double(lit.map(v).reduce(0, +)) / Double(lit.count)).rounded()) }
+            return .color(WizRGB(r: mean(\.r), g: mean(\.g), b: mean(\.b)))
+        case .color, .scene:
+            return self
+        }
+    }
 }
 
 /// What the lamp should show. `nil` fields have not been decided yet.
@@ -120,13 +135,13 @@ public struct WizSegmentLayout: Equatable, Sendable {
     /// One step vector per segment: `[0, R, G, B, warm, cold, 0, dimming, 0, 0, 0, 0, width]`.
     /// An off segment is a black step so it goes dark instead of keeping its old colour.
     /// Missing colours are dark; zero-width steps are dropped.
-    public func steps(_ colors: [WizRGB], dimming: Int) -> [[Int]]? {
+    public func steps(_ colors: [WizRGB], dimming: Int, whiteTone: Double = 1) -> [[Int]]? {
         guard Self.parse(widths) != nil else { return nil }
         return widths.enumerated().compactMap { index, width in
             guard width > 0 else { return nil }
-            let c = WizChannels(index < colors.count ? colors[index] : .off, dimming: dimming)
+            let c = WizChannels(index < colors.count ? colors[index] : .off, dimming: dimming, whiteTone: whiteTone)
             // Index 4 is warm white, 5 cool white (verified on WiZ RGBIC).
-            return [0, c.r, c.g, c.b, 0, c.cold, 0, c.dimming, 0, 0, 0, 0, width]
+            return [0, c.r, c.g, c.b, c.warm, c.cold, 0, c.dimming, 0, 0, 0, 0, width]
         }
     }
 }
@@ -137,9 +152,10 @@ public struct WizSegmentLayout: Equatable, Sendable {
 /// goes to RGB, both at full scale, and brightness goes in `dimming`. Below
 /// the 10% dimming floor the channels themselves are darkened for the rest.
 public struct WizChannels: Equatable, Sendable {
-    public var r = 0, g = 0, b = 0, cold = 0, dimming = 0
+    public var r = 0, g = 0, b = 0, warm = 0, cold = 0, dimming = 0
 
-    public init(_ color: WizRGB, dimming: Int) {
+    /// `whiteTone` splits the white part between the warm (0) and cool (1) LEDs.
+    public init(_ color: WizRGB, dimming: Int, whiteTone: Double = 1) {
         let peak = max(color.r, color.g, color.b)
         let level = Double(max(0, min(100, dimming))) * Double(peak) / 255
         guard peak >= 4, level >= 1 else { return }
@@ -152,7 +168,9 @@ public struct WizChannels: Equatable, Sendable {
         r = channel(color.r - white)
         g = channel(color.g - white)
         b = channel(color.b - white)
-        cold = channel(white)
+        let tone = max(0, min(1, whiteTone.isFinite ? whiteTone : 1))
+        cold = channel(Int((Double(white) * tone).rounded()))
+        warm = channel(Int((Double(white) * (1 - tone)).rounded()))
         self.dimming = max(10, Int(level.rounded()))
     }
 
@@ -172,19 +190,20 @@ public enum WizCommand {
         encode("setPilot", ["state": on])
     }
 
-    public static func color(_ rgb: WizRGB, dimming: Int) -> Data {
-        let c = WizChannels(rgb, dimming: dimming)
+    public static func color(_ rgb: WizRGB, dimming: Int, whiteTone: Double = 1) -> Data {
+        let c = WizChannels(rgb, dimming: dimming, whiteTone: whiteTone)
         // Black still means "this colour, dimmest": power-off is a separate command.
-        guard !c.isOff else { return encode("setPilot", ["r": 0, "g": 0, "b": 0, "c": 0, "dimming": 10]) }
-        return encode("setPilot", ["r": c.r, "g": c.g, "b": c.b, "c": c.cold, "dimming": c.dimming])
+        guard !c.isOff else { return encode("setPilot", ["r": 0, "g": 0, "b": 0, "c": 0, "w": 0, "dimming": 10]) }
+        return encode("setPilot", ["r": c.r, "g": c.g, "b": c.b, "c": c.cold, "w": c.warm, "dimming": c.dimming])
     }
 
     public static func scene(_ id: Int, dimming: Int) -> Data {
         encode("setPilot", ["sceneId": id, "dimming": dimming])
     }
 
-    public static func segments(_ colors: [WizRGB], layout: WizSegmentLayout, dimming: Int, mac: String?) -> Data? {
-        guard let steps = layout.steps(colors, dimming: dimming) else { return nil }
+    public static func segments(_ colors: [WizRGB], layout: WizSegmentLayout, dimming: Int, mac: String?,
+                                whiteTone: Double = 1) -> Data? {
+        guard let steps = layout.steps(colors, dimming: dimming, whiteTone: whiteTone) else { return nil }
         var params: [String: Any] = [
             "state": true,
             "sceneId": layout.slot,
@@ -212,7 +231,9 @@ public enum WizFlush {
         desired: WizPilot,
         sent: WizPilot,
         layout: WizSegmentLayout,
-        mac: String?
+        mac: String?,
+        gradientCapable: Bool = true,
+        whiteTone: Double = 1
     ) -> [(Data, WizPilot)] {
         var out: [(Data, WizPilot)] = []
         var next = sent
@@ -224,12 +245,18 @@ public enum WizFlush {
         let dimming = desired.dimming ?? sent.dimming ?? 100
         guard mode != sent.mode || dimming != sent.dimming else { return out }
         let data: Data?
-        switch mode {
-        case .color(let rgb): data = WizCommand.color(rgb, dimming: dimming)
+        switch gradientCapable ? mode : mode.flattened {
+        case .color(let rgb): data = WizCommand.color(rgb, dimming: dimming, whiteTone: whiteTone)
         case .scene(let id): data = WizCommand.scene(id, dimming: dimming)
-        case .segments(let colors): data = WizCommand.segments(colors, layout: layout, dimming: dimming, mac: mac)
-        case .gradient(let colors, let widths):
-            data = WizCommand.segments(colors, layout: WizSegmentLayout(widths: widths, slot: layout.slot), dimming: dimming, mac: mac)
+        case .segments(let colors):
+            data = WizCommand.segments(colors, layout: layout, dimming: dimming, mac: mac, whiteTone: whiteTone)
+        case .gradient(let colors, let placement):
+            let widths = placement.widths(zones: colors.count, segments: layout.widths.reduce(0, +))
+            // Drop zero-width steps (an untrimmed end) before the 12-step check:
+            // 12 colours + 2 empty ends would otherwise be refused and nothing sent.
+            let steps = zip([.off] + colors + [.off], widths).filter { $0.1 > 0 }
+            data = WizCommand.segments(steps.map(\.0), layout: WizSegmentLayout(widths: steps.map(\.1), slot: layout.slot),
+                                       dimming: dimming, mac: mac, whiteTone: whiteTone)
         }
         guard let data else { return out }
         next.mode = mode
@@ -265,6 +292,26 @@ public enum WizDiscovery {
               result["hasGradient"] as? Int == 1,
               let count = result["swHead"] as? Int, count > 0 else { return nil }
         return count
+    }
+
+    /// A `getModelConfig` reply: whether the light does gradients, and its
+    /// addressable segments if it does. Nil for anything else.
+    public static func modelConfig(_ data: Data) -> (gradient: Bool, segments: Int?)? {
+        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              object["method"] as? String == "getModelConfig",
+              let result = object["result"] as? [String: Any] else { return nil }
+        let gradient = result["hasGradient"] as? Int == 1
+        let segments = (result["swHead"] as? Int).flatMap { $0 > 0 && gradient ? $0 : nil }
+        return (gradient, segments)
+    }
+
+    /// Lights LightStar drives. Until the user picks, only the lightbar it has
+    /// always used, or the first one found, so other WiZ lights in the house
+    /// don't start following the screen.
+    public static func enabledLights(found: [String], stored: [String]?, saved: String?) -> Set<String> {
+        if let stored { return Set(stored) }
+        if let saved { return [saved] }
+        return found.sorted().first.map { [$0] } ?? []
     }
 
     /// Same lamp as last time, otherwise the first reply.

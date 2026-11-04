@@ -16,6 +16,7 @@ struct WizLampSection: View {
     @AppStorage(LampGradient.orientationDefaultsKey) private var orientation = LampGradient.Orientation.vertical
     @AppStorage(LampGradient.flippedDefaultsKey) private var flipped = false
     @AppStorage(LampGradient.musicStyleDefaultsKey) private var musicStyle = LampGradient.MusicStyle.meter
+    @AppStorage(WizLampController.whiteToneDefaultsKey) private var whiteTone = 1.0
 
     private var ready: Bool {
         if case .following = wizLamp.state { return true }
@@ -24,6 +25,18 @@ struct WizLampSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
+            lightsList
+
+            HStack(spacing: 6) {
+                Text("White").font(.caption)
+                Text("Warm").font(.caption2).foregroundStyle(.secondary)
+                Slider(value: Binding(get: { whiteTone }, set: { whiteTone = $0; wizLamp.setWhiteTone($0) }), in: 0...1)
+                    .controlSize(.small)
+                    .accessibilityLabel("White tone")
+                    .accessibilityValue(whiteTone < 0.34 ? "Warm" : whiteTone > 0.66 ? "Cool" : "Neutral")
+                Text("Cool").font(.caption2).foregroundStyle(.secondary)
+            }
+
             Toggle("Gradient sync", isOn: $gradientSync)
             Picker("Music", selection: $musicStyle) {
                 ForEach(LampGradient.MusicStyle.allCases) { Text($0.title).tag($0) }
@@ -100,6 +113,33 @@ struct WizLampSection: View {
     private var detectedText: String {
         let count = UserDefaults.standard.integer(forKey: WizSegmentLayout.countDefaultsKey)
         return count > 0 ? "; the lamp reports \(count)" : ""
+    }
+
+    /// Every WiZ light found. Only switched-on ones follow LightStar, so a
+    /// bulb elsewhere in the house is left alone until chosen.
+    @ViewBuilder
+    private var lightsList: some View {
+        if wizLamp.lights.count > 1 {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("WiZ lights on this network").font(.caption).foregroundStyle(.secondary)
+                ForEach(wizLamp.lights) { light in
+                    Toggle(isOn: Binding(get: { light.enabled }, set: { wizLamp.setLight(light.mac, enabled: $0) })) {
+                        HStack(spacing: 6) {
+                            Text(light.name)
+                            if light.enabled {
+                                Text(light.connected ? "Connected" : "Looking…")
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                    .toggleStyle(.checkbox)
+                }
+                Text("Bulbs without segments show one colour: the average of the lightbar's.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+        }
     }
 
     @ViewBuilder
