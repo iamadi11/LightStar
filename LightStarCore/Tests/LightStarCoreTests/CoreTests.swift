@@ -1182,9 +1182,6 @@ final class ConnectAndSchedulePolicyTests: XCTestCase {
             mode: .combined, flashLevel: CombinedSyncMixer.beatFlashHold + 0.01
         ), "beats must not suppress screen hue in Both")
         XCTAssertFalse(CombinedSyncMixer.screenShouldWriteHue(mode: .audio, flashLevel: 0))
-        XCTAssertFalse(CombinedSyncMixer.shouldRestoreScreenHueAfterFlash(
-            previousFlash: 0.51, nextFlash: 0.42
-        ), "audio must not write hue after a beat")
         XCTAssertTrue(CombinedSyncMixer.audioShouldWriteStreamingHue(
             mode: .audio, audioSyncMode: .rainbow
         ))
@@ -1218,17 +1215,9 @@ final class ConnectAndSchedulePolicyTests: XCTestCase {
         XCTAssertGreaterThan(loudFull - quietFull, 0.5,
                              "Both must pulse brightness even when the slider is at 100%")
         XCTAssertGreaterThan(
-            CombinedSyncMixer.combinedEnergy(bass: 0.8, rms: 0.2, flashLevel: 0),
+            CombinedSyncMixer.combinedBrightness(userBrightness: 1, bass: 0.8, rms: 0.2, flashLevel: 0),
             0.8,
             "Both must pulse from bass even when beat detection misses"
-        )
-        XCTAssertEqual(
-            CombinedSyncMixer.combinedSaturation(screenSaturation: 0.5, flashLevel: 0),
-            0.5, accuracy: 0.001
-        )
-        XCTAssertGreaterThan(
-            CombinedSyncMixer.combinedSaturation(screenSaturation: 0.5, flashLevel: 1),
-            0.85
         )
         XCTAssertFalse(CombinedCapturePolicy.shouldCaptureAudioOnScreenStream(mode: .combined))
         XCTAssertFalse(CombinedCapturePolicy.shouldCaptureAudioOnScreenStream(mode: .video))

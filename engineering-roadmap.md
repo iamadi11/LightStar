@@ -34,9 +34,9 @@ Ordered by impact × evidence × small blast radius. Product behavior preserved 
 
 | ID | Title | Why |
 |----|-------|-----|
-| EE-013 | Unify mic/system RMS normalization | Same loudness → different rms scales (mic ×20 vs system ×8); needs A/B on hardware |
-| EE-015 | Metal CPU fallback edge-weight parity | Rare path; shader weights edges, CPU fallback does not |
-| EE-016 | Resolve Combined saturation punch API | Doc/API drift vs unused mixer helpers — product call before wire/delete |
+| EE-013 | ~~Unify mic/system RMS normalization~~ **Done** | Mic uses the shared `AudioFFTEngine`; loudness is peak-relative with a 0.03 floor. `AudioLoudnessTests`: same tone at ¼ level reads the same. On-device A/B still worth a listen. |
+| EE-015 | ~~Metal CPU fallback parity~~ **Done** | Edge weights were already gone from the shader. Real gap: CPU path reported average brightness on grey screens (strip went white) where GPU reported 0. One `MetalColorAnalyzer.cpuAnalysis` now; `FrameAnalysisParityTests` runs GPU vs CPU under Xcode. |
+| EE-016 | ~~Combined saturation punch API~~ **Done: deleted** | `combinedEnergy`, `combinedSaturation`, `shouldRestoreScreenHueAfterFlash` had no callers; doc corrected. Combined pulses brightness (bass + beat flash). |
 
 ## Deferred
 

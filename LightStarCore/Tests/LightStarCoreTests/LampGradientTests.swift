@@ -263,3 +263,71 @@ final class LampGradientTests: XCTestCase {
         XCTAssertGreaterThan(trebleOnly[11].b, trebleOnly[11].g, "top is violet")
     }
 }
+
+final class AudioLoudnessTests: XCTestCase {
+    /// Steady loudness after the peak has settled, for a 220 Hz tone.
+    private func settledRMS(amplitude: Float) -> Double {
+        let engine = AudioFFTEngine()
+        engine.prepare()
+        let tone = (0..<44_100).map { amplitude * sinf(2 * .pi * 220 * Float($0) / 44_100) }
+        var last = 0.0
+        engine.ingest(mono: tone, sampleRate: 44_100) { last = $0.rms }
+        return last
+    }
+
+    func testSameMusicReadsTheSameFromMicAndSystemAudio() {
+        // System audio arrives near full scale; a mic hears the room 4× quieter.
+        let system = settledRMS(amplitude: 0.5)
+        let mic = settledRMS(amplitude: 0.125)
+        XCTAssertEqual(system, mic, accuracy: 0.05, "one loudness scale whatever the input gain (EE-013)")
+        XCTAssertGreaterThan(system, 0.9)
+    }
+
+    func testSilenceAndRoomNoiseStayDark() {
+        XCTAssertEqual(settledRMS(amplitude: 0), 0, accuracy: 1e-9)
+        XCTAssertLessThan(settledRMS(amplitude: 0.004), 0.15, "a quiet room is not amplified into light")
+    }
+}
+
+#if os(macOS)
+/// EE-015: the CPU analysis must decide what the GPU shader decides.
+final class FrameAnalysisParityTests: XCTestCase {
+    private func frame(_ pixel: (Int, Int) -> (UInt8, UInt8, UInt8)) -> CVPixelBuffer {
+        var pb: CVPixelBuffer?
+        let attrs = [kCVPixelBufferMetalCompatibilityKey: true] as CFDictionary
+        CVPixelBufferCreate(nil, 48, 27, kCVPixelFormatType_32BGRA, attrs, &pb)
+        let buffer = pb!
+        CVPixelBufferLockBaseAddress(buffer, [])
+        let base = CVPixelBufferGetBaseAddress(buffer)!.assumingMemoryBound(to: UInt8.self)
+        let bpr = CVPixelBufferGetBytesPerRow(buffer)
+        for y in 0..<27 { for x in 0..<48 {
+            let (r, g, b) = pixel(x, y)
+            let i = y * bpr + x * 4
+            (base[i], base[i + 1], base[i + 2], base[i + 3]) = (b, g, r, 255)
+        } }
+        CVPixelBufferUnlockBaseAddress(buffer, [])
+        return buffer
+    }
+
+    private func assertParity(_ pb: CVPixelBuffer, _ label: String) throws {
+        let metal = try XCTUnwrap(MetalColorAnalyzer.shared, "no Metal here")
+        let gpu = metal.analyze(pb)
+        let cpu = MetalColorAnalyzer.cpuAnalysis(pb)
+        XCTAssertEqual(gpu.dominantHue, cpu.dominantHue, accuracy: 0.01, label)
+        XCTAssertEqual(gpu.dominantSaturation, cpu.dominantSaturation, accuracy: 0.01, label)
+        XCTAssertEqual(gpu.dominantBrightness, cpu.dominantBrightness, accuracy: 0.01, label)
+        XCTAssertEqual(gpu.blackPixelPercentage, cpu.blackPixelPercentage, accuracy: 0.001, label)
+        XCTAssertEqual(gpu.hasRectangularBlackRegion, cpu.hasRectangularBlackRegion, label)
+    }
+
+    func testCPUAndGPUAgree() throws {
+        try XCTSkipIf(MetalColorAnalyzer.shared == nil, "Metal unavailable")
+        try assertParity(frame { x, _ in x < 30 ? (230, 20, 30) : (20, 60, 220) }, "two colours")
+        try assertParity(frame { _, y in y < 9 || y > 17 ? (0, 0, 0) : (240, 160, 20) }, "letterboxed")
+        // A grey desktop: nothing colourful. Both must report brightness 0, so
+        // the strip holds its colour instead of turning white on the CPU path.
+        try assertParity(frame { _, _ in (128, 128, 128) }, "grey")
+        XCTAssertEqual(MetalColorAnalyzer.cpuAnalysis(frame { _, _ in (128, 128, 128) }).dominantBrightness, 0)
+    }
+}
+#endif
