@@ -68,7 +68,7 @@ public enum RemoteLightControls {
         case "failed":
             return detail ?? "The lamp didn’t connect"
         default:
-            return "Mi lamp"
+            return "Lamps"
         }
     }
 }

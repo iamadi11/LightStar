@@ -146,7 +146,7 @@ extension ScreenCaptureKitProvider: SCStreamOutput {
         // Capture useMetalAnalysis before async dispatch to avoid data race
         let wantMetal = useMetalAnalysis
         // Use Metal GPU analysis when available and enabled
-        let analysis: FrameAnalysis
+        var analysis: FrameAnalysis
         let usedMetal: Bool
         if wantMetal, let metal = MetalColorAnalyzer.shared {
             analysis = metal.analyze(pb)
@@ -155,6 +155,7 @@ extension ScreenCaptureKitProvider: SCStreamOutput {
             analysis = analyzePixelBuffer(pb)
             usedMetal = false
         }
+        analysis.zones = lampZones(pb)
         
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
@@ -168,6 +169,19 @@ extension ScreenCaptureKitProvider: SCStreamOutput {
 }
 
 // MARK: - Pixel Analysis
+
+/// 48×27 frame: about 1.3k pixels, cheap enough on the capture queue.
+private func lampZones(_ pb: CVPixelBuffer) -> [WizRGB] {
+    CVPixelBufferLockBaseAddress(pb, .readOnly)
+    defer { CVPixelBufferUnlockBaseAddress(pb, .readOnly) }
+    guard let base = CVPixelBufferGetBaseAddress(pb) else { return [] }
+    return LampGradient.screenZones(
+        bgra: base.assumingMemoryBound(to: UInt8.self),
+        width: CVPixelBufferGetWidth(pb),
+        height: CVPixelBufferGetHeight(pb),
+        bytesPerRow: CVPixelBufferGetBytesPerRow(pb)
+    )
+}
 
 private func analyzePixelBuffer(_ pb: CVPixelBuffer) -> FrameAnalysis {
     CVPixelBufferLockBaseAddress(pb, .readOnly)

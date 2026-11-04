@@ -341,7 +341,7 @@ struct RemoteLightControlView: View {
                 }
             }
             .pickerStyle(.segmented)
-            Text("The Mac drives the LED strip, the Mi lamp, or both.")
+            Text("The Mac drives the LED strip, the lamps, or both.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
         }
@@ -370,7 +370,7 @@ struct RemoteLightControlView: View {
         }
 
         if target.sendsToLamp {
-            Section("Mi lamp") {
+            Section("Lamps") {
                 HStack(spacing: 8) {
                     Image(systemName: "lamp.desk")
                         .foregroundStyle(.secondary)

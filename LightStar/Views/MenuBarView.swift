@@ -7,7 +7,9 @@ import ServiceManagement
 struct MenuBarView: View {
     @Environment(LightBLEManager.self) private var ble
     @Environment(HomeKitLampController.self) private var homeKitLamp
+    @Environment(WizLampController.self) private var wizLamp
     @Environment(PresetStore.self) private var presets
+    @State private var deletingPreset: Preset?
     @Environment(ScheduleStore.self) private var schedules
     @State private var selectedTab = 0
     @State private var showSaveSheet = false
@@ -102,8 +104,10 @@ struct MenuBarView: View {
         .padding(.bottom, 8)
     }
 
+    /// Either lamp counts: the Mi lamp over HomeKit or a WiZ lamp on Wi-Fi.
     private var lampReady: Bool {
         if case .following = homeKitLamp.state { return true }
+        if case .following = wizLamp.state { return true }
         return false
     }
 
@@ -156,6 +160,8 @@ struct MenuBarView: View {
     }
 
     private var lampStatusLine: String {
+        if lampReady { return ble.isOn ? "Lamp on" : "Lamp off" }
+        if case .searching = wizLamp.state { return "Finding lamp" }
         switch homeKitLamp.state {
         case .following: return ble.isOn ? "Lamp on" : "Lamp off"
         case .pairing, .searching: return "Finding lamp"
@@ -191,7 +197,7 @@ struct MenuBarView: View {
     private var controlsSection: some View {
         VStack(spacing: 16) {
             HStack(spacing: 12) {
-                Toggle("", isOn: Binding(
+                Toggle("Power", isOn: Binding(
                     get: { ble.isOn },
                     set: { ble.setPower(on: $0) }
                 ))
@@ -210,7 +216,7 @@ struct MenuBarView: View {
             let live = ble.isOn && outputReachable
             if !live {
                 Text("Turn the light on to use color, presets, and sync.")
-                    .font(.system(size: 11))
+                    .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
 
@@ -290,7 +296,7 @@ struct MenuBarView: View {
                                     .lineLimit(1)
                                 if isDefault {
                                     Image(systemName: "star.fill")
-                                        .font(.system(size: 7))
+                                        .font(.caption2)
                                         .foregroundStyle(.yellow)
                                 }
                             }
@@ -307,14 +313,27 @@ struct MenuBarView: View {
                                 renamingPreset = preset
                                 newPresetName = preset.name
                             }
-                            Button("Delete", role: .destructive) {
-                                if isDefault { presets.defaultPresetID = nil }
-                                presets.presets.removeAll { $0.id == preset.id }
-                                presets.save()
+                            Button("Delete…", role: .destructive) {
+                                deletingPreset = preset
                             }
                         }
                     }
                 }
+            }
+            .confirmationDialog(
+                "Delete \"\(deletingPreset?.name ?? "")\"?",
+                isPresented: Binding(get: { deletingPreset != nil }, set: { if !$0 { deletingPreset = nil } }),
+                titleVisibility: .visible
+            ) {
+                Button("Delete Preset", role: .destructive) {
+                    guard let preset = deletingPreset else { return }
+                    if presets.defaultPresetID == preset.id { presets.defaultPresetID = nil }
+                    presets.presets.removeAll { $0.id == preset.id }
+                    presets.save()
+                    deletingPreset = nil
+                }
+            } message: {
+                Text("This can't be undone.")
             }
             .sheet(isPresented: $showSaveSheet) {
                 SavePresetSheet(name: $newPresetName) { name in
@@ -339,9 +358,9 @@ struct MenuBarView: View {
 
             HStack {
                 Text("Channel order")
-                    .font(.system(size: 11))
+                    .font(.subheadline)
                 Spacer()
-                Picker("", selection: Binding(
+                Picker("Channel order", selection: Binding(
                     get: { ble.ledChannelOrder },
                     set: { ble.ledChannelOrder = $0 }
                 )) {
@@ -356,13 +375,13 @@ struct MenuBarView: View {
 
             HStack {
                 Text("LED count")
-                    .font(.system(size: 11))
+                    .font(.subheadline)
                 Spacer()
                 Stepper("\(ble.ledPixelCount)", value: Binding(
                     get: { ble.ledPixelCount },
                     set: { ble.ledPixelCount = $0 }
                 ), in: 8...300)
-                .font(.system(size: 11))
+                .font(.subheadline)
                 .frame(width: 110)
             }
 
@@ -443,6 +462,7 @@ struct MenuBarView: View {
 
 struct SyncControlView: View {
     @Environment(LightBLEManager.self) private var ble
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -455,6 +475,7 @@ struct SyncControlView: View {
                     Circle()
                         .fill(sc)
                         .frame(width: 8, height: 8)
+                        .accessibilityHidden(true)
                         .transition(.opacity)
                 }
                 Text("⌘⇧S")
@@ -463,9 +484,9 @@ struct SyncControlView: View {
                     .help("Global shortcut: ⌘⇧S toggles sync")
                 if ble.syncTransitioning { ProgressView().controlSize(.mini) }
             }
-            .animation(.snappy(duration: 0.22), value: ble.syncColor != nil)
+            .animation(LightStarMotion.snappy(reduceMotion), value: ble.syncColor != nil)
 
-            Picker("", selection: Binding(
+            Picker("Sync mode", selection: Binding(
                 get: { ble.syncMode },
                 set: { ble.setSyncMode($0) }
             )) {
@@ -473,14 +494,16 @@ struct SyncControlView: View {
                     Text($0.displayName).tag($0)
                 }
             }
+            .labelsHidden()
             .pickerStyle(.segmented)
             .disabled(ble.syncTransitioning)
 
             if let err = ble.syncError {
                 // Show fatal error only when fully failed (.off); partial failures
                 // (e.g. audio failed but video is running) show as a warning instead.
-                Text(err)
-                    .font(.system(size: 9))
+                // Icon as well as colour, so the state doesn't rely on red vs orange.
+                Label(err, systemImage: ble.syncMode == .off ? "exclamationmark.octagon.fill" : "exclamationmark.triangle.fill")
+                    .font(.caption)
                     .foregroundStyle(ble.syncMode == .off ? .red : .orange)
                     .fixedSize(horizontal: false, vertical: true)
                 if ble.syncNeedsPermission {
@@ -491,13 +514,13 @@ struct SyncControlView: View {
                             : "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture"
                         NSWorkspace.shared.open(URL(string: url)!)
                     }
-                    .font(.system(size: 10))
+                    .font(.caption2)
                     .buttonStyle(.link)
                 }
             }
 
             if ble.syncMode == .audio {
-                Picker("", selection: Binding(
+                Picker("Music style", selection: Binding(
                     get: { ble.audioSyncMode },
                     set: { ble.audioSyncMode = $0 }
                 )) {
@@ -505,10 +528,11 @@ struct SyncControlView: View {
                         Text($0.rawValue).tag($0)
                     }
                 }
+                .labelsHidden()
                 .pickerStyle(.segmented)
                 .controlSize(.mini)
 
-                Picker("", selection: Binding(
+                Picker("Audio source", selection: Binding(
                     get: { ble.audioInputSource },
                     set: { ble.audioInputSource = $0 }
                 )) {
@@ -516,6 +540,7 @@ struct SyncControlView: View {
                         Text($0.rawValue).tag($0)
                     }
                 }
+                .labelsHidden()
                 .pickerStyle(.segmented)
                 .controlSize(.mini)
             }
@@ -523,7 +548,7 @@ struct SyncControlView: View {
             if (ble.syncMode == .audio && ble.audioSyncMode == .rainbow) || ble.syncMode == .combined {
                 HStack {
                     Text("Beat sensitivity")
-                        .font(.system(size: 9))
+                        .font(.caption2)
                         .foregroundStyle(.secondary)
                     Slider(value: Binding(
                         get: { ble.beatSensitivity },
@@ -533,7 +558,7 @@ struct SyncControlView: View {
                     .accessibilityLabel("Beat Sensitivity")
                     .accessibilityValue("\(Int(ble.beatSensitivity * 100))%")
                     Text("\(Int(ble.beatSensitivity * 100))%")
-                        .font(.system(size: 9))
+                        .font(.caption2)
                         .foregroundStyle(.secondary)
                         .monospacedDigit()
                         .frame(width: 28, alignment: .trailing)
@@ -541,12 +566,12 @@ struct SyncControlView: View {
             }
 
             Text(modeDescription)
-                .font(.system(size: 9))
+                .font(.caption2)
                 .foregroundStyle(.secondary)
 
             if ble.isSyncingVideo {
                 HStack(spacing: 4) {
-                    Picker("", selection: Binding(
+                    Picker("Display", selection: Binding(
                         get: { ble.selectedDisplayID },
                         set: { ble.selectedDisplayID = $0 }
                     )) {
@@ -560,12 +585,13 @@ struct SyncControlView: View {
                         Image(systemName: "arrow.clockwise")
                     }
                     .buttonStyle(.plain).font(.caption).help("Refresh display list")
+                    .accessibilityLabel("Refresh display list")
                 }
                 .onAppear { ble.loadAvailableDisplays() }
 
                 HStack {
                     Text("Responsiveness")
-                        .font(.system(size: 9))
+                        .font(.caption2)
                         .foregroundStyle(.secondary)
                     Slider(value: Binding(
                         get: { ble.syncResponsiveness },
@@ -581,7 +607,7 @@ struct SyncControlView: View {
                         get: { ble.videoSyncBrightness },
                         set: { ble.videoSyncBrightness = $0 }
                     ))
-                    .font(.system(size: 9))
+                    .font(.caption2)
                     .toggleStyle(.checkbox)
                     .help("Strip brightness tracks average screen brightness (not available in Combined — audio drives brightness there)")
                 }
@@ -591,7 +617,7 @@ struct SyncControlView: View {
                 }
                 if let msg = ble.browserAccelerationMessage {
                     Text(msg)
-                        .font(.system(size: 10))
+                        .font(.caption2)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -602,7 +628,7 @@ struct SyncControlView: View {
     private var modeDescription: String {
         switch ble.syncMode {
         case .off:      return "Color picker and presets are active"
-        case .video:    return "Strip mirrors your screen colors in real-time"
+        case .video:    return "Lights mirror your screen colors in real time"
         case .audio:
             switch ble.audioSyncMode {
             case .rainbow:   return "Music beats drive color and brightness"
@@ -625,16 +651,16 @@ private struct ProtectedContentGuideView: View {
                 Text(banner.message)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            .font(.system(size: 10))
+            .font(.caption2)
             ForEach(Array(banner.steps.enumerated()), id: \.offset) { _, step in
                 Text(step)
-                    .font(.system(size: 9))
+                    .font(.caption2)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
             ForEach(Array(banner.notes.enumerated()), id: \.offset) { _, note in
                 Text(note)
-                    .font(.system(size: 9))
+                    .font(.caption2)
                     .foregroundStyle(.tertiary)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -642,7 +668,7 @@ private struct ProtectedContentGuideView: View {
                 Button(title) {
                     NSWorkspace.shared.open(url)
                 }
-                .font(.system(size: 10))
+                .font(.caption2)
                 .buttonStyle(.link)
             }
         }

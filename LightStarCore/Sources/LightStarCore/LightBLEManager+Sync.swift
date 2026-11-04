@@ -46,10 +46,12 @@ public extension LightBLEManager {
         systemAudio.onBands = nil
         micAudio.onBands = nil
         screenSampler.onColor = nil
+        screenSampler.onZones = nil
         screenSampler.onAudioBands = nil
         screenSampler.onFrameAnalysis = nil
         screenSampler.onDiagnosticsUpdate = nil
         screenSampler.capturesAudio = false
+        onLampZones?(nil)
         flashLevel = 0
         syncColor = nil
         protectedContentBanner = nil
@@ -64,6 +66,7 @@ public extension LightBLEManager {
     public func pauseScreenSync() {
         guard isSyncingVideo else { return }
         screenSampler.onColor = nil
+        screenSampler.onZones = nil
         screenSampler.onAudioBands = nil
         screenSampler.onFrameAnalysis = nil
         screenSampler.onDiagnosticsUpdate = nil
@@ -105,6 +108,7 @@ public extension LightBLEManager {
 
     private func haltCaptureSources() async {
         screenSampler.onColor = nil
+        screenSampler.onZones = nil
         screenSampler.onAudioBands = nil
         screenSampler.onFrameAnalysis = nil
         screenSampler.onDiagnosticsUpdate = nil
@@ -132,10 +136,12 @@ public extension LightBLEManager {
         systemAudio.onBands = nil
         micAudio.onBands = nil
         screenSampler.onColor = nil
+        screenSampler.onZones = nil
         screenSampler.onAudioBands = nil
         screenSampler.onFrameAnalysis = nil
         screenSampler.onDiagnosticsUpdate = nil
         screenSampler.capturesAudio = false
+        onLampZones?(nil)
         flashLevel = 0
         syncMode = .off
         syncColor = nil
@@ -175,6 +181,7 @@ public extension LightBLEManager {
                 }
             } catch {
                 screenSampler.onColor = nil
+        screenSampler.onZones = nil
                 switch CaptureSessionPolicy.disposition(
                     forStartError: error, transitionCancelled: Task.isCancelled
                 ) {
@@ -265,6 +272,7 @@ public extension LightBLEManager {
                 }
             } catch {
                 screenSampler.onColor = nil
+        screenSampler.onZones = nil
                 switch CaptureSessionPolicy.disposition(
                     forStartError: error, transitionCancelled: Task.isCancelled
                 ) {
@@ -296,6 +304,16 @@ public extension LightBLEManager {
             guard let self, banner != nil, !self.browserHWAccel.appliedThisSession else { return }
             self.reconcileBrowserHardwareAcceleration()
 #endif
+        }
+        var zoneSmoother = LampZoneSmoother()
+        var lastZones: Double = 0
+        screenSampler.onZones = { [weak self] zones in
+            guard let self, self.isSyncingVideo, self.isOn, self.sendsLampGradient else { return }
+            let now = CACurrentMediaTime()
+            guard now - lastZones >= 1.0 / 30.0 else { return }
+            lastZones = now
+            let smoothed = zoneSmoother.next(zones, alpha: self.syncResponsiveness)
+            self.onLampZones?(LampGradient.scaled(smoothed, by: self.brightness))
         }
         screenSampler.onColor = { [weak self] h, s, v in
             guard let self, self.isSyncingVideo, self.isOn else { return }
@@ -338,6 +356,7 @@ public extension LightBLEManager {
 
     public func setupAudioCallback(useMic: Bool = false, screenAudio: Bool = false) {
         var lastWrite: Double = 0
+        var meter = VUMeter()
         let callback: (FrequencyBands) -> Void = { [weak self] (bands: FrequencyBands) in
             guard let self, self.isSyncingAudio, self.isOn else { return }
             let now = CACurrentMediaTime()
@@ -362,6 +381,11 @@ public extension LightBLEManager {
                     flashLevel: self.flashLevel
                 ))
                 return
+            }
+
+            if self.sendsLampGradient {
+                let level = meter.next(bands)
+                self.onLampZones?(LampGradient.scaled(LampGradient.vu(level: level), by: self.brightness))
             }
 
             switch self.audioSyncMode {
@@ -401,6 +425,11 @@ public extension LightBLEManager {
         } else {
             systemAudio.onBands = callback
         }
+    }
+
+    /// Gradient lamps get per-segment sync instead of the bar's single colour.
+    var sendsLampGradient: Bool {
+        outputTarget.sendsToLamp && LampGradient.enabled && onLampZones != nil
     }
 
     public func setSyncError(_ error: Error) {

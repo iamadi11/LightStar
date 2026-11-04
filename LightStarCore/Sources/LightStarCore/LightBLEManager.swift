@@ -67,6 +67,9 @@ public final class LightBLEManager: NSObject {
     /// Copy of an accepted colour, brightness, or power change for the Wi-Fi lamp.
     /// Must return immediately and must not call back into the strip.
     public var onLampMirror: ((YeelightMirrorUpdate) -> Void)?
+    /// Per-segment colours for a gradient lamp while sync runs; nil hands the
+    /// lamp back to the mirrored colour.
+    public var onLampZones: (([WizRGB]?) -> Void)?
     /// Starts or stops the bedside lamp when the user picks Strip, Lamp, or Both.
     public var onOutputTargetChange: ((LightOutputTarget) -> Void)?
     public var outputTarget: LightOutputTarget = .stored {

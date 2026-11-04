@@ -62,6 +62,7 @@ public final class ScreenColorSampler: NSObject {
     public var capturesAudio = false
     public var onProtectedContentDetected: (() -> Void)?
     public var onFrameAnalysis: ((FrameAnalysis) -> Void)?
+    public var onZones: (([WizRGB]) -> Void)?
     public var onDiagnosticsUpdate: ((ProtectedContentBanner?) -> Void)?
     public var selectedDisplayID: CGDirectDisplayID?
     public var responsiveness: Double = 1.0
