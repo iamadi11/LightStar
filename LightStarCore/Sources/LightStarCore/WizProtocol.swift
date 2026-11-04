@@ -32,6 +32,8 @@ public enum WizMode: Equatable, Sendable {
     case color(WizRGB)
     case scene(Int)
     case segments([WizRGB])
+    /// Colours with their own segment widths (screen sync placed on part of the bar).
+    case gradient([WizRGB], widths: [Int])
 }
 
 /// What the lamp should show. `nil` fields have not been decided yet.
@@ -226,6 +228,8 @@ public enum WizFlush {
         case .color(let rgb): data = WizCommand.color(rgb, dimming: dimming)
         case .scene(let id): data = WizCommand.scene(id, dimming: dimming)
         case .segments(let colors): data = WizCommand.segments(colors, layout: layout, dimming: dimming, mac: mac)
+        case .gradient(let colors, let widths):
+            data = WizCommand.segments(colors, layout: WizSegmentLayout(widths: widths, slot: layout.slot), dimming: dimming, mac: mac)
         }
         guard let data else { return out }
         next.mode = mode

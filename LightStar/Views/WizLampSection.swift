@@ -30,7 +30,7 @@ struct WizLampSection: View {
             .disabled(!gradientSync)
             Toggle(orientation.flipTitle, isOn: $flipped)
                 .disabled(!gradientSync)
-            LightbarCentreSlider(orientation: orientation)
+            LightbarFitControls(orientation: orientation)
                 .disabled(!gradientSync)
             Text(orientationHint)
                 .font(.caption)
@@ -128,28 +128,46 @@ struct WizLampSection: View {
     }
 }
 
-/// Moves which part of the screen feeds the lightbar's middle, for a lightbar
-/// that isn't centred on the screen.
-struct LightbarCentreSlider: View {
+/// How much of each end of the lightbar stays off in screen sync, for a bar
+/// longer than the monitor. The screen fills the stretch in between.
+struct LightbarFitControls: View {
     let orientation: LampGradient.Orientation
-    @AppStorage(LampGradient.centreDefaultsKey) private var centre = 0.0
+    @AppStorage(LampGradient.trimStartDefaultsKey) private var trimStart = 0.0
+    @AppStorage(LampGradient.trimEndDefaultsKey) private var trimEnd = 0.0
 
     var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            trimRow(orientation == .vertical ? "Off at bottom" : "Off at left",
+                    value: Binding(get: { trimStart },
+                                   set: { trimStart = min($0, 1 - LampGradient.minLit - trimEnd) }))
+            trimRow(orientation == .vertical ? "Off at top" : "Off at right",
+                    value: Binding(get: { trimEnd },
+                                   set: { trimEnd = min($0, 1 - LampGradient.minLit - trimStart) }))
+            HStack {
+                Text("Screen sync lights only the stretch in between.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                Spacer(minLength: 6)
+                Button("Reset") { trimStart = 0; trimEnd = 0 }
+                    .controlSize(.small)
+                    .disabled(trimStart == 0 && trimEnd == 0)
+            }
+        }
+    }
+
+    private func trimRow(_ title: String, value: Binding<Double>) -> some View {
         HStack(spacing: 6) {
-            Text(orientation == .vertical ? "Bottom" : "Left")
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-            Slider(value: $centre, in: LampGradient.centreRange)
+            Text(title)
+                .font(.caption)
+                .frame(width: 78, alignment: .leading)
+            Slider(value: value, in: 0...(1 - LampGradient.minLit))
                 .controlSize(.small)
-                .accessibilityLabel("Lightbar centre")
-                .accessibilityValue(centre == 0 ? "Screen centre" : "\(Int((centre * 100).rounded()))% from centre")
-            Text(orientation == .vertical ? "Top" : "Right")
-                .font(.caption2)
+                .accessibilityLabel(title)
+                .accessibilityValue("\(Int((value.wrappedValue * 100).rounded()))% of the lightbar")
+            Text("\(Int((value.wrappedValue * 100).rounded()))%")
+                .font(.caption2.monospacedDigit())
                 .foregroundStyle(.secondary)
-            Button("Centre") { centre = 0 }
-                .controlSize(.small)
-                .disabled(centre == 0)
-                .help("Line the lightbar's middle up with the screen's centre")
+                .frame(width: 34, alignment: .trailing)
         }
     }
 }

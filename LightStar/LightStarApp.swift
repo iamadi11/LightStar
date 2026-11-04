@@ -181,8 +181,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func configureYeelight() {
-        ble.onLampZones = { [weak self] zones in
-            self?.wizLamp.stream(zones)
+        ble.onLampZones = { [weak self] zones, placement in
+            self?.wizLamp.stream(zones, placement: placement)
         }
         ble.onLampMirror = { [weak self] update in
             self?.mirrorToLamps(update)

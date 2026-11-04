@@ -51,7 +51,7 @@ public extension LightBLEManager {
         screenSampler.onFrameAnalysis = nil
         screenSampler.onDiagnosticsUpdate = nil
         screenSampler.capturesAudio = false
-        onLampZones?(nil)
+        onLampZones?(nil, nil)
         flashLevel = 0
         syncColor = nil
         protectedContentBanner = nil
@@ -141,7 +141,7 @@ public extension LightBLEManager {
         screenSampler.onFrameAnalysis = nil
         screenSampler.onDiagnosticsUpdate = nil
         screenSampler.capturesAudio = false
-        onLampZones?(nil)
+        onLampZones?(nil, nil)
         flashLevel = 0
         syncMode = .off
         syncColor = nil
@@ -313,7 +313,7 @@ public extension LightBLEManager {
             guard now - lastZones >= 1.0 / 30.0 else { return }
             lastZones = now
             let smoothed = zoneSmoother.next(zones, alpha: self.syncResponsiveness)
-            self.onLampZones?(LampGradient.scaled(smoothed, by: self.brightness))
+            self.onLampZones?(LampGradient.scaled(smoothed, by: self.brightness), .current)
         }
         screenSampler.onColor = { [weak self] h, s, v in
             guard let self, self.isSyncingVideo, self.isOn else { return }
@@ -385,7 +385,7 @@ public extension LightBLEManager {
 
             if self.sendsLampGradient {
                 let level = meter.next(bands)
-                self.onLampZones?(LampGradient.scaled(LampGradient.vu(level: level), by: self.brightness))
+                self.onLampZones?(LampGradient.scaled(LampGradient.vu(level: level), by: self.brightness), nil)
             }
 
             switch self.audioSyncMode {

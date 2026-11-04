@@ -69,28 +69,50 @@ final class LampGradientTests: XCTestCase {
         XCTAssertEqual(sideBySide(.horizontal, flipped: true).first, WizRGB(r: 0, g: 0, b: 255), "base on the right")
     }
 
-    func testCentreShiftsWhichPartOfTheScreenFeedsTheLightbar() {
-        // Left half red, right half blue.
-        func zones(centre: Double) -> [WizRGB] {
-            let frame = (0..<4).flatMap { _ in (0..<14).flatMap { col in col < 7 ? [0, 0, 255, 255] : [255, 0, 0, 255] as [UInt8] } }
-            return frame.withUnsafeBufferPointer {
-                LampGradient.screenZones(bgra: $0.baseAddress!, width: 14, height: 4, bytesPerRow: 56, count: 7,
-                                         orientation: .horizontal, centre: centre)
-            }
-        }
-        let red = WizRGB(r: 255, g: 0, b: 0), blue = WizRGB(r: 0, g: 0, b: 255)
-        let centred = zones(centre: 0).filter { $0 == red }.count
-        let right = zones(centre: 0.25)
-        XCTAssertEqual(right.first, red)
-        XCTAssertEqual(right.filter { $0 == red }.count, 2, "only the two zones still over the left half")
-        XCTAssertLessThan(2, centred, "lightbar centred right of the screen sees less of the left")
-        XCTAssertEqual(right.last, blue, "past the right edge it repeats the edge colour, not dark")
+    func testEachEndTrimsOnItsOwn() {
+        // 18 segments, 7 colours.
+        XCTAssertEqual(LampGradient.Placement().widths(zones: 7, segments: 18), [0, 3, 2, 3, 2, 3, 2, 3, 0],
+                       "no trim: whole bar")
+        let left = LampGradient.Placement(trimStart: 0.5).widths(zones: 7, segments: 18)
+        XCTAssertEqual(left.first, 9, "left half off")
+        XCTAssertEqual(left.last, 0, "right end untouched")
+        XCTAssertEqual(left[1..<8].reduce(0, +), 9, "screen fills the right half")
+
+        let both = LampGradient.Placement(trimStart: 2.0 / 18, trimEnd: 4.0 / 18).widths(zones: 7, segments: 18)
+        XCTAssertEqual(both.first, 2)
+        XCTAssertEqual(both.last, 4)
+        XCTAssertEqual(both.count, 9, "7 colours + 2 dark steps, inside WiZ's 12")
+        XCTAssertEqual(both.reduce(0, +), 18)
+    }
+
+    func testTrimsNeverSwallowTheWholeBar() {
+        let p = LampGradient.Placement(trimStart: 0.7, trimEnd: 0.7)
+        XCTAssertEqual(p.end - p.start, LampGradient.minLit, accuracy: 1e-9, "a fifth stays lit")
+    }
+
+    func testFlipMirrorsTheTrims() {
+        // Base on the right: the right-hand trim is at the base end.
+        let w = LampGradient.Placement(trimStart: 0, trimEnd: 0.5, flipped: true).widths(zones: 7, segments: 18)
+        XCTAssertEqual(w.first, 9)
+        XCTAssertEqual(w.last, 0)
+    }
+
+    func testPlacedGradientEncodesDarkEnds() throws {
+        let red = WizRGB(r: 255, g: 0, b: 0)
+        let widths = LampGradient.Placement(trimStart: 0.5).widths(zones: 7, segments: 18)
+        let desired = WizPilot(power: true, mode: .gradient([.off] + Array(repeating: red, count: 7) + [.off], widths: widths), dimming: 100)
+        let data = try XCTUnwrap(WizFlush.messages(desired: desired, sent: WizPilot(power: true), layout: WizSegmentLayout(), mac: nil).first?.0)
+        let params = try XCTUnwrap((JSONSerialization.jsonObject(with: data) as? [String: Any])?["params"] as? [String: Any])
+        let steps = try XCTUnwrap((params["elm"] as? [String: Any])?["steps"] as? [[Int]])
+        XCTAssertEqual(steps.first?[7], 0, "dark stretch first")
+        XCTAssertEqual(steps.first?[12], 9)
+        XCTAssertEqual(steps.map { $0[12] }.reduce(0, +), 18, "zero-width dark end dropped, bar fully covered")
     }
 
     #if os(macOS)
     func testLatestFrameRepaintsWithNewSettingsWithoutANewFrame() {
         let defaults = UserDefaults.standard
-        let keys = [LampGradient.orientationDefaultsKey, LampGradient.flippedDefaultsKey, LampGradient.centreDefaultsKey]
+        let keys = [LampGradient.orientationDefaultsKey, LampGradient.flippedDefaultsKey]
         let saved = keys.map { defaults.object(forKey: $0) }
         defer { for (k, v) in zip(keys, saved) { defaults.set(v, forKey: k) } }
 
@@ -111,7 +133,6 @@ final class LampGradientTests: XCTestCase {
         store.store(buffer)
         defaults.set("horizontal", forKey: LampGradient.orientationDefaultsKey)
         defaults.set(false, forKey: LampGradient.flippedDefaultsKey)
-        defaults.set(0.0, forKey: LampGradient.centreDefaultsKey)
         let before = store.zones()
         defaults.set(true, forKey: LampGradient.flippedDefaultsKey)
         let after = store.zones()

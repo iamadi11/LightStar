@@ -36,13 +36,48 @@ public enum LampGradient {
     }
     public static var flipped: Bool { UserDefaults.standard.bool(forKey: flippedDefaultsKey) }
 
-    /// Where the lightbar's middle sits along the screen, as a share of the
-    /// screen: 0 is the screen's centre, +0.25 a quarter further right (or up).
-    public static let centreDefaultsKey = "lightbarCentre"
-    public static let centreRange = -0.5...0.5
-    public static var centre: Double {
-        let v = UserDefaults.standard.double(forKey: centreDefaultsKey)
-        return min(centreRange.upperBound, max(centreRange.lowerBound, v.isFinite ? v : 0))
+    /// How much of each end of the lightbar stays off in screen sync, as a
+    /// share of the bar: start is the left (or bottom) end, end the right (or
+    /// top). A bar longer than the monitor lights only the stretch between.
+    public static let trimStartDefaultsKey = "lightbarTrimStart"
+    public static let trimEndDefaultsKey = "lightbarTrimEnd"
+    /// At least this much of the bar stays lit.
+    public static let minLit = 0.2
+
+    /// Where the screen sits on the lightbar during screen sync.
+    public struct Placement: Equatable, Sendable {
+        /// Lit stretch, as shares of the bar from the left / bottom.
+        public var start: Double
+        public var end: Double
+        public var flipped: Bool
+
+        public init(trimStart: Double = 0, trimEnd: Double = 0, flipped: Bool = false) {
+            let maxTrim = 1 - minLit
+            let a = min(maxTrim, max(0, trimStart.isFinite ? trimStart : 0))
+            let b = min(maxTrim - a, max(0, trimEnd.isFinite ? trimEnd : 0))
+            start = a
+            end = 1 - b
+            self.flipped = flipped
+        }
+
+        public static var current: Placement {
+            let d = UserDefaults.standard
+            return Placement(trimStart: d.double(forKey: trimStartDefaultsKey),
+                             trimEnd: d.double(forKey: trimEndDefaultsKey),
+                             flipped: d.bool(forKey: flippedDefaultsKey))
+        }
+
+        /// Segment widths, base first: the dark stretch before the screen, one
+        /// per colour zone, the dark stretch after. Always sums to `segments`.
+        public func widths(zones: Int, segments: Int) -> [Int] {
+            guard zones > 0, segments > 0 else { return [] }
+            let span = end - start
+            let base = flipped ? 1 - end : start      // from the base end
+            let bounds = (0...zones).map { k in
+                min(segments, max(0, Int(((base + Double(k) * span / Double(zones)) * Double(segments)).rounded())))
+            }
+            return [bounds[0]] + (0..<zones).map { bounds[$0 + 1] - bounds[$0] } + [segments - bounds[zones]]
+        }
     }
 
     public static var enabled: Bool {
@@ -58,8 +93,7 @@ public enum LampGradient {
     /// averaging instead would mix colours into grey.
     public static func screenZones(
         bgra: UnsafePointer<UInt8>, width: Int, height: Int, bytesPerRow: Int, count: Int = zoneCount,
-        orientation: Orientation = .vertical, flipped: Bool = false, followBrightness: Bool = true,
-        centre: Double = 0
+        orientation: Orientation = .vertical, flipped: Bool = false, followBrightness: Bool = true
     ) -> [WizRGB] {
         guard width > 0, height > 0, count > 0 else { return [] }
         let bins = 36
@@ -68,9 +102,9 @@ public enum LampGradient {
             var rows = 0..<height, cols = 0..<width
             switch orientation {
             case .vertical:
-                rows = band(zone, of: height, count: count, shift: centre, fromEnd: true)
+                rows = band(zone, of: height, count: count, fromEnd: true)
             case .horizontal:
-                cols = band(zone, of: width, count: count, shift: centre, fromEnd: false)
+                cols = band(zone, of: width, count: count, fromEnd: false)
             }
             var histogram = [Double](repeating: 0, count: bins)
             var satSum = [Double](repeating: 0, count: bins)
@@ -120,16 +154,11 @@ public enum LampGradient {
         return flipped ? zones.reversed() : zones
     }
 
-    /// Slice `zone` of `count` along a side `length` long, moved by `shift`
-    /// (share of the side), never empty. A slice pushed past the screen's edge
-    /// reads the edge row/column rather than going dark.
-    private static func band(_ zone: Int, of length: Int, count: Int, shift: Double, fromEnd: Bool) -> Range<Int> {
-        let start = (Double(zone) / Double(count) + shift) * Double(length)
-        let end = (Double(zone + 1) / Double(count) + shift) * Double(length)
-        let lo = min(length - 1, max(0, Int(start.rounded(.down))))
-        let hi = min(length, max(lo + 1, Int(end.rounded(.down))))
-        let range = lo..<hi
-        return fromEnd ? (length - range.upperBound)..<(length - range.lowerBound) : range
+    /// Slice `zone` of `count` along a side `length` long, never empty.
+    private static func band(_ zone: Int, of length: Int, count: Int, fromEnd: Bool) -> Range<Int> {
+        let lo = min(length - 1, zone * length / count)
+        let hi = min(length, max(lo + 1, (zone + 1) * length / count))
+        return fromEnd ? (length - hi)..<(length - lo) : lo..<hi
     }
 
     private static func hsv(r: UInt8, g: UInt8, b: UInt8) -> (Double, Double, Double) {
