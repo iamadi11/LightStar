@@ -157,7 +157,7 @@ extension ScreenCaptureKitProvider: SCStreamOutput {
             analysis = metal.analyze(pb)
             usedMetal = true
         } else {
-            analysis = analyzePixelBuffer(pb)
+            analysis = MetalColorAnalyzer.cpuAnalysis(pb)
             usedMetal = false
         }
         lampFrame.store(pb)
@@ -215,112 +215,6 @@ final class LampFrameStore: @unchecked Sendable {
             )
         }
     }
-}
-
-private func analyzePixelBuffer(_ pb: CVPixelBuffer) -> FrameAnalysis {
-    CVPixelBufferLockBaseAddress(pb, .readOnly)
-    defer { CVPixelBufferUnlockBaseAddress(pb, .readOnly) }
-    guard let base = CVPixelBufferGetBaseAddress(pb) else {
-        return FrameAnalysis(dominantHue: 0, dominantSaturation: 0, dominantBrightness: 0)
-    }
-    
-    let w = CVPixelBufferGetWidth(pb)
-    let h = CVPixelBufferGetHeight(pb)
-    let bpr = CVPixelBufferGetBytesPerRow(pb)
-    let ptr = base.assumingMemoryBound(to: UInt8.self)
-    
-    let bins = 36
-    var histogram = [Double](repeating: 0, count: bins)
-    var binSat = [Double](repeating: 0, count: bins)
-    var binVal = [Double](repeating: 0, count: bins)
-    var binCount = [Int](repeating: 0, count: bins)
-    var totalV = 0.0
-    var pixCount = 0
-    var blackCount = 0
-    var darkRows = 0
-    var darkCols = 0
-    
-    for row in 0..<h {
-        var rowBlackCount = 0
-        for col in 0..<w {
-            let wt = 1.0
-            let i = row * bpr + col * 4
-            let r = Double(ptr[i + 2]) / 255
-            let g = Double(ptr[i + 1]) / 255
-            let b = Double(ptr[i]) / 255
-            let (hh, ss, vv) = rgbToHSV(r, g, b)
-            totalV += vv * wt
-            pixCount += 1
-            
-            if vv < 0.05 {
-                blackCount += 1
-                rowBlackCount += 1
-            }
-            
-            guard vv > 0.12, ss > 0.15 else { continue }
-            
-            let bin = min(bins - 1, Int(hh * Double(bins)))
-            histogram[bin] += wt * ss * vv
-            binSat[bin] += ss
-            binVal[bin] += vv
-            binCount[bin] += 1
-        }
-        if rowBlackCount > w * 8 / 10 { darkRows += 1 }
-    }
-    
-    for col in 0..<w {
-        var colBlackCount = 0
-        for row in 0..<h {
-            let i = row * bpr + col * 4
-            let r = Double(ptr[i + 2]) / 255
-            let g = Double(ptr[i + 1]) / 255
-            let b = Double(ptr[i]) / 255
-            let (_, _, vv) = rgbToHSV(r, g, b)
-            if vv < 0.05 { colBlackCount += 1 }
-        }
-        if colBlackCount > h * 8 / 10 { darkCols += 1 }
-    }
-    
-    let blackPercentage = pixCount > 0 ? Double(blackCount) / Double(pixCount) : 0
-    let hasRectangularBlackRegion = darkRows > h / 3 || darkCols > w / 3
-    
-    if let maxBin = histogram.indices.max(by: { histogram[$0] < histogram[$1] }),
-       histogram[maxBin] > 0, binCount[maxBin] > 0 {
-        let hue = ColorMath.screenHue(histogram: histogram, peak: maxBin)
-        let n = Double(binCount[maxBin])
-        let sat = binSat[maxBin] / n
-        let val = binVal[maxBin] / n
-        return FrameAnalysis(
-            dominantHue: hue,
-            dominantSaturation: min(1, sat),
-            dominantBrightness: min(1, val),
-            blackPixelPercentage: blackPercentage,
-            hasRectangularBlackRegion: hasRectangularBlackRegion
-        )
-    }
-    
-    let avgV = pixCount > 0 ? totalV / Double(pixCount) : 0
-    return FrameAnalysis(
-        dominantHue: 0,
-        dominantSaturation: 0,
-        dominantBrightness: avgV,
-        blackPixelPercentage: blackPercentage,
-        hasRectangularBlackRegion: hasRectangularBlackRegion
-    )
-}
-
-private func rgbToHSV(_ r: Double, _ g: Double, _ b: Double) -> (Double, Double, Double) {
-    let mx = max(r, g, b), mn = min(r, g, b), d = mx - mn
-    let s = mx < 1e-6 ? 0.0 : d / mx
-    var h = 0.0
-    if d > 1e-6 {
-        if mx == r { h = (g - b) / d }
-        else if mx == g { h = 2 + (b - r) / d }
-        else { h = 4 + (r - g) / d }
-        h = (h / 6).truncatingRemainder(dividingBy: 1)
-        if h < 0 { h += 1 }
-    }
-    return (h, s, mx)
 }
 
 #endif

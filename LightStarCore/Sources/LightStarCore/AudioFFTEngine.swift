@@ -3,12 +3,18 @@ import AVFoundation
 import CoreMedia
 import Foundation
 
-/// Shared FFT + spectral-flux analyzer for Music and Combined.
+/// Shared FFT + spectral-flux analyzer for system audio and the microphone.
 final class AudioFFTEngine: @unchecked Sendable {
     private let fftN = 512
     private var fftSetup: vDSP_DFT_Setup?
     private var prevMags: [Float] = []
     private var maxBass = 0.001, maxMid = 0.001, maxHigh = 0.001, maxFlux = 0.001
+    /// Loudness is relative to its recent peak, like the bands, so the same
+    /// music reads the same from the mic or from system audio whatever the
+    /// input gain (they were ×20 and ×8 by hand). Below this raw level the
+    /// floor holds, so a quiet room or silence isn't amplified into light.
+    static let rmsFloor = 0.03
+    private var maxRMS = rmsFloor
     private var accumulator: [Float] = []
 
     func prepare() {
@@ -22,6 +28,7 @@ final class AudioFFTEngine: @unchecked Sendable {
         prevMags = []
         accumulator = []
         maxBass = 0.001; maxMid = 0.001; maxHigh = 0.001; maxFlux = 0.001
+        maxRMS = Self.rmsFloor
     }
 
     func ingest(_ sampleBuffer: CMSampleBuffer, deliver: (FrequencyBands) -> Void) {
@@ -79,7 +86,9 @@ final class AudioFFTEngine: @unchecked Sendable {
         let n = samples.count
         var rmsVal: Float = 0
         vDSP_rmsqv(samples, 1, &rmsVal, vDSP_Length(n))
-        let rms = min(1.0, Double(rmsVal) * 8.0)
+        let rawRMS = Double(rmsVal)
+        maxRMS = max(maxRMS * 0.995, rawRMS, Self.rmsFloor)
+        let rms = min(1.0, rawRMS / maxRMS)
 
         guard let setup = fftSetup else {
             return FrequencyBands(bass: 0, mid: 0, high: 0, rms: rms, flux: 0)

@@ -125,7 +125,7 @@ public final class MetalColorAnalyzer: @unchecked Sendable {
               let cvTex = cvTexture,
               let texture = CVMetalTextureGetTexture(cvTex) else {
             // Fall back to CPU analysis if Metal texture creation fails
-            return cpuFallbackAnalysis(pixelBuffer)
+            return Self.cpuAnalysis(pixelBuffer)
         }
         
         // Clear buffers
@@ -133,7 +133,7 @@ public final class MetalColorAnalyzer: @unchecked Sendable {
         
         guard let commandBuffer = commandQueue.makeCommandBuffer(),
               let computeEncoder = commandBuffer.makeComputeCommandEncoder() else {
-            return cpuFallbackAnalysis(pixelBuffer)
+            return Self.cpuAnalysis(pixelBuffer)
         }
         
         // Run histogram computation
@@ -178,7 +178,7 @@ public final class MetalColorAnalyzer: @unchecked Sendable {
         CVMetalTextureCacheFlush(textureCache, 0)
 
         guard commandBuffer.status != .error else {
-            return cpuFallbackAnalysis(pixelBuffer)
+            return Self.cpuAnalysis(pixelBuffer)
         }
 
         // Read results from GPU
@@ -246,8 +246,12 @@ public final class MetalColorAnalyzer: @unchecked Sendable {
         )
     }
     
-    /// CPU fallback when Metal is unavailable
-    private func cpuFallbackAnalysis(_ pixelBuffer: CVPixelBuffer) -> FrameAnalysis {
+    static let cpuBins = 36
+
+    /// The CPU version of the shader, for when Metal is unavailable or turned
+    /// off. Same thresholds, equal weights, and zero brightness when nothing
+    /// on screen is colourful, so the strip behaves the same either way.
+    public static func cpuAnalysis(_ pixelBuffer: CVPixelBuffer) -> FrameAnalysis {
         CVPixelBufferLockBaseAddress(pixelBuffer, .readOnly)
         defer { CVPixelBufferUnlockBaseAddress(pixelBuffer, .readOnly) }
         
@@ -260,10 +264,10 @@ public final class MetalColorAnalyzer: @unchecked Sendable {
         let bpr = CVPixelBufferGetBytesPerRow(pixelBuffer)
         let ptr = base.assumingMemoryBound(to: UInt8.self)
         
-        var histogram = [Double](repeating: 0, count: histogramBins)
-        var binSat = [Double](repeating: 0, count: histogramBins)
-        var binVal = [Double](repeating: 0, count: histogramBins)
-        var binCount = [Int](repeating: 0, count: histogramBins)
+        var histogram = [Double](repeating: 0, count: cpuBins)
+        var binSat = [Double](repeating: 0, count: cpuBins)
+        var binVal = [Double](repeating: 0, count: cpuBins)
+        var binCount = [Int](repeating: 0, count: cpuBins)
         var blackCount = 0
         var pixCount = 0
         var darkRows = 0
@@ -275,7 +279,7 @@ public final class MetalColorAnalyzer: @unchecked Sendable {
                 let r = Double(ptr[i + 2]) / 255
                 let g = Double(ptr[i + 1]) / 255
                 let b = Double(ptr[i]) / 255
-                let (hh, ss, vv) = Self.rgbToHSV(r, g, b)
+                let (hh, ss, vv) = rgbToHSV(r, g, b)
                 
                 pixCount += 1
                 if vv < 0.05 {
@@ -284,7 +288,7 @@ public final class MetalColorAnalyzer: @unchecked Sendable {
                 }
                 guard vv > 0.12, ss > 0.15 else { continue }
                 
-                let bin = min(histogramBins - 1, Int(hh * Double(histogramBins)))
+                let bin = min(cpuBins - 1, Int(hh * Double(cpuBins)))
                 histogram[bin] += ss * vv
                 binSat[bin] += ss
                 binVal[bin] += vv
@@ -301,7 +305,7 @@ public final class MetalColorAnalyzer: @unchecked Sendable {
                 let r = Double(ptr[i + 2]) / 255
                 let g = Double(ptr[i + 1]) / 255
                 let b = Double(ptr[i]) / 255
-                let (_, _, vv) = Self.rgbToHSV(r, g, b)
+                let (_, _, vv) = rgbToHSV(r, g, b)
                 if vv < 0.05 { colBlackCount += 1 }
             }
             if colBlackCount > h * 8 / 10 { darkCols += 1 }

@@ -1051,12 +1051,6 @@ public enum CombinedSyncMixer: Sendable {
         mode == .audio && audioSyncMode != .pulse
     }
 
-    public static func shouldRestoreScreenHueAfterFlash(previousFlash: Double, nextFlash: Double) -> Bool {
-        _ = previousFlash
-        _ = nextFlash
-        return false
-    }
-
     /// Same response curve as Music Pulse, scaled by the slider. A static
     /// VS Code window must still breathe with bass — flash/beat gating is extra.
     public static let pulseFloor: Double = 0.03
@@ -1070,16 +1064,6 @@ public enum CombinedSyncMixer: Sendable {
         let ceiling = min(1.0, max(0.15, userBrightness))
         let pulse = min(1.0, max(pulseFloor, bass * 1.5 + rms * 0.25 + flashLevel * 0.35))
         return ceiling * pulse
-    }
-
-    /// Energy used for saturation punch; follows bass continuously, not just beats.
-    public static func combinedEnergy(bass: Double, rms: Double, flashLevel: Double) -> Double {
-        min(1.0, max(0.0, bass * 1.5 + rms * 0.25 + flashLevel * 0.35))
-    }
-
-    /// Same screen hue; music energy punches saturation.
-    public static func combinedSaturation(screenSaturation: Double, flashLevel: Double) -> Double {
-        min(1.0, screenSaturation * (1.0 + 0.65 * flashLevel) + 0.12 * flashLevel)
     }
 }
 
