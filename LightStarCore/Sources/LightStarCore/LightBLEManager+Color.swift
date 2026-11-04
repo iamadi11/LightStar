@@ -57,7 +57,7 @@ public extension LightBLEManager {
         Task { @MainActor [weak self] in
             do { try await Task.sleep(nanoseconds: 150_000_000) } catch { return }
             guard let self else { return }
-            if let name = look.effect, let effect = LampEffect.builtIn.first(where: { $0.name == name }) {
+            if let effect = look.lampEffect {
                 self.setLampEffect(effect)
             } else {
                 self.onLightbarLook?(look)

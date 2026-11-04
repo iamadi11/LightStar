@@ -234,6 +234,29 @@ final class LampGradientTests: XCTestCase {
         XCTAssertTrue(f[0].isOff); XCTAssertTrue(f[11].isOff)
     }
 
+    func testReverseRunsFlowsAndChasesFromTheFarEnd() {
+        let chase = LampEffect(name: "t", motion: .chase, palette: [WizRGB(r: 255, g: 0, b: 0)])
+        let back = chase.frame(time: 0.05, speed: 0.5, count: 12, reversed: true)
+        XCTAssertFalse(back[11].isOff, "head starts at the far end")
+        XCTAssertTrue(back[...5].allSatisfy(\.isOff))
+        let fire = LampEffect.named("Fire")!
+        XCTAssertEqual(fire.frame(time: 0.7, speed: 0.5, count: 12, reversed: true),
+                       fire.frame(time: 0.7, speed: 0.5, count: 12), "fire stays hottest at the base")
+    }
+
+    func testCustomColoursAreKeptInPresets() throws {
+        let custom = [WizRGB(r: 10, g: 200, b: 30), WizRGB(r: 250, g: 0, b: 250)]
+        let effect = LampEffect.named("Rainbow Flow", palette: custom)!
+        let look = LightbarLook(effect: effect)
+        XCTAssertEqual(look.palette, [[10, 200, 30], [250, 0, 250]])
+        let decoded = try JSONDecoder().decode(LightbarLook.self, from: JSONEncoder().encode(look))
+        XCTAssertEqual(decoded.lampEffect, effect)
+        XCTAssertNil(LightbarLook(effect: LampEffect.named("Ocean")!).palette, "own colours aren't stored")
+        // Presets saved before palettes existed still load.
+        let old = try JSONDecoder().decode(LightbarLook.self, from: Data(#"{"effect":"Fire"}"#.utf8))
+        XCTAssertEqual(old.lampEffect, LampEffect.named("Fire"))
+    }
+
     func testStripEffectsMapToMatchingColoursAndMotion() {
         func find(_ id: UInt8) -> LampEffect {
             for (group, effects) in knownEffects { if let e = effects.first(where: { $0.id == id }) { return .matching(e, in: group) } }

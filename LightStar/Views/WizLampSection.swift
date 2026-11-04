@@ -17,6 +17,8 @@ struct WizLampSection: View {
     @AppStorage(LampGradient.flippedDefaultsKey) private var flipped = false
     @AppStorage(LampGradient.musicStyleDefaultsKey) private var musicStyle = LampGradient.MusicStyle.meter
     @AppStorage(WizLampController.whiteToneDefaultsKey) private var whiteTone = 1.0
+    @AppStorage(LampEffect.customColoursDefaultsKey) private var customColours = false
+    @State private var paletteColours: [Color] = []
 
     private var ready: Bool {
         if case .following = wizLamp.state { return true }
@@ -107,7 +109,10 @@ struct WizLampSection: View {
                 .foregroundStyle(.secondary)
         }
         .disabled(!ready)
-        .onAppear { load(WizSegmentLayout.stored) }
+        .onAppear {
+            load(WizSegmentLayout.stored)
+            loadPalette()
+        }
     }
 
     private var detectedText: String {
@@ -142,20 +147,26 @@ struct WizLampSection: View {
         }
     }
 
+    /// Name of the running built-in effect ("" for none or a strip-following one).
+    private var builtInEffectName: String {
+        guard let effect = ble.lampEffect, LampEffect.named(effect.name) != nil else { return "" }
+        return effect.name
+    }
+
     @ViewBuilder
     private var effectControls: some View {
         Picker("Effect", selection: Binding(
-            get: { ble.lampEffect.flatMap { e in LampEffect.builtIn.first { $0 == e }?.name } ?? "" },
+            get: { builtInEffectName },
             set: { name in
                 sceneID = 0
-                ble.setLampEffect(LampEffect.builtIn.first { $0.name == name })
+                ble.setLampEffect(LampEffect.named(name)?.withUserPalette())
             }
         )) {
             Text("None").tag("")
             ForEach(LampEffect.builtIn) { Text($0.name).tag($0.name) }
         }
         if let effect = ble.lampEffect {
-            if !LampEffect.builtIn.contains(effect) {
+            if builtInEffectName.isEmpty {
                 Text("Following the strip: \(effect.name)")
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -165,11 +176,47 @@ struct WizLampSection: View {
                 Slider(value: Binding(get: { ble.effectSpeed }, set: { ble.setEffectSpeed($0) }), in: 0...1)
                     .controlSize(.small)
                     .accessibilityLabel("Effect speed")
+                Toggle("Reverse", isOn: Binding(get: { !ble.effectForward }, set: { ble.setEffectDirection(forward: !$0) }))
+                    .toggleStyle(.checkbox)
+                    .font(.caption)
+                    .help("Run flows and chases from the far end. Shared with the strip.")
             }
         }
-        Text("Strip effects you pick also run on the lightbar in matching colours.")
+        Toggle("Custom colours", isOn: Binding(get: { customColours }, set: { customColours = $0; restartEffectWithColours() }))
+        if customColours {
+            HStack(spacing: 8) {
+                ForEach(paletteColours.indices, id: \.self) { i in
+                    ColorPicker("Effect colour \(i + 1)", selection: Binding(
+                        get: { paletteColours[i] },
+                        set: { paletteColours[i] = $0; savePalette() }
+                    ), supportsOpacity: false)
+                    .labelsHidden()
+                }
+            }
+        }
+        Text("Strip effects you pick also run on the lightbar in matching colours. Custom colours apply to the effects listed here.")
             .font(.caption2)
             .foregroundStyle(.secondary)
+    }
+
+    private func loadPalette() {
+        let palette = (UserDefaults.standard.array(forKey: LampEffect.customPaletteDefaultsKey) as? [[Int]])?
+            .compactMap { $0.count == 3 ? WizRGB(r: $0[0], g: $0[1], b: $0[2]) : nil } ?? LampEffect.defaultCustomPalette
+        paletteColours = palette.map { Color(red: Double($0.r) / 255, green: Double($0.g) / 255, blue: Double($0.b) / 255) }
+    }
+
+    private func savePalette() {
+        let rgb = paletteColours.compactMap { NSColor($0).usingColorSpace(.sRGB) }.map {
+            [Int(($0.redComponent * 255).rounded()), Int(($0.greenComponent * 255).rounded()), Int(($0.blueComponent * 255).rounded())]
+        }
+        UserDefaults.standard.set(rgb, forKey: LampEffect.customPaletteDefaultsKey)
+        restartEffectWithColours()
+    }
+
+    /// A running built-in effect picks up colour changes straight away.
+    private func restartEffectWithColours() {
+        guard let base = LampEffect.named(builtInEffectName) else { return }
+        ble.setLampEffect(base.withUserPalette())
     }
 
     private var orientationHint: String {

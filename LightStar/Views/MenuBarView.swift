@@ -744,8 +744,8 @@ private extension MenuBarView {
     /// What the lightbar shows beyond the strip colour, to keep in a preset.
     var currentLightbarLook: LightbarLook? {
         guard ble.outputTarget.sendsToLightbar else { return nil }
-        if let effect = ble.lampEffect, LampEffect.builtIn.contains(effect) {
-            return LightbarLook(effect: effect.name)
+        if let effect = ble.lampEffect, LampEffect.named(effect.name) != nil {
+            return LightbarLook(effect: effect)
         }
         return wizLamp.look
     }

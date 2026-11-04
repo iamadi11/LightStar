@@ -20,7 +20,8 @@ public extension LightBLEManager {
             while !Task.isCancelled {
                 guard let self else { return }
                 let count = LampGradient.colourCount(for: LampGradient.Placement(), segments: LampGradient.segmentCount)
-                let frame = effect.frame(time: Date().timeIntervalSince(start), speed: self.effectSpeed, count: count)
+                let frame = effect.frame(time: Date().timeIntervalSince(start), speed: self.effectSpeed,
+                                         count: count, reversed: !self.effectForward)
                 self.onLampZones?(LampGradient.scaled(frame, by: self.brightness), nil)
                 do { try await Task.sleep(nanoseconds: 40_000_000) } catch { return }
             }
