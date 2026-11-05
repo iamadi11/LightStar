@@ -282,7 +282,12 @@ One link per enabled light: its own `sent`, segment count, heartbeat. Only the l
 
 ## Canvas
 
-Live liquid art in its own window (popover drop icon, status menu "Open Canvas", `lightstar://canvas`). Milestone 1: Auto mode plus drag-to-stir; it does not drive the lights yet (milestone 2 reads its own frames, no screen capture).
+Live liquid art in its own window (popover drop icon, status menu "Open Canvas", `lightstar://canvas`), and a sync mode: `SyncMode.canvas` ("Canvas", also on the phone's sync list). Opening the window switches the lights to it.
+
+- `CanvasEngine` (core, app-owned) runs the liquid. The window draws it while visible; in canvas mode with no visible window, a 60 Hz timer keeps it running on a small 480×270 canvas just for the lights (7.8% CPU, ~3 ms GPU).
+- Lights: every 1/30 s the engine draws a 48×27 copy into one of three shared textures; on GPU completion `takeCanvasFrame` computes lightbar zones (`screenZones`, full colour, black bands off) and pushes them through `LampZonePipe` from that thread, and gives the strip the dominant colour as streaming `0x09` at ≤20 Hz (`applyCanvasColour`). No screen capture, no Screen Recording.
+- The pipe is active for `isSyncingVideo || syncMode == .canvas`; teardown calls `onCanvasMode(false)` before handing the lightbar back. In Screen mode the canvas does no work.
+- A hidden MTKView is still asked to draw by AppKit; asking it for a drawable then blocks the main thread, so `draw(in:)` returns unless the window is visible. The window isn't restorable (opening it switches sync).
 
 - Physics (velocity, pressure; 256-cell short side) runs at a fixed **240 steps/s** whatever the display; colour (up to 1440 short side) moves once per drawn frame and splats write only their patch in place. Splatting and advecting the full colour texture every physics step cost 107 ms of GPU a frame; split, it's 4–8 ms at 6016×3384.
 - At most 8 physics steps a frame; time beyond is dropped, not owed, so a slow frame can't snowball.

@@ -59,6 +59,8 @@ public extension LightBLEManager {
         screenSampler.capturesAudio = false
         // Before handing the lightbar back, so no capture frame lands after it.
         lampPipe.update { $0.active = false; $0.musicLevel = nil }
+        onCanvasMode?(false)
+        canvasStripWrite = nil
 #if os(macOS)
         stopFollowingFocus()
 #endif
@@ -157,6 +159,8 @@ public extension LightBLEManager {
         screenSampler.capturesAudio = false
         // Before handing the lightbar back, so no capture frame lands after it.
         lampPipe.update { $0.active = false; $0.musicLevel = nil }
+        onCanvasMode?(false)
+        canvasStripWrite = nil
 #if os(macOS)
         stopFollowingFocus()
 #endif
@@ -187,6 +191,12 @@ public extension LightBLEManager {
         case .off:
             syncMode = .off
             fadeToSteadyState(from: previousMode)
+
+        case .canvas:
+            // No capture or audio: the Canvas engine pushes its own frames.
+            syncMode = .canvas
+            syncLampPipeSettings()
+            onCanvasMode?(true)
 
         case .video:
             seedScreenColorFromSteadyState()
@@ -486,12 +496,52 @@ public extension LightBLEManager {
     /// teardown turns the pipe off and no observed value changes, so without
     /// this the lightbar fell back to the strip's single mirrored colour.
     func syncLampPipeSettings() {
-        let active = isSyncingVideo && isOn && sendsLampGradient
+        let active = (isSyncingVideo || syncMode == .canvas) && isOn && sendsLampGradient
         let responsiveness = syncResponsiveness, brightness = self.brightness
         lampPipe.update {
             $0.active = active
             $0.responsiveness = responsiveness
             $0.brightness = brightness
+        }
+    }
+
+    /// The strip's colour from the Canvas: its dominant colour, written as
+    /// streaming colour (`0x09`) at most 20 times a second, like screen sync.
+    func applyCanvasColour(hue: Double, saturation: Double) {
+        guard syncMode == .canvas, isOn else { return }
+        showLiveColor(hue: hue, saturation: saturation)
+        let now = CACurrentMediaTime()
+        if let last = canvasStripWrite {
+            guard now - last.at >= 1.0 / 20 else { return }
+            let dh = min(abs(hue - last.hue), 1 - abs(hue - last.hue))
+            guard dh > 0.008 || now - last.at > 0.5 else { return }
+        }
+        canvasStripWrite = (hue, now)
+        writeMirroredHue(hue, saturation: saturation, streaming: true)
+    }
+
+    /// A 48×27 BGRA frame from the Canvas, on any thread: lightbar zones go
+    /// straight to the pipe; the strip gets the dominant colour.
+    nonisolated public func takeCanvasFrame(_ bytes: [UInt8], bytesPerRow: Int, width: Int, height: Int) {
+        let (zones, single) = bytes.withUnsafeBufferPointer { buf -> ([WizRGB], WizRGB) in
+            let base = buf.baseAddress!
+            let zones = LampGradient.screenZones(
+                bgra: base, width: width, height: height, bytesPerRow: bytesPerRow,
+                count: LampGradient.colourCount(for: .current, segments: LampGradient.segmentCount),
+                orientation: LampGradient.orientation, flipped: LampGradient.flipped, followBrightness: false)
+            let single = LampGradient.screenZones(bgra: base, width: width, height: height, bytesPerRow: bytesPerRow,
+                                                  count: 1, followBrightness: false).first ?? .off
+            return (zones, single)
+        }
+        let sides = { bytes.withUnsafeBufferPointer {
+            LampGradient.sideColours(bgra: $0.baseAddress!, width: width, height: height, bytesPerRow: bytesPerRow,
+                                     followBrightness: false)
+        } }
+        lampPipe.push(zones, sides: sides)
+        guard !single.isOff else { return }
+        let (h, s) = single.hueSaturation
+        DispatchQueue.main.async { [weak self] in
+            MainActor.assumeIsolated { self?.applyCanvasColour(hue: h, saturation: s) }
         }
     }
 
@@ -597,7 +647,7 @@ public extension LightBLEManager {
             startH = audioPulseH
             startS = 0.9
             startBri = 1.0
-        case .off:
+        case .off, .canvas:
             restoreSteadyState(); return
         }
 

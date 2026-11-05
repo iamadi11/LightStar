@@ -587,7 +587,8 @@ struct RemoteLightControlView: View {
     @ViewBuilder
     private func syncSection(_ state: LightStarState) -> some View {
         Section("Sync Mode") {
-            ForEach(["Off", "Video", "Audio", "Video+Audio"], id: \.self) { mode in
+            // Canvas runs on the Mac: the lights follow its liquid art.
+            ForEach(["Off", "Video", "Audio", "Video+Audio", "Canvas"], id: \.self) { mode in
                 Button {
                     client.setSyncMode(mode)
                 } label: {

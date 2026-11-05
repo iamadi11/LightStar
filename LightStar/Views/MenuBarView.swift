@@ -700,6 +700,7 @@ struct SyncControlView: View {
             case .frequency: return "Bass → red · mids → green · treble → blue"
             }
         case .combined: return "Screen color · music pulses brightness like Music Pulse"
+        case .canvas:   return "Lights follow the Canvas · no screen recording"
         }
     }
 }
