@@ -464,6 +464,7 @@ struct SyncControlView: View {
     @AppStorage(LampGradient.orientationDefaultsKey) private var orientation = LampGradient.Orientation.vertical
     @AppStorage(LampGradient.flippedDefaultsKey) private var flipped = false
     @AppStorage(LampGradient.musicStyleDefaultsKey) private var musicStyle = LampGradient.MusicStyle.meter
+    @AppStorage(FocusedDisplay.followDefaultsKey) private var followFocus = true
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -597,6 +598,12 @@ struct SyncControlView: View {
             }
 
             if ble.isSyncingVideo {
+                if ble.availableDisplays.count > 1 {
+                    Toggle("Follow the active screen", isOn: $followFocus)
+                        .toggleStyle(.checkbox)
+                        .font(.caption)
+                        .help("Capture the screen holding the window you're using. Switches after 1.5 s so a quick click elsewhere doesn't.")
+                }
                 HStack(spacing: 4) {
                     Picker("Display", selection: Binding(
                         get: { ble.selectedDisplayID },
@@ -608,6 +615,7 @@ struct SyncControlView: View {
                         }
                     }
                     .labelsHidden().frame(maxWidth: .infinity).controlSize(.small)
+                    .disabled(followFocus && ble.availableDisplays.count > 1)
                     Button { ble.loadAvailableDisplays() } label: {
                         Image(systemName: "arrow.clockwise")
                     }
