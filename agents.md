@@ -288,6 +288,10 @@ protocol ScreenFrameProvider {
 - `blackPixelPercentage` — for protected content detection
 - `suspectedProtectedContent` — true if persistent black region detected
 
+### Follow the active screen
+
+With 2+ displays, Settings → sync can follow the screen in use (`FocusedDisplay.followDefaultsKey`). `LightBLEManager.startFollowingFocus` ticks at 2 Hz: it takes the frontmost app's front layer-0 window from `CGWindowListCopyWindowInfo` (LightStar's own popover ignored), picks the display with the largest overlap (`FocusedDisplay.display`), and `FocusDebouncer` switches `selectedDisplayID` only after 1.5 s on the same display. Window focus, not the mouse pointer: the pointer drifts while a film plays.
+
 ### DRM-Protected Content
 
 See `docs/display-capture-research.md` for full research. Summary:
