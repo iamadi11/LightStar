@@ -294,25 +294,15 @@ final class BLEWriteCoalescerTests: XCTestCase {
         XCTAssertEqual(drained[1][5], 1, "a newer off-timer replaces the old one in place")
     }
 
-    func testColourAndBrightnessGoOutInOneTickWhenThereIsRoom() {
+    func testOneFramePerTickInOrder() {
         var sent: [UInt8] = []
-        let coalescer = BLEWriteCoalescer(send: { sent.append($0[1]) }, isConnected: { true }, canSendMore: { true })
+        let coalescer = BLEWriteCoalescer(send: { sent.append($0[1]) }, isConnected: { true })
         coalescer.enqueue(Cmd.audioHue(0.3, saturation: 1))
         coalescer.enqueue(Cmd.brightness(0.6))
-        coalescer.enqueue(Cmd.speed(0.5))
         coalescer.tick()
-        XCTAssertEqual(sent, [0x09, 0x05], "colour and brightness together")
+        XCTAssertEqual(sent, [0x09])
         coalescer.tick()
-        XCTAssertEqual(sent, [0x09, 0x05, 0x08], "anything else waits its own tick")
-    }
-
-    func testNoPairingWhenTheRadioIsFull() {
-        var sent: [UInt8] = []
-        let coalescer = BLEWriteCoalescer(send: { sent.append($0[1]) }, isConnected: { true }, canSendMore: { false })
-        coalescer.enqueue(Cmd.hue(0.3, saturation: 1))
-        coalescer.enqueue(Cmd.brightness(0.6))
-        coalescer.tick()
-        XCTAssertEqual(sent, [0x04])
+        XCTAssertEqual(sent, [0x09, 0x05])
     }
 
     func testFlushClearsQueue() {

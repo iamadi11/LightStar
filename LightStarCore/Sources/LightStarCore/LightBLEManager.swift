@@ -341,8 +341,7 @@ public final class LightBLEManager: NSObject {
             send: { [weak self] data in
                 self?.transmit(data)
             },
-            isConnected: { [weak self] in self?.connectionState == .connected },
-            canSendMore: { [weak self] in self?.peripheral?.canSendWriteWithoutResponse ?? false }
+            isConnected: { [weak self] in self?.connectionState == .connected }
         )
         browserHWAccel.onStatusChange = { [weak self] message in
             self?.browserAccelerationMessage = message

@@ -42,7 +42,7 @@ Frame format: `BC [cmd] [data_len] [data × data_len] 55`. Invariant: `bytes[2] 
 
 GATT: advertised `0x2022`, service `FFF0`, write `FFF3` (Write + Write Without Response; OEM uses ATT Write Command / `withoutResponse`). Notify `FFF4` never fired on this strip, even for a `BC0C` timer query (camera test 2026-11-05), although the OEM Android app has parsers for `BC0D` timer, `05` brightness, `08` speed and `10` sensitivity replies. LightStar logs any reply as `RX` (subsystem `com.adityaraj.LightStar`, category `ble`).
 
-All BLE writes go through `BLEWriteCoalescer.enqueue()`. Dedup key is `bytes[1]` (plus `bytes[4]` for `0x0D`, so the on- and off-timer both survive). Insertion-ordered, replace-in-place. One frame per 20 ms tick, except a colour (`0x04`/`0x09`) and the brightness (`0x05`) next to it go in the same tick when `canSendWriteWithoutResponse` says there's room.
+All BLE writes go through `BLEWriteCoalescer.enqueue()`. Dedup key is `bytes[1]` (plus `bytes[4]` for `0x0D`, so the on- and off-timer both survive). Insertion-ordered, replace-in-place. One frame per 20 ms tick. Sending colour + brightness in one tick was tried and removed: on this strip `canSendWriteWithoutResponse` is false right after a write (measured 2026-11-06: 0 pairs, 16 "no room" over a 36 s test).
 
 The OEM apps (MR Star 1.0.0 Android, Symphony Light 1.1.1 iOS, decompiled 2026-11-05) have no per-pixel or per-segment command, and a sweep of every unused command byte (0x00, 0x0A, 0x0E, 0x14–0x20, 0x50) changed nothing on the strip. Screen-matched colour around the monitor needs a different controller (e.g. WLED). Phone-mic mode is `0x09` one colour every 200 ms; strip-mic patterns are drawn by the firmware.
 
