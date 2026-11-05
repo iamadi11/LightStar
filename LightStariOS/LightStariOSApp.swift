@@ -6,6 +6,7 @@ struct LightStariOSApp: App {
     @State private var ble = LightBLEManager()
     @State private var presets = PresetStore()
     @State private var schedules = ScheduleStore()
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some Scene {
         WindowGroup {
@@ -18,6 +19,9 @@ struct LightStariOSApp: App {
                     ble.connect()
                 }
                 .onOpenURL { _ in }
+                .onChange(of: scenePhase) { _, phase in
+                    if phase == .active { ble.remoteClient.resumeFromBackground() }
+                }
         }
     }
 }

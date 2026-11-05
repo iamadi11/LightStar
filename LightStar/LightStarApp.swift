@@ -11,12 +11,7 @@ struct LightStarApp: App {
 
     var body: some Scene {
         Settings {
-            SettingsView()
-                .environment(appDelegate.ble)
-                .environment(appDelegate.presets)
-                .environment(appDelegate.schedules)
-                .environment(appDelegate.yeelight)
-                .environment(appDelegate.homeKitLamp)
+            appDelegate.withAppState(SettingsView())
         }
     }
 }
@@ -55,6 +50,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     lazy var homeKitLamp = HomeKitLampController()
     /// Philips / WiZ gradient floor lamp over WiZ UDP. Follows the strip and takes segments.
     lazy var wizLamp = WizLampController()
+
+    /// Every shared object a LightStar view may read. One list for the popover,
+    /// the control window, and both ways of opening Settings: the ⌘, Settings
+    /// scene had its own list without the lightbar and crashed on open.
+    func withAppState<V: View>(_ view: V) -> some View {
+        view
+            .environment(ble)
+            .environment(presets)
+            .environment(schedules)
+            .environment(yeelight)
+            .environment(homeKitLamp)
+            .environment(wizLamp)
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
@@ -344,12 +352,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         popover.delegate = self
         schedules.reschedule()
         let hosting = NSHostingController(
-            rootView: MenuBarView()
-                .environment(ble)
-                .environment(homeKitLamp)
-                .environment(wizLamp)
-                .environment(presets)
-                .environment(schedules)
+            rootView: withAppState(MenuBarView())
         )
         hosting.view.wantsLayer = true
         hosting.view.layer?.backgroundColor = NSColor.clear.cgColor
@@ -613,12 +616,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             existing.makeKeyAndOrderFront(nil)
             return
         }
-        let root = ControlWindowView()
-            .environment(ble)
-            .environment(homeKitLamp)
-            .environment(wizLamp)
-            .environment(presets)
-            .environment(schedules)
+        let root = withAppState(ControlWindowView())
         let vc = NSHostingController(rootView: root)
         let window = NSWindow(contentViewController: vc)
         window.title = "LightStar"
@@ -648,13 +646,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             existing.orderFrontRegardless()
             return
         }
-        let root = SettingsView()
-            .environment(ble)
-            .environment(presets)
-            .environment(schedules)
-            .environment(yeelight)
-            .environment(homeKitLamp)
-            .environment(wizLamp)
+        let root = withAppState(SettingsView())
         let hosting = NSHostingController(rootView: root)
         let window = NSWindow(contentViewController: hosting)
         window.title = "Settings"

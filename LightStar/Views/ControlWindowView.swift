@@ -18,9 +18,12 @@ struct ControlWindowView: View {
                         set: { ble.setPower(on: $0) }
                     ))
                     .disabled(!outputReachable)
+                    // Sidebar rows default to one line, which cut this off.
                     Text("Effects, animations, and schedules live here. The menu-bar popover stays on power, color, presets, and sync.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
+                        .lineLimit(6)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
             .navigationSplitViewColumnWidth(min: 160, ideal: 180)

@@ -71,6 +71,9 @@ public final class ScreenColorSampler: NSObject {
     /// Sync drops zone frames over 30 fps, so once a slider stops, paint once
     /// more so its final position always lands.
     public func refreshZones() {
+        // Every UserDefaults write in the app lands here (a colour drag writes
+        // several per tick); with no screen sync there is nothing to repaint.
+        guard isRunning, onZones != nil else { return }
         paintLatestZones()
         trailingRefresh?.cancel()
         trailingRefresh = Task { @MainActor [weak self] in

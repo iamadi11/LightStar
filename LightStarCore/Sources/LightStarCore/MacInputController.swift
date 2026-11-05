@@ -576,6 +576,14 @@ public final class MacInputController: ObservableObject {
     }
 
     private func readOutputVolume() -> Double? {
+        // CoreAudio first: ~0.6 ms. The AppleScript read runs on the main
+        // thread and took 1.1 s on its first call (loading Standard Additions)
+        // and 40–80 ms after — a hitch each time the phone connected or sent
+        // a volume key. AppleScript stays for outputs that report no volume.
+        var scalar: Float32 = 0
+        if let device = defaultOutputDevice(), getVolume(device, &scalar), scalar.isFinite {
+            return SystemLevelStep.clamped(Double(scalar))
+        }
         var error: NSDictionary?
         guard let result = NSAppleScript(source: "output volume of (get volume settings)")?
             .executeAndReturnError(&error), error == nil else {

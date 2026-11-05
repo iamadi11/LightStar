@@ -294,25 +294,15 @@ final class BLEWriteCoalescerTests: XCTestCase {
         XCTAssertEqual(drained[1][5], 1, "a newer off-timer replaces the old one in place")
     }
 
-    func testColourAndBrightnessGoOutInOneTickWhenThereIsRoom() {
+    func testOneFramePerTickInOrder() {
         var sent: [UInt8] = []
-        let coalescer = BLEWriteCoalescer(send: { sent.append($0[1]) }, isConnected: { true }, canSendMore: { true })
+        let coalescer = BLEWriteCoalescer(send: { sent.append($0[1]) }, isConnected: { true })
         coalescer.enqueue(Cmd.audioHue(0.3, saturation: 1))
         coalescer.enqueue(Cmd.brightness(0.6))
-        coalescer.enqueue(Cmd.speed(0.5))
         coalescer.tick()
-        XCTAssertEqual(sent, [0x09, 0x05], "colour and brightness together")
+        XCTAssertEqual(sent, [0x09])
         coalescer.tick()
-        XCTAssertEqual(sent, [0x09, 0x05, 0x08], "anything else waits its own tick")
-    }
-
-    func testNoPairingWhenTheRadioIsFull() {
-        var sent: [UInt8] = []
-        let coalescer = BLEWriteCoalescer(send: { sent.append($0[1]) }, isConnected: { true }, canSendMore: { false })
-        coalescer.enqueue(Cmd.hue(0.3, saturation: 1))
-        coalescer.enqueue(Cmd.brightness(0.6))
-        coalescer.tick()
-        XCTAssertEqual(sent, [0x04])
+        XCTAssertEqual(sent, [0x09, 0x05])
     }
 
     func testFlushClearsQueue() {
@@ -1485,5 +1475,18 @@ final class FocusedDisplayTests: XCTestCase {
         XCTAssertNil(d.next(2, current: 1, now: 1.0))
         XCTAssertNil(d.next(2, current: 1, now: 2.0), "the hold restarts")
         XCTAssertEqual(d.next(2, current: 1, now: 2.6), 2)
+    }
+}
+
+final class RemoteResumeTests: XCTestCase {
+    func testComingBackToTheAppChecksTheLinkOrLooksForTheMac() {
+        typealias P = RemoteClientSessionPolicy
+        XCTAssertEqual(P.resumeAction(state: .connected("Mac"), userDisconnected: false), .probe,
+                       "a link may have died while suspended")
+        XCTAssertEqual(P.resumeAction(state: .error("Connection timed out"), userDisconnected: false), .rediscover)
+        XCTAssertEqual(P.resumeAction(state: .disconnected, userDisconnected: false), .rediscover)
+        XCTAssertEqual(P.resumeAction(state: .disconnected, userDisconnected: true), .none,
+                       "never undo the user's Disconnect")
+        XCTAssertEqual(P.resumeAction(state: .connecting("Mac"), userDisconnected: false), .none, "already on it")
     }
 }

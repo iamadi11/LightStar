@@ -3,9 +3,9 @@ import Foundation
 // Coalesces BLE writes: keyed by command sub-byte (bytes[1]), latest value wins.
 // BC0D also keys on bytes[4]: the on- and off-timer are separate frames.
 // Insertion-ordered array with replace-in-place so apply(_:) write order is preserved.
-// Drains one entry per 20ms tick so the ATT stack always has headroom; a
-// colour and the brightness right behind it go out in the same tick when the
-// radio has room, so brightness doesn't trail the colour by a tick.
+// Drains one entry per 20ms tick so the ATT stack always has headroom. Sending
+// a colour and its brightness in the same tick was tried: on the BC/55 strip
+// canSendWriteWithoutResponse is false straight after a write, every time.
 @MainActor
 public final class BLEWriteCoalescer {
     private struct Item {
@@ -19,21 +19,11 @@ public final class BLEWriteCoalescer {
     nonisolated(unsafe) private var timer: Timer?
     private let send: @MainActor (Data) -> Void
     private let isConnected: @MainActor () -> Bool
-    /// Room for another Write Without Response right now.
-    private let canSendMore: @MainActor () -> Bool
 
     public init(send: @escaping @MainActor (Data) -> Void,
-         isConnected: @escaping @MainActor () -> Bool,
-         canSendMore: @escaping @MainActor () -> Bool = { false }) {
+         isConnected: @escaping @MainActor () -> Bool) {
         self.send = send
         self.isConnected = isConnected
-        self.canSendMore = canSendMore
-    }
-
-    /// Colour (static or streaming) and brightness: one visible change, sent together.
-    static func sendsTogether(_ a: UInt16, _ b: UInt16) -> Bool {
-        let colour: Set<UInt16> = [0x04, 0x09]
-        return (colour.contains(a) && b == 0x05) || (a == 0x05 && colour.contains(b))
     }
 
     deinit { timer?.invalidate() }
@@ -76,12 +66,7 @@ public final class BLEWriteCoalescer {
         guard !items.isEmpty else {
             timer?.invalidate(); timer = nil; return
         }
-        let item = items.removeFirst()
-        send(item.data)
-        if let next = items.first, Self.sendsTogether(item.cmd, next.cmd), canSendMore() {
-            items.removeFirst()
-            send(next.data)
-        }
+        send(items.removeFirst().data)
     }
 
     public func flush() {

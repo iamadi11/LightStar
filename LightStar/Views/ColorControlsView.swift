@@ -154,6 +154,7 @@ struct GradientSlider: View {
     @Binding var value: Double
     var valueText: (Double) -> String = { "\(Int(($0 * 100).rounded()))%" }
     private static let step = 1.0 / 36
+    @FocusState private var focused: Bool
 
     var body: some View {
         GeometryReader { geo in
@@ -178,7 +179,17 @@ struct GradientSlider: View {
             })
         }
         .frame(height: 16)
-        .focusable()
+        // Keyboard navigation only, like a button: plain `.focusable()` took
+        // focus as the window opened, with a ring wider than the slider.
+        .focusable(interactions: .activate)
+        .focused($focused)
+        .focusEffectDisabled()
+        .overlay {
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color.accentColor, lineWidth: 2)
+                .padding(-3)
+                .opacity(focused ? 1 : 0)
+        }
         .onKeyPress(.leftArrow) { nudge(-Self.step); return .handled }
         .onKeyPress(.rightArrow) { nudge(Self.step); return .handled }
         .accessibilityElement()

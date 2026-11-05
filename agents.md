@@ -42,7 +42,7 @@ Frame format: `BC [cmd] [data_len] [data × data_len] 55`. Invariant: `bytes[2] 
 
 GATT: advertised `0x2022`, service `FFF0`, write `FFF3` (Write + Write Without Response; OEM uses ATT Write Command / `withoutResponse`). Notify `FFF4` never fired on this strip, even for a `BC0C` timer query (camera test 2026-11-05), although the OEM Android app has parsers for `BC0D` timer, `05` brightness, `08` speed and `10` sensitivity replies. LightStar logs any reply as `RX` (subsystem `com.adityaraj.LightStar`, category `ble`).
 
-All BLE writes go through `BLEWriteCoalescer.enqueue()`. Dedup key is `bytes[1]` (plus `bytes[4]` for `0x0D`, so the on- and off-timer both survive). Insertion-ordered, replace-in-place. One frame per 20 ms tick, except a colour (`0x04`/`0x09`) and the brightness (`0x05`) next to it go in the same tick when `canSendWriteWithoutResponse` says there's room.
+All BLE writes go through `BLEWriteCoalescer.enqueue()`. Dedup key is `bytes[1]` (plus `bytes[4]` for `0x0D`, so the on- and off-timer both survive). Insertion-ordered, replace-in-place. One frame per 20 ms tick. Sending colour + brightness in one tick was tried and removed: on this strip `canSendWriteWithoutResponse` is false right after a write (measured 2026-11-06: 0 pairs, 16 "no room" over a 36 s test).
 
 The OEM apps (MR Star 1.0.0 Android, Symphony Light 1.1.1 iOS, decompiled 2026-11-05) have no per-pixel or per-segment command, and a sweep of every unused command byte (0x00, 0x0A, 0x0E, 0x14–0x20, 0x50) changed nothing on the strip. Screen-matched colour around the monitor needs a different controller (e.g. WLED). Phone-mic mode is `0x09` one colour every 200 ms; strip-mic patterns are drawn by the firmware.
 
@@ -94,7 +94,7 @@ LightStariOS/           iOS remote (sideload)
 LightStarWidget/        WidgetKit source shared by both widget extensions
 ```
 
-Views get state via `@Environment(LightBLEManager.self)`. AppIntents use `LightStarRuntime`.
+Views get state via `@Environment(LightBLEManager.self)`. AppIntents use `LightStarRuntime`. Every macOS window gets its environment from `AppDelegate.withAppState` — the ⌘, Settings scene once had its own list without `WizLampController` and crashed on open. `LightBLEManager(bluetooth: false)` skips the CoreBluetooth central so tests can drive the sync lifecycle (`SyncLifecycleTests`).
 
 ## Autonomous company
 
@@ -151,6 +151,10 @@ Messages are length-prefixed (4-byte big-endian) JSON:
 | `mouseMove`, `keyDown`, `macAction` | iPhone → Mac | Trackpad, typing, and Mac system actions |
 
 The phone Lights tab shows that choice. Power for the strip waits until the strip is connected. Power for the lamp or both does not. One switch drives every selected light.
+
+Coming back to the foreground (`resumeFromBackground`): a connected phone pings and reconnects to the same Mac if there's no pong in 2 s (iOS may drop the link while suspended; the 5 s ping alone takes 15 s to notice); a dropped link looks for the Mac again unless the user tapped Disconnect.
+
+The Mac reads output volume through CoreAudio (~0.6 ms) and falls back to AppleScript only for outputs that report none: the AppleScript read runs on the main thread and took 1.1 s on its first call, 40–80 ms after. Setting volume stays AppleScript (CoreAudio set is unreliable on HDMI).
 
 State to the phone is always `stateForClients()` (snapshot + system levels + lamp + lightbar): observation broadcasts and command replies alike. The bare `createStateSnapshot()` has no lamp/lightbar fields and hid those rows on every colour change. Broadcasts are throttled to 100 ms with a trailing send, so the last value of a drag always lands. The phone's sliders ignore incoming state while being dragged (`dragging`), or a late echo yanks the thumb back.
 
