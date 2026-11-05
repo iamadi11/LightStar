@@ -1,5 +1,9 @@
 @preconcurrency import CoreBluetooth
 import SwiftUI
+import os
+
+// Strip replies on FFF4 (`log stream --predicate 'subsystem == "com.adityaraj.LightStar" && category == "ble"'`).
+private let bleLog = Logger(subsystem: "com.adityaraj.LightStar", category: "ble")
 
 @MainActor
 @Observable
@@ -877,6 +881,7 @@ extension LightBLEManager: CBPeripheralDelegate {
         let label = str.isEmpty ? hex : "\(hex)  \(str)"
         let line = "  READ \(characteristic.uuid): \(label)"
         print("[LightStar] \(line)")
+        bleLog.notice("RX \(characteristic.uuid.uuidString, privacy: .public): \(hex, privacy: .public)")
         Task { @MainActor in
             self.deviceLog.append(line)
             self.saveDeviceInfoIfComplete()
