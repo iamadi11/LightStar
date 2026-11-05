@@ -275,6 +275,7 @@ struct RemoteLightControlView: View {
     @State private var saturation: Double = 1
     @State private var brightness: Double = 1
     @State private var lampCode = ""
+    @State private var whiteTone = 1.0
     
     var body: some View {
         NavigationStack {
@@ -282,6 +283,9 @@ struct RemoteLightControlView: View {
                 if let state = client.currentState {
                     lightsSection(state)
                     powerSection(state)
+                    if RemoteLightControls.target(from: state.outputTarget).sendsToLightbar, let bar = state.lightbar {
+                        lightbarSection(bar)
+                    }
                     let target = RemoteLightControls.target(from: state.outputTarget)
                     let live = RemoteLightControls.canAdjust(
                         target: target,
@@ -322,6 +326,7 @@ struct RemoteLightControlView: View {
             if abs(hue - state.colorHue) > 0.002 { hue = state.colorHue }
             if abs(saturation - state.colorSaturation) > 0.002 { saturation = state.colorSaturation }
             if abs(brightness - state.brightness) > 0.002 { brightness = state.brightness }
+            if let tone = state.lightbar?.whiteTone, abs(whiteTone - tone) > 0.002 { whiteTone = tone }
         }
     }
     
@@ -391,6 +396,75 @@ struct RemoteLightControlView: View {
                     .disabled(lampCode.filter(\.isNumber).count != 8)
                 }
             }
+        }
+    }
+
+    /// Effects, scenes, white tone and sync options for the WiZ lightbar,
+    /// the same as Settings → Lightbar on the Mac.
+    @ViewBuilder
+    private func lightbarSection(_ bar: LightbarState) -> some View {
+        let orientation = LampGradient.Orientation(rawValue: bar.orientation) ?? .vertical
+        Section {
+            if bar.phase != "following" {
+                Text(RemoteLightControls.lightbarStatus(bar.phase))
+                    .foregroundStyle(.secondary)
+            }
+            Picker("Effect", selection: Binding(
+                get: { bar.effect ?? "" },
+                set: { client.setLightbar($0.isEmpty ? SetLightbarMessage(stopEffect: true) : SetLightbarMessage(effect: $0)) }
+            )) {
+                Text("None").tag("")
+                ForEach(LampEffect.builtIn) { Text($0.name).tag($0.name) }
+            }
+            Picker("Scene", selection: Binding(
+                get: { bar.sceneID ?? 0 },
+                set: { if $0 > 0 { client.setLightbar(SetLightbarMessage(scene: $0)) } }
+            )) {
+                Text("None").tag(0)
+                ForEach(WizScene.all, id: \.id) { Text($0.name).tag($0.id) }
+            }
+            VStack(alignment: .leading, spacing: 4) {
+                Text("White tone")
+                HStack {
+                    Text("Warm").font(.caption).foregroundStyle(.secondary)
+                    Slider(value: $whiteTone, in: 0...1) { editing in
+                        if !editing { client.setLightbar(SetLightbarMessage(whiteTone: whiteTone)) }
+                    }
+                    .accessibilityLabel("White tone")
+                    Text("Cool").font(.caption).foregroundStyle(.secondary)
+                }
+            }
+        } header: {
+            Text("Lightbar")
+        }
+        Section {
+            Toggle("Gradient sync", isOn: Binding(
+                get: { bar.gradientSync },
+                set: { client.setLightbar(SetLightbarMessage(gradientSync: $0)) }
+            ))
+            Picker("Music", selection: Binding(
+                get: { bar.musicStyle },
+                set: { client.setLightbar(SetLightbarMessage(musicStyle: $0)) }
+            )) {
+                ForEach(LampGradient.MusicStyle.allCases) { Text($0.title).tag($0.rawValue) }
+            }
+            .disabled(!bar.gradientSync)
+            Picker("Read", selection: Binding(
+                get: { bar.edge },
+                set: { client.setLightbar(SetLightbarMessage(edge: $0)) }
+            )) {
+                ForEach(LampGradient.Edge.allCases) { Text($0.title(for: orientation)).tag($0.rawValue) }
+            }
+            .disabled(!bar.gradientSync)
+            Toggle("Ignore black bars", isOn: Binding(
+                get: { bar.ignoreBars },
+                set: { client.setLightbar(SetLightbarMessage(ignoreBars: $0)) }
+            ))
+            .disabled(!bar.gradientSync)
+        } header: {
+            Text("Lightbar sync")
+        } footer: {
+            Text("Read the screen edge next to the lightbar, and skip the black bars around films.")
         }
     }
 

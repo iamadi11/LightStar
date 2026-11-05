@@ -137,6 +137,52 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         remoteControl.onLampCode = { [weak self] code in
             self?.homeKitLamp.connect(setupCode: code)
         }
+        remoteControl.lightbarStatus = { [weak self] in
+            guard let self else { return nil }
+            let phase: String
+            switch self.wizLamp.state {
+            case .stopped: phase = "stopped"
+            case .searching: phase = "searching"
+            case .following: phase = "following"
+            case .notFound: phase = "notFound"
+            case .blocked: phase = "blocked"
+            }
+            let effect = self.ble.lampEffect?.name
+            return LightbarState(
+                phase: phase,
+                effect: effect,
+                sceneID: effect == nil ? self.wizLamp.look?.scene : nil,
+                whiteTone: UserDefaults.standard.object(forKey: WizLampController.whiteToneDefaultsKey) as? Double ?? 1,
+                gradientSync: LampGradient.enabled,
+                musicStyle: LampGradient.musicStyle.rawValue,
+                edge: LampGradient.edge.rawValue,
+                ignoreBars: LampGradient.ignoreBars,
+                orientation: LampGradient.orientation.rawValue
+            )
+        }
+        // Same actions as Settings → Lightbar.
+        remoteControl.onLightbar = { [weak self] change in
+            guard let self else { return }
+            let d = UserDefaults.standard
+            if change.stopEffect == true { self.ble.setLampEffect(nil) }
+            if let name = change.effect, let effect = LampEffect.named(name) {
+                self.ble.setLampEffect(effect.withUserPalette())
+            }
+            if let id = change.scene, WizScene.all.contains(where: { $0.id == id }) {
+                self.ble.setLampEffect(nil)
+                self.wizLamp.setScene(id)
+            }
+            if let tone = change.whiteTone, tone.isFinite { self.wizLamp.setWhiteTone(max(0, min(1, tone))) }
+            if let on = change.gradientSync { d.set(on, forKey: LampGradient.enabledDefaultsKey) }
+            if let style = change.musicStyle, LampGradient.MusicStyle(rawValue: style) != nil {
+                d.set(style, forKey: LampGradient.musicStyleDefaultsKey)
+            }
+            if let edge = change.edge, LampGradient.Edge(rawValue: edge) != nil {
+                d.set(edge, forKey: LampGradient.edgeDefaultsKey)
+            }
+            if let ignore = change.ignoreBars { d.set(ignore, forKey: LampGradient.ignoreBarsDefaultsKey) }
+            self.remoteControl.publishState()
+        }
         homeKitLamp.onStateChange = { [weak self] in
             self?.remoteControl.publishState()
         }

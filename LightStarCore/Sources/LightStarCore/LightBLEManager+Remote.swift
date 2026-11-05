@@ -135,6 +135,9 @@ public final class RemoteControlCoordinator: ObservableObject {
     /// Lamp phase and detail for the phone. The Mac owns the HomeKit session.
     public var lampStatus: () -> (phase: String, detail: String?) = { ("stopped", nil) }
     public var onLampCode: ((String) -> Void)?
+    /// Lightbar state for the phone, and lightbar changes from it. The app owns the lightbar.
+    public var lightbarStatus: () -> LightbarState? = { nil }
+    public var onLightbar: ((SetLightbarMessage) -> Void)?
     private var stateObservationTask: Task<Void, Never>?
     private var shouldObserveState = false
     private var lastBroadcastIdentity = ""
@@ -182,6 +185,7 @@ public final class RemoteControlCoordinator: ObservableObject {
         return base
             .withSystemLevels(volume: levels.volume, brightness: levels.brightness)
             .withLamp(phase: lamp.phase, detail: lamp.detail)
+            .withLightbar(lightbarStatus())
     }
 
     public func publishState() {
@@ -275,6 +279,11 @@ public final class RemoteControlCoordinator: ObservableObject {
                 onLampCode?(cmd.code)
             }
             return try? RemoteMessage(type: .stateUpdate, content: stateForClients())
+        case .setLightbar:
+            if let cmd = try? message.decode(SetLightbarMessage.self) {
+                onLightbar?(cmd)
+            }
+            return try? RemoteMessage(type: .stateUpdate, content: stateForClients())
 
         // Light commands - delegate to BLE manager
         default:
@@ -315,6 +324,7 @@ public final class RemoteControlCoordinator: ObservableObject {
                 _ = ble.connectionState
                 _ = ble.effectModeActive
                 _ = ble.effectID
+                _ = ble.lampEffect
                 
                 let state = ble.createStateSnapshot()
                 let identity = RemoteStateBroadcastPolicy.significantIdentity(

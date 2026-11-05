@@ -80,4 +80,15 @@ public enum RemoteLightControls {
             return "Lamp"
         }
     }
+
+    /// Lightbar link as the phone shows it while it isn't following.
+    public static func lightbarStatus(_ phase: String) -> String {
+        switch phase {
+        case "searching": return "Looking for the lightbar…"
+        case "notFound": return "No lightbar on this network"
+        case "blocked": return "Allow Local Network for LightStar on the Mac"
+        case "stopped": return "Lightbar is off in LightStar on the Mac"
+        default: return "Lightbar"
+        }
+    }
 }

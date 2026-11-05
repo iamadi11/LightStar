@@ -62,6 +62,7 @@ public enum RemoteMessageType: UInt8, Codable, Sendable {
     case writeFrame = 0x2B
     case setOutputTarget = 0x2C
     case setLampCode = 0x2D
+    case setLightbar = 0x2E
     
     // Mac control (input)
     case mouseMove = 0x30
@@ -186,6 +187,8 @@ public struct LightStarState: Codable, Sendable, Equatable {
     public var lampPhase: String?
     /// Lamp name when following, or the failure text.
     public var lampDetail: String?
+    /// The WiZ lightbar, when the Mac has one. Nil on older Macs.
+    public var lightbar: LightbarState?
     
     public init(
         isConnected: Bool,
@@ -245,6 +248,53 @@ public struct LightStarState: Codable, Sendable, Equatable {
         copy.lampPhase = phase
         copy.lampDetail = detail
         return copy
+    }
+
+    public func withLightbar(_ lightbar: LightbarState?) -> LightStarState {
+        var copy = self
+        copy.lightbar = lightbar
+        return copy
+    }
+}
+
+/// What the phone shows for the lightbar.
+public struct LightbarState: Codable, Sendable, Equatable {
+    /// searching, following, notFound, blocked, stopped.
+    public var phase: String
+    public var effect: String?
+    public var sceneID: Int?
+    public var whiteTone: Double
+    public var gradientSync: Bool
+    public var musicStyle: String
+    public var edge: String
+    public var ignoreBars: Bool
+    /// vertical or horizontal: names the edges on the phone.
+    public var orientation: String
+
+    public init(phase: String, effect: String? = nil, sceneID: Int? = nil, whiteTone: Double = 1,
+                gradientSync: Bool = true, musicStyle: String = "meter", edge: String = "whole", ignoreBars: Bool = true, orientation: String = "vertical") {
+        self.orientation = orientation
+        self.phase = phase; self.effect = effect; self.sceneID = sceneID; self.whiteTone = whiteTone
+        self.gradientSync = gradientSync; self.musicStyle = musicStyle; self.edge = edge; self.ignoreBars = ignoreBars
+    }
+}
+
+/// Lightbar changes from the phone; only the fields that are set apply.
+public struct SetLightbarMessage: Codable, Sendable, Equatable {
+    public var effect: String?
+    /// Stop the running effect.
+    public var stopEffect: Bool?
+    public var scene: Int?
+    public var whiteTone: Double?
+    public var gradientSync: Bool?
+    public var musicStyle: String?
+    public var edge: String?
+    public var ignoreBars: Bool?
+
+    public init(effect: String? = nil, stopEffect: Bool? = nil, scene: Int? = nil, whiteTone: Double? = nil,
+                gradientSync: Bool? = nil, musicStyle: String? = nil, edge: String? = nil, ignoreBars: Bool? = nil) {
+        self.effect = effect; self.stopEffect = stopEffect; self.scene = scene; self.whiteTone = whiteTone
+        self.gradientSync = gradientSync; self.musicStyle = musicStyle; self.edge = edge; self.ignoreBars = ignoreBars
     }
 }
 

@@ -526,6 +526,12 @@ public final class RemoteControlClient: ObservableObject {
         }
     }
 
+    public func setLightbar(_ change: SetLightbarMessage) {
+        if let msg = try? RemoteMessage(type: .setLightbar, content: change) {
+            send(msg)
+        }
+    }
+
     public func setLampCode(_ code: String) {
         if let msg = try? RemoteMessage(type: .setLampCode, content: SetLampCodeMessage(code: code)) {
             send(msg)

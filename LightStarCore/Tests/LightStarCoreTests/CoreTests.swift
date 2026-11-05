@@ -1407,3 +1407,31 @@ final class YeelightMirrorTests: XCTestCase {
         XCTAssertEqual(preferred?.model, "lamp")
     }
 }
+
+final class LightbarRemoteTests: XCTestCase {
+    func testLightbarCommandRoundTripsWithOnlyItsFields() throws {
+        let change = SetLightbarMessage(scene: 4, edge: "second")
+        let message = try RemoteMessage(type: .setLightbar, content: change)
+        let decoded = try message.decode(SetLightbarMessage.self)
+        XCTAssertEqual(decoded, change)
+        XCTAssertNil(decoded.effect)
+        XCTAssertNil(decoded.whiteTone)
+    }
+
+    func testStateFromAnOlderMacHasNoLightbar() throws {
+        let old = LightStarState(isConnected: true, isOn: true, brightness: 1, colorHue: 0,
+                                 colorSaturation: 1, colorTemperature: 0.5, syncMode: "Off")
+        var json = try JSONSerialization.jsonObject(with: JSONEncoder().encode(old)) as! [String: Any]
+        json.removeValue(forKey: "lightbar")
+        let decoded = try JSONDecoder().decode(LightStarState.self, from: JSONSerialization.data(withJSONObject: json))
+        XCTAssertNil(decoded.lightbar)
+    }
+
+    func testStateCarriesTheLightbar() throws {
+        let bar = LightbarState(phase: "following", effect: "Fire", whiteTone: 0.3, edge: "first", orientation: "horizontal")
+        let state = LightStarState(isConnected: false, isOn: true, brightness: 1, colorHue: 0,
+                                   colorSaturation: 1, colorTemperature: 0.5, syncMode: "Video").withLightbar(bar)
+        let decoded = try JSONDecoder().decode(LightStarState.self, from: JSONEncoder().encode(state))
+        XCTAssertEqual(decoded.lightbar, bar)
+    }
+}
