@@ -93,3 +93,36 @@ final class LightbarExtrasTests: XCTestCase {
         XCTAssertTrue(LightOutputTarget.strip.sendsToStrip, "choosing the strip alone still drives it")
     }
 }
+
+final class LampZonePipeTests: XCTestCase {
+    private final class Box: @unchecked Sendable { var frames: [LampZonePipe.Frame] = [] }
+
+    func testSendsOnlyWhileActiveAndAtMostOncePerFrameGap() {
+        let pipe = LampZonePipe(), box = Box()
+        pipe.setOutput { box.frames.append($0) }
+        let red = [WizRGB(r: 255, g: 0, b: 0)]
+        pipe.push(red, sides: { [:] }, now: 1)
+        XCTAssertTrue(box.frames.isEmpty, "off until sync is running")
+
+        pipe.update { $0.active = true; $0.responsiveness = 1; $0.brightness = 0.5 }
+        pipe.push(red, sides: { [:] }, now: 2)
+        XCTAssertEqual(box.frames.last?.zones, [WizRGB(r: 128, g: 0, b: 0)], "at the brightness")
+        pipe.push(red, sides: { [:] }, now: 2.01)
+        XCTAssertEqual(box.frames.count, 1, "a second frame within 1/45 s is dropped")
+        pipe.push(red, sides: { [:] }, now: 2.03)
+        XCTAssertEqual(box.frames.count, 2, "30 fps frames all get through")
+
+        pipe.update { $0.active = false }
+        pipe.push(red, sides: { [:] }, now: 3)
+        XCTAssertEqual(box.frames.count, 2, "nothing after sync stops")
+        XCTAssertNil(pipe.easedZones)
+    }
+
+    func testMusicLevelSetsBrightnessInCombined() {
+        let pipe = LampZonePipe(), box = Box()
+        pipe.setOutput { box.frames.append($0) }
+        pipe.update { $0.active = true; $0.responsiveness = 1; $0.brightness = 1; $0.musicLevel = 0.2 }
+        pipe.push([WizRGB(r: 0, g: 0, b: 255)], sides: { [:] }, now: 1)
+        XCTAssertEqual(box.frames.last?.zones, [WizRGB(r: 0, g: 0, b: 51)])
+    }
+}

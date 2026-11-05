@@ -64,10 +64,8 @@ public final class LightBLEManager: NSObject {
     @ObservationIgnored var lampEffectTask: Task<Void, Never>?
     /// Combined sync: latest screen zones (unscaled) and the music's
     /// brightness, so beats can pulse the lightbar between screen frames.
-    @ObservationIgnored var lampScreenZones: [WizRGB]?
     /// A preset's scene or segment colours for the lightbar (the app routes them).
     @ObservationIgnored public var onLightbarLook: ((LightbarLook) -> Void)?
-    @ObservationIgnored var lampCombinedLevel: Double?
     public var colorTemperature: Double = 0.5  // 0=warm 2700K … 1=cool 6500K; not persisted as a mode flag
     // Sync state machine
     public var syncMode: SyncMode = .off
@@ -299,12 +297,20 @@ public final class LightBLEManager: NSObject {
     /// Serializes display-sleep pause/resume so stop completes before start.
     public var sleepWakeTask: Task<Void, Never>?
     public var coalescer: BLEWriteCoalescer!
-    public var beatHue: Double = 0
-    public var flashLevel: Double = 0
-    public var lastScreenH: Double = 0
-    public var lastScreenS: Double = 1
-    public var audioPulseH: Double = 0   // cached hue for pulse mode — avoids 30Hz hsvComponents
+    // Per-frame sync state. Ignored by Observation: nothing on screen reads
+    // it, and each tracked write costs a registrar round trip at 20–30 Hz.
+    @ObservationIgnored public var beatHue: Double = 0
+    @ObservationIgnored public var flashLevel: Double = 0
+    @ObservationIgnored public var lastScreenH: Double = 0
+    @ObservationIgnored public var lastScreenS: Double = 1
+    @ObservationIgnored public var audioPulseH: Double = 0   // cached hue for pulse mode — avoids 30Hz hsvComponents
+    /// Throttle for `syncColor` (see `showLiveColor`).
+    @ObservationIgnored var liveColorShown: (hue: Double, saturation: Double, at: Double)?
+    @ObservationIgnored var liveColorPending: (hue: Double, saturation: Double)?
+    @ObservationIgnored var liveColorTrailing: Task<Void, Never>?
     public let screenSampler = ScreenColorSampler()
+    /// Screen zones → lightbar, off the main thread.
+    public let lampPipe = LampZonePipe()
 #if os(macOS)
     public let browserHWAccel = BrowserHardwareAccelerationController()
     public var browserAccelerationMessage: String?
@@ -331,7 +337,8 @@ public final class LightBLEManager: NSObject {
             send: { [weak self] data in
                 self?.transmit(data)
             },
-            isConnected: { [weak self] in self?.connectionState == .connected }
+            isConnected: { [weak self] in self?.connectionState == .connected },
+            canSendMore: { [weak self] in self?.peripheral?.canSendWriteWithoutResponse ?? false }
         )
         browserHWAccel.onStatusChange = { [weak self] message in
             self?.browserAccelerationMessage = message

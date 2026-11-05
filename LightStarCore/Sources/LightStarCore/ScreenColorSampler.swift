@@ -81,6 +81,9 @@ public final class ScreenColorSampler: NSObject {
 
     public func lampSides() -> [LampGradient.Side: WizRGB] { provider.currentLampSides() }
 
+    /// Where lit frames go from the capture queue (see `LampZonePipe`).
+    public func attach(_ pipe: LampZonePipe) { provider.lampPipe = pipe }
+
     private func paintLatestZones() {
         guard isRunning, let onZones else { return }
         let zones = provider.currentLampZones()
@@ -125,7 +128,9 @@ public final class ScreenColorSampler: NSObject {
             writable = true
             onColor?(hsv.hue, hsv.saturation, hsv.brightness)
         }
-        if !analysis.zones.isEmpty, LampGradient.shouldPaint(analysis.zones, frameWritable: writable) {
+        // Lit frames already went to the lightbar from the capture queue;
+        // only a black frame the guard lets through is painted from here.
+        if !analysis.zones.isEmpty, writable, !analysis.zones.contains(where: { !$0.isOff }) {
             onZones?(analysis.zones)
         }
     }

@@ -62,14 +62,31 @@ enum LightReach {
 }
 
 extension LightBLEManager {
+    /// Live colour, following sync. Read it only in small views (`LiveAccent`):
+    /// whatever reads it redraws each time sync changes colour.
     var stripAccent: Color {
-        let stripLive = connectionState == .connected && outputTarget.sendsToStrip
-        let lampLive = outputTarget.sendsToLamp
-        guard isOn, stripLive || lampLive else {
-            return Color.primary.opacity(0.35)
-        }
+        guard lightsLive else { return Color.primary.opacity(0.35) }
         return syncColor ?? color
     }
+
+    /// The chosen colour, for tinting whole windows; doesn't follow sync.
+    var controlAccent: Color {
+        lightsLive ? color : Color.primary.opacity(0.35)
+    }
+
+    private var lightsLive: Bool {
+        let stripLive = connectionState == .connected && outputTarget.sendsToStrip
+        return isOn && (stripLive || outputTarget.sendsToLamp)
+    }
+}
+
+/// The live sync colour as a capsule, dot, or tinted symbol. Its own view so
+/// only it redraws when the colour moves, not the window around it.
+struct LiveAccent<Content: View>: View {
+    @Environment(LightBLEManager.self) private var ble
+    @ViewBuilder var content: (Color) -> Content
+
+    var body: some View { content(ble.stripAccent) }
 }
 
 struct LightTargetSection: View {

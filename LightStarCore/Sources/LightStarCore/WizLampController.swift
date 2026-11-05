@@ -115,6 +115,13 @@ public final class WizLampController {
         engine.setAway(away)
     }
 
+    /// A screen-sync frame from any thread (the capture queue): queues it
+    /// for the lights without a trip through the main thread.
+    nonisolated public func streamFrame(_ zones: [WizRGB], sides: [LampGradient.Side: WizRGB]?) {
+        engine.stream(zones, placement: .current)
+        engine.streamSides(sides)
+    }
+
     /// Edge colours for plain bulbs while screen sync runs; nil when it stops.
     public func streamSides(_ sides: [LampGradient.Side: WizRGB]?) {
         engine.streamSides(sides)
@@ -194,8 +201,9 @@ private final class WizEngine: @unchecked Sendable {
     private var probesSent = 0
     private var searching = false
     private var flushScheduled = false
-    /// ~30 fps; the firmware takes more but screen sync does not need it.
-    private let interval: TimeInterval = 1.0 / 30
+    /// Minimum gap between sends. Just under the 30 fps frame gap: at exactly
+    /// 1/30 a frame arriving a hair early waited a whole extra frame (up to 33 ms).
+    private let interval: TimeInterval = 1.0 / 45
 
     func setHandler(_ handler: @escaping @Sendable (WizEvent) -> Void) {
         queue.async { self.handler = handler }
@@ -333,14 +341,16 @@ private final class WizEngine: @unchecked Sendable {
         )
     }
 
-    private var savedHosts: [String: String] {
+    /// Read once: only `connect` changes it. Reading UserDefaults on every
+    /// 30 s probe took ~30 ms on this queue and held back lightbar frames.
+    private lazy var savedHosts: [String: String] = {
         var hosts = UserDefaults.standard.dictionary(forKey: WizLampController.hostsDefaultsKey) as? [String: String] ?? [:]
         if hosts.isEmpty, let mac = UserDefaults.standard.string(forKey: WizLampController.macDefaultsKey),
            let host = UserDefaults.standard.string(forKey: WizLampController.hostDefaultsKey) {
             hosts[mac] = host
         }
         return hosts
-    }
+    }()
 
     /// Asks each known address directly (instant when nothing changed) and
     /// broadcasts for lights that moved, several times: right after launch
@@ -395,9 +405,10 @@ private final class WizEngine: @unchecked Sendable {
     }
 
     private func connect(_ device: WizDevice) {
-        var hosts = savedHosts
-        hosts[device.mac] = device.host
-        UserDefaults.standard.set(hosts, forKey: WizLampController.hostsDefaultsKey)
+        if savedHosts[device.mac] != device.host {
+            savedHosts[device.mac] = device.host
+            UserDefaults.standard.set(savedHosts, forKey: WizLampController.hostsDefaultsKey)
+        }
         if links.isEmpty || UserDefaults.standard.string(forKey: WizLampController.macDefaultsKey) == nil {
             UserDefaults.standard.set(device.mac, forKey: WizLampController.macDefaultsKey)
             UserDefaults.standard.set(device.host, forKey: WizLampController.hostDefaultsKey)

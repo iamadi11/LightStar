@@ -195,6 +195,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.remoteControl.publishState()
         }
         applyLampFollow(ble.outputTarget)
+        let lamp = wizLamp
+        ble.startLampPipe { frame in lamp.streamFrame(frame.zones, sides: frame.sides) }
         ble.startFollowingFocus()
         startDayWhiteTimer()
     }

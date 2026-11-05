@@ -16,8 +16,9 @@ public final class ScreenCaptureKitProvider: NSObject, ScreenFrameProvider {
     public var capturesAudio = false
     public var selectedDisplayID: CGDirectDisplayID?
     
-    /// Whether to use GPU-accelerated analysis (Metal). Defaults to true when available.
-    public nonisolated(unsafe) var useMetalAnalysis: Bool = true
+    /// GPU analysis. Off: at the 48×27 capture size the CPU version takes
+    /// ~37 µs a frame and the Metal round trip ~409 µs (M-series, 2026-11-06).
+    public nonisolated(unsafe) var useMetalAnalysis: Bool = false
     
     public private(set) var isRunning = false
     
@@ -36,6 +37,8 @@ public final class ScreenCaptureKitProvider: NSObject, ScreenFrameProvider {
     private var lastBlackPercentage: Double = 0
     private var usingMetal = false
     nonisolated let lampFrame = LampFrameStore()
+    /// Set once at launch; lit frames go to it straight from the capture queue.
+    public nonisolated(unsafe) var lampPipe: LampZonePipe?
 
     /// Lightbar zones of the latest frame under the current settings.
     public func currentLampZones() -> [WizRGB] { lampFrame.zones() }
@@ -165,6 +168,12 @@ extension ScreenCaptureKitProvider: SCStreamOutput {
         }
         lampFrame.store(pb)
         analysis.zones = lampFrame.zones()
+        // Lit frames go straight to the lightbar. An all-black one waits for
+        // the main thread, which knows whether it's DRM to hold or a real black screen.
+        if let pipe = lampPipe, analysis.zones.contains(where: { !$0.isOff }) {
+            let store = lampFrame
+            pipe.push(analysis.zones, sides: { store.sides() })
+        }
         
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
