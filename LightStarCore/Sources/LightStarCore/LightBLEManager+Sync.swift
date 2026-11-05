@@ -59,6 +59,9 @@ public extension LightBLEManager {
         screenSampler.capturesAudio = false
         // Before handing the lightbar back, so no capture frame lands after it.
         lampPipe.update { $0.active = false; $0.musicLevel = nil }
+#if os(macOS)
+        stopFollowingFocus()
+#endif
         onLampZones?(nil, nil)
         onLampSides?(nil)
         flashLevel = 0
@@ -154,6 +157,9 @@ public extension LightBLEManager {
         screenSampler.capturesAudio = false
         // Before handing the lightbar back, so no capture frame lands after it.
         lampPipe.update { $0.active = false; $0.musicLevel = nil }
+#if os(macOS)
+        stopFollowingFocus()
+#endif
         onLampZones?(nil, nil)
         onLampSides?(nil)
         flashLevel = 0
@@ -322,6 +328,9 @@ public extension LightBLEManager {
 #endif
         }
         syncLampPipeSettings()
+#if os(macOS)
+        startFollowingFocus()
+#endif
         // Repaints after a settings change and black frames the DRM guard
         // lets through; lit frames reach the pipe from the capture queue.
         screenSampler.onZones = { [weak self] zones in

@@ -8,13 +8,21 @@ private let focusLog = Logger(subsystem: "com.adityaraj.LightStar", category: "f
 extension LightBLEManager {
     /// Checks twice a second while screen sync runs: the lightbar profile for
     /// the app in front, and (with 2+ displays) which screen to capture.
+    /// Started with screen sync's callbacks and stopped at its teardown, so an
+    /// idle app isn't woken twice a second.
     public func startFollowingFocus() {
         focusTimer?.invalidate()
         let t = Timer(timeInterval: 0.5, repeats: true) { [weak self] _ in
-            Task { @MainActor in self?.focusTick() }
+            MainActor.assumeIsolated { self?.focusTick() }
         }
+        t.tolerance = 0.1
         RunLoop.main.add(t, forMode: .common)
         focusTimer = t
+    }
+
+    func stopFollowingFocus() {
+        focusTimer?.invalidate()
+        focusTimer = nil
     }
 
     func focusTick() {

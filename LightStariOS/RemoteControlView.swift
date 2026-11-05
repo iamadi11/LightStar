@@ -274,6 +274,9 @@ struct RemoteLightControlView: View {
     @State private var hue: Double = 0
     @State private var saturation: Double = 1
     @State private var brightness: Double = 1
+    /// Sliders the user is dragging. The Mac echoes every value back; an echo
+    /// that arrives late would yank the thumb back mid-drag and resend it.
+    @State private var dragging: Set<String> = []
     @State private var lampCode = ""
     @State private var whiteTone = 1.0
     
@@ -323,10 +326,12 @@ struct RemoteLightControlView: View {
         }
         .onChange(of: client.currentState) { _, newState in
             guard let state = newState else { return }
-            if abs(hue - state.colorHue) > 0.002 { hue = state.colorHue }
-            if abs(saturation - state.colorSaturation) > 0.002 { saturation = state.colorSaturation }
-            if abs(brightness - state.brightness) > 0.002 { brightness = state.brightness }
-            if let tone = state.lightbar?.whiteTone, abs(whiteTone - tone) > 0.002 { whiteTone = tone }
+            if !dragging.contains("hue"), abs(hue - state.colorHue) > 0.002 { hue = state.colorHue }
+            if !dragging.contains("saturation"), abs(saturation - state.colorSaturation) > 0.002 { saturation = state.colorSaturation }
+            if !dragging.contains("brightness"), abs(brightness - state.brightness) > 0.002 { brightness = state.brightness }
+            if !dragging.contains("whiteTone"), let tone = state.lightbar?.whiteTone, abs(whiteTone - tone) > 0.002 {
+                whiteTone = tone
+            }
         }
     }
     
@@ -428,6 +433,7 @@ struct RemoteLightControlView: View {
                 HStack {
                     Text("Warm").font(.caption).foregroundStyle(.secondary)
                     Slider(value: $whiteTone, in: 0...1) { editing in
+                        drag("whiteTone", editing)
                         if !editing { client.setLightbar(SetLightbarMessage(whiteTone: whiteTone)) }
                     }
                     .accessibilityLabel("White tone")
@@ -519,13 +525,18 @@ struct RemoteLightControlView: View {
         return "Turn the lights on to change brightness, color, and sync."
     }
 
+    private func drag(_ slider: String, _ active: Bool) {
+        if active { dragging.insert(slider) } else { dragging.remove(slider) }
+    }
+
     private var brightnessSection: some View {
         Section("Brightness") {
             VStack(alignment: .leading) {
                 Text("Brightness \(Int(brightness * 100))%")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                Slider(value: $brightness, in: 0...1)
+                Slider(value: $brightness, in: 0...1, onEditingChanged: { drag("brightness", $0) })
+                    .accessibilityLabel("Brightness")
                     .onChange(of: brightness) { _, newValue in
                         guard abs(newValue - (client.currentState?.brightness ?? newValue)) > 0.002 else { return }
                         client.setBrightness(newValue)
@@ -541,7 +552,9 @@ struct RemoteLightControlView: View {
                 Text("Hue")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                Slider(value: $hue, in: 0...1)
+                Slider(value: $hue, in: 0...1, onEditingChanged: { drag("hue", $0) })
+                    .accessibilityLabel("Hue")
+                    .accessibilityValue("\(Int((hue * 360).rounded())) degrees")
                     .tint(Color(hue: hue, saturation: 1, brightness: 1))
                     .onChange(of: hue) { _, newValue in
                         guard abs(newValue - (client.currentState?.colorHue ?? newValue)) > 0.002 else { return }
@@ -553,7 +566,8 @@ struct RemoteLightControlView: View {
                 Text("Saturation")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                Slider(value: $saturation, in: 0...1)
+                Slider(value: $saturation, in: 0...1, onEditingChanged: { drag("saturation", $0) })
+                    .accessibilityLabel("Saturation")
                     .onChange(of: saturation) { _, newValue in
                         guard abs(newValue - (client.currentState?.colorSaturation ?? newValue)) > 0.002 else { return }
                         client.setColor(hue: hue, saturation: saturation)

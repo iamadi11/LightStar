@@ -70,7 +70,14 @@ public extension LightBLEManager {
         colorHue = h
         colorSat = s
         color = Color(hue: h, saturation: s, brightness: 1)
-        recordColorHistory(h, s)
+        // Only a colour that stays: a slider or wheel drag calls this every
+        // tick, and recording each one replaced all recent colours with
+        // in-between hues. Covers the Mac sliders, the iPhone, and Alexa alike.
+        historyDebounce?.cancel()
+        historyDebounce = Task { @MainActor [weak self] in
+            do { try await Task.sleep(nanoseconds: 600_000_000) } catch { return }
+            self?.recordColorHistory(h, s)
+        }
         audioPulseH = h
         effectModeActive = false
         if lampEffect != nil { setLampEffect(nil) }
