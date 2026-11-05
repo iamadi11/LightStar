@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 public struct WidgetState: Codable, Equatable, Sendable {
     public var connected: Bool
@@ -40,5 +41,28 @@ public struct WidgetState: Codable, Equatable, Sendable {
     public func save() {
         guard let data = try? JSONEncoder().encode(self) else { return }
         try? data.write(to: Self.storeURL, options: .atomic)
+    }
+
+    private static let writer = DispatchQueue(label: "lightstar.widget-state", qos: .utility)
+    private static let latest = OSAllocatedUnfairLock<WidgetState?>(initialState: nil)
+
+    /// Writes off the caller's thread; while a write is queued, newer states
+    /// replace it, so a colour drag doesn't queue a write per tick. The App
+    /// Group write can block: once it held the Mac's main thread for 1.5 min,
+    /// freezing the menu bar and every window.
+    public func saveInBackground(then done: @escaping @Sendable () -> Void = {}) {
+        let alreadyQueued = Self.latest.withLock { pending in
+            defer { pending = self }
+            return pending != nil
+        }
+        guard !alreadyQueued else { return }
+        Self.writer.async {
+            guard let state = Self.latest.withLock({ pending -> WidgetState? in
+                defer { pending = nil }
+                return pending
+            }) else { return }
+            state.save()
+            done()
+        }
     }
 }

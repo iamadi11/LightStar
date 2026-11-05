@@ -1490,3 +1490,18 @@ final class RemoteResumeTests: XCTestCase {
         XCTAssertEqual(P.resumeAction(state: .connecting("Mac"), userDisconnected: false), .none, "already on it")
     }
 }
+
+final class WidgetStateBackgroundSaveTests: XCTestCase {
+    func testSaveInBackgroundWritesTheLatestState() throws {
+        let saved = try? Data(contentsOf: WidgetState.storeURL)
+        defer { if let saved { try? saved.write(to: WidgetState.storeURL) } }
+        let done = expectation(description: "written")
+        WidgetState(isOn: true, hue: 0.1).saveInBackground { done.fulfill() }
+        WidgetState(isOn: true, hue: 0.2).saveInBackground()
+        WidgetState(isOn: false, hue: 0.3).saveInBackground()
+        wait(for: [done], timeout: 5)
+        let written = WidgetState.load()
+        XCTAssertEqual(written.hue, 0.3, accuracy: 1e-9, "a burst writes its last state")
+        XCTAssertFalse(written.isOn)
+    }
+}

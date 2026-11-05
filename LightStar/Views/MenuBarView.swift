@@ -81,6 +81,15 @@ struct MenuBarView: View {
                 }
                 Spacer()
                 Button {
+                    openLightStarCanvas()
+                } label: {
+                    Image(systemName: "drop.halffull")
+                        .frame(width: 28, height: 28)
+                }
+                .buttonStyle(.plain)
+                .help("Open Canvas")
+                .accessibilityLabel("Open Canvas")
+                Button {
                     openLightStarControlWindow()
                 } label: {
                     Image(systemName: "macwindow")

@@ -89,6 +89,11 @@ LightStarCore/          Swift package, macOS + iOS
   LampEffect.swift              Pure: animated effects as frame(time:) functions; strip-effect mapping
   LightBLEManager+Lamp.swift    Effect runner (25 fps) and strip-effect follow
 
+  # Canvas — live liquid art (see "Canvas" below)
+  FluidShaders.swift            Metal source, compiled at run time (so `swift test` covers it)
+  FluidSimulation.swift         GPU stable fluid: physics on a small grid, colour on a large one
+  FluidAutoPilot.swift          Pure: Auto-mode emitters as a function of time
+
 LightStar/              macOS app (menu bar + control window)
 LightStariOS/           iOS remote (sideload)
 LightStarWidget/        WidgetKit source shared by both widget extensions
@@ -274,6 +279,18 @@ One link per enabled light: its own `sent`, segment count, heartbeat. Only the l
 `lightbarOrientation`, `lightbarFlipped`, `lightbarEdge`, `lightbarColourBoost`, `lightbarBeatFlash`, `lightbarDayWhite`, `lightbarOffWhenAway`, `lightbarAppProfiles`, `lightbarAppProfileOverrides`, `lightbarActiveProfile`, `lightbarRecentApps`, `wizLightSides`, `allOutputLights`, `lightbarEdgeDepth`, `lightbarIgnoreBars`, `lightbarTrimStart`, `lightbarTrimEnd`, `lampGradientSync`, `lightbarMusicStyle`, `lightbarWhiteTone`, `lightbarEffectCustomColours`, `lightbarEffectPalette`, `wizSegmentCount`, `wizSegmentWidths`, `wizSegmentSlot`, `wizLampMAC`, `wizLampHost`, `wizLightHosts`, `wizEnabledLights`. Presets store `LightbarLook` (effect + optional palette, scene, or segments) — Optional, like every new `Preset` field.
 
 ---
+
+## Canvas
+
+Live liquid art in its own window (popover drop icon, status menu "Open Canvas", `lightstar://canvas`). Milestone 1: Auto mode plus drag-to-stir; it does not drive the lights yet (milestone 2 reads its own frames, no screen capture).
+
+- Physics (velocity, pressure; 256-cell short side) runs at a fixed **240 steps/s** whatever the display; colour (up to 1440 short side) moves once per drawn frame and splats write only their patch in place. Splatting and advecting the full colour texture every physics step cost 107 ms of GPU a frame; split, it's 4–8 ms at 6016×3384.
+- At most 8 physics steps a frame; time beyond is dropped, not owed, so a slow frame can't snowball.
+- Pauses when its window is hidden; closing frees the GPU textures. Reduce Motion slows Auto.
+- Open item: on the 120 Hz BenQ the canvas draws at 60 fps; MTKView's timer, `NSView.displayLink` and `NSScreen.displayLink` all ticked 60/s in the app, though a standalone `NSScreen.displayLink` ticks 120/s.
+- Timing log: `log stream --level debug --predicate 'subsystem == "com.adityaraj.LightStar" AND category == "canvas"'`.
+
+The widget's state file is written off the main thread (`WidgetState.saveInBackground`): the App Group write once held the Mac's main thread for 1.5 min after a reinstall.
 
 ## Signing / distribution
 
