@@ -43,7 +43,8 @@ struct ColorControlView: View {
             if mode == .color {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Hue").font(.caption2).foregroundStyle(.secondary)
-            GradientSlider(gradient: Self.hueGradient, value: $hue)
+            GradientSlider(label: "Hue", gradient: Self.hueGradient, value: $hue,
+                           valueText: { "\(Int(($0 * 360).rounded())) degrees" })
                         .onChange(of: hue) { _, new in
                             guard abs(new - ble.colorHue) > 0.002 else { return }
                             sendColor()
@@ -52,6 +53,7 @@ struct ColorControlView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Saturation").font(.caption2).foregroundStyle(.secondary)
                     GradientSlider(
+                        label: "Saturation",
                         gradient: Gradient(colors: [
                             Color(hue: hue, saturation: 0, brightness: 1),
                             Color(hue: hue, saturation: 1, brightness: 1)
@@ -67,15 +69,19 @@ struct ColorControlView: View {
                 // Color history strip
                 if !ble.colorHistory.isEmpty {
                     HStack(spacing: 5) {
-                        ForEach(Array(ble.colorHistory.prefix(10).enumerated()), id: \.offset) { _, entry in
-                            Circle()
-                                .fill(Color(hue: entry.h, saturation: entry.s, brightness: 1))
-                                .frame(width: 14, height: 14)
-                                .overlay(Circle().stroke(Color.primary.opacity(0.15), lineWidth: 0.5))
-                                .onTapGesture {
-                                    hue = entry.h; sat = entry.s
-                                    sendColor()
-                                }
+                        ForEach(Array(ble.colorHistory.prefix(10).enumerated()), id: \.offset) { index, entry in
+                            Button {
+                                hue = entry.h; sat = entry.s
+                                sendColor()
+                            } label: {
+                                Circle()
+                                    .fill(Color(hue: entry.h, saturation: entry.s, brightness: 1))
+                                    .frame(width: 14, height: 14)
+                                    .overlay(Circle().stroke(Color.primary.opacity(0.15), lineWidth: 0.5))
+                            }
+                            .buttonStyle(.plain)
+                            .help("Use this colour again")
+                            .accessibilityLabel("Recent colour \(index + 1), hue \(Int((entry.h * 360).rounded())) degrees")
                         }
                         Spacer()
                     }
@@ -93,7 +99,8 @@ struct ColorControlView: View {
                                 .font(.caption2).foregroundStyle(.secondary).monospacedDigit()
                         }
                     }
-                    GradientSlider(gradient: Self.cctGradient, value: $colorTemp)
+                    GradientSlider(label: "Colour temperature", gradient: Self.cctGradient, value: $colorTemp,
+                                   valueText: { "\(Int(2700 + $0 * 3800)) kelvin" })
                         .onChange(of: colorTemp) { _, new in
                             guard abs(new - ble.colorTemperature) > 0.002 else { return }
                             sendCCT()
@@ -139,9 +146,14 @@ struct ColorControlView: View {
     }
 }
 
+/// A slider drawn on a colour gradient. Adjustable with VoiceOver and, once
+/// focused, the arrow keys, like a system slider.
 struct GradientSlider: View {
+    let label: String
     let gradient: Gradient
     @Binding var value: Double
+    var valueText: (Double) -> String = { "\(Int(($0 * 100).rounded()))%" }
+    private static let step = 1.0 / 36
 
     var body: some View {
         GeometryReader { geo in
@@ -166,5 +178,22 @@ struct GradientSlider: View {
             })
         }
         .frame(height: 16)
+        .focusable()
+        .onKeyPress(.leftArrow) { nudge(-Self.step); return .handled }
+        .onKeyPress(.rightArrow) { nudge(Self.step); return .handled }
+        .accessibilityElement()
+        .accessibilityLabel(label)
+        .accessibilityValue(valueText(value))
+        .accessibilityAdjustableAction { direction in
+            switch direction {
+            case .increment: nudge(Self.step)
+            case .decrement: nudge(-Self.step)
+            @unknown default: break
+            }
+        }
+    }
+
+    private func nudge(_ delta: Double) {
+        value = max(0, min(1, value + delta))
     }
 }

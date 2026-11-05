@@ -142,6 +142,8 @@ public final class RemoteControlCoordinator: ObservableObject {
     private var shouldObserveState = false
     private var lastBroadcastIdentity = ""
     private var lastBroadcastAt: TimeInterval = 0
+    /// The latest state, sent when a throttled change's window ends.
+    private var trailingBroadcast: Task<Void, Never>?
     
     public init(ble: LightBLEManager) {
         self.ble = ble
@@ -285,9 +287,11 @@ public final class RemoteControlCoordinator: ObservableObject {
             }
             return try? RemoteMessage(type: .stateUpdate, content: stateForClients())
 
-        // Light commands - delegate to BLE manager
+        // Light commands - delegate to BLE manager. Its reply is the bare
+        // snapshot; send the full state so the phone keeps its lamp and lightbar rows.
         default:
-            return ble?.handleRemoteCommand(message)
+            guard let reply = ble?.handleRemoteCommand(message) else { return nil }
+            return reply.type == .stateUpdate ? try? RemoteMessage(type: .stateUpdate, content: stateForClients()) : reply
         }
     }
     
@@ -303,6 +307,8 @@ public final class RemoteControlCoordinator: ObservableObject {
     public func stop() {
         shouldObserveState = false
         stateObservationTask?.cancel()
+        trailingBroadcast?.cancel()
+        trailingBroadcast = nil
         server.stop()
     }
     
@@ -326,7 +332,9 @@ public final class RemoteControlCoordinator: ObservableObject {
                 _ = ble.effectID
                 _ = ble.lampEffect
                 
-                let state = ble.createStateSnapshot()
+                // The full state, as publishState sends: the bare snapshot has no
+                // lamp or lightbar fields, so each colour change hid the phone's lightbar controls.
+                let state = self.stateForClients()
                 let identity = RemoteStateBroadcastPolicy.significantIdentity(
                     isConnected: state.isConnected,
                     isOn: state.isOn,
@@ -343,7 +351,25 @@ public final class RemoteControlCoordinator: ObservableObject {
                 ) {
                     self.lastBroadcastIdentity = identity
                     self.lastBroadcastAt = now
+                    self.trailingBroadcast?.cancel()
+                    self.trailingBroadcast = nil
                     self.server.broadcastStateUpdate(state)
+                } else if self.trailingBroadcast == nil {
+                    // Inside the throttle window (a colour drag): the last value
+                    // must still reach the phone, or it shows a stale colour.
+                    let wait = RemoteStateBroadcastPolicy.minInterval - (now - self.lastBroadcastAt)
+                    self.trailingBroadcast = Task { @MainActor [weak self] in
+                        try? await Task.sleep(nanoseconds: UInt64(max(0, wait) * 1e9))
+                        guard let self, !Task.isCancelled, self.shouldObserveState else { return }
+                        self.trailingBroadcast = nil
+                        let latest = self.stateForClients()
+                        self.lastBroadcastAt = ProcessInfo.processInfo.systemUptime
+                        self.lastBroadcastIdentity = RemoteStateBroadcastPolicy.significantIdentity(
+                            isConnected: latest.isConnected, isOn: latest.isOn, syncMode: latest.syncMode,
+                            brightness: latest.brightness, effectID: latest.effectID
+                        )
+                        self.server.broadcastStateUpdate(latest)
+                    }
                 }
             } onChange: { [weak self] in
                 Task { @MainActor in

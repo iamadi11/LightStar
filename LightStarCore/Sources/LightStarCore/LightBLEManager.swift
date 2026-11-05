@@ -308,6 +308,8 @@ public final class LightBLEManager: NSObject {
     @ObservationIgnored var liveColorShown: (hue: Double, saturation: Double, at: Double)?
     @ObservationIgnored var liveColorPending: (hue: Double, saturation: Double)?
     @ObservationIgnored var liveColorTrailing: Task<Void, Never>?
+    /// Records a colour into history once it has settled (see `setHue`).
+    @ObservationIgnored var historyDebounce: Task<Void, Never>?
     public let screenSampler = ScreenColorSampler()
     /// Screen zones → lightbar, off the main thread.
     public let lampPipe = LampZonePipe()
