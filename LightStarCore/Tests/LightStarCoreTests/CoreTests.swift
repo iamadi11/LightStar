@@ -1435,3 +1435,34 @@ final class LightbarRemoteTests: XCTestCase {
         XCTAssertEqual(decoded.lightbar, bar)
     }
 }
+
+final class FocusedDisplayTests: XCTestCase {
+    let displays: [(id: CGDirectDisplayID, frame: CGRect)] = [
+        (1, CGRect(x: 0, y: 0, width: 1512, height: 982)),        // MacBook
+        (2, CGRect(x: 1512, y: -200, width: 2560, height: 1440)), // monitor on the right
+    ]
+
+    func testWindowGoesToTheDisplayHoldingMostOfIt() {
+        XCTAssertEqual(FocusedDisplay.display(for: CGRect(x: 100, y: 100, width: 800, height: 600), displays: displays), 1)
+        XCTAssertEqual(FocusedDisplay.display(for: CGRect(x: 1400, y: 0, width: 1200, height: 800), displays: displays), 2,
+                       "straddling: most of it is on the monitor")
+        XCTAssertNil(FocusedDisplay.display(for: CGRect(x: -5000, y: 0, width: 100, height: 100), displays: displays))
+    }
+
+    func testSwitchesOnlyAfterFocusHolds() {
+        var d = FocusDebouncer(hold: 1.5)
+        XCTAssertNil(d.next(2, current: 1, now: 0))
+        XCTAssertNil(d.next(2, current: 1, now: 1.0))
+        XCTAssertEqual(d.next(2, current: 1, now: 1.6), 2)
+        XCTAssertNil(d.next(2, current: 2, now: 1.7), "already there")
+    }
+
+    func testAQuickVisitToTheOtherScreenDoesNotSwitch() {
+        var d = FocusDebouncer(hold: 1.5)
+        XCTAssertNil(d.next(2, current: 1, now: 0))
+        XCTAssertNil(d.next(1, current: 1, now: 0.8), "back before the hold")
+        XCTAssertNil(d.next(2, current: 1, now: 1.0))
+        XCTAssertNil(d.next(2, current: 1, now: 2.0), "the hold restarts")
+        XCTAssertEqual(d.next(2, current: 1, now: 2.6), 2)
+    }
+}

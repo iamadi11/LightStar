@@ -153,6 +153,8 @@ public final class LightBLEManager: NSObject {
     }
 
     // Display picker
+    var focusTimer: Timer?
+    var focusDebouncer = FocusDebouncer()
     public var availableDisplays: [(id: CGDirectDisplayID, name: String)] = []
     public var selectedDisplayID: CGDirectDisplayID? = nil {
         didSet {

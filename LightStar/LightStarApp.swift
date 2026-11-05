@@ -195,6 +195,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.remoteControl.publishState()
         }
         applyLampFollow(ble.outputTarget)
+        ble.startFollowingFocus()
     }
 
     func applicationWillTerminate(_ notification: Notification) {
