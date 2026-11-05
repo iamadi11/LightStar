@@ -7,7 +7,7 @@ import UIKit
 
 // MARK: - Command encoder (BC/55 protocol, confirmed via APK reverse-engineering 2026-08-26)
 // Frame: BC [cmd] [data_len] [data × data_len] 55
-// Service: FFF0  Write char: FFF3  Notify char: FFF4 (device never sends notifications)
+// Service: FFF0  Write char: FFF3  Notify char: FFF4 (replies once subscribed: BC0D timers, brightness, speed)
 
 public enum Cmd {
     // BC01: power
@@ -87,25 +87,22 @@ public enum Cmd {
         return [0xBC, 0x03, 0x02, UInt8(n >> 8), UInt8(n & 0xFF), 0x55]
     }
 
-    // BC0B: time sync — yr-2000, mo, day, hr, min, sec, weekday bitmask (bit0=Mon)
-    public static func timeSync(year: UInt8, month: UInt8, day: UInt8,
-                         hour: UInt8, minute: UInt8, second: UInt8, weekdayMask: UInt8) -> [UInt8] {
-        [0xBC, 0x0B, 0x07, year, month, day, hour, minute, second, weekdayMask, 0x55]
+    // BC0B: time sync, exactly as the OEM app sends it: 16-bit year, and the
+    // weekday (1=Mon…7=Sun) goes *after* the 0x55 trailer (TimerUtils.sendPhoneTime).
+    public static func timeSync(year: Int, month: UInt8, day: UInt8,
+                                hour: UInt8, minute: UInt8, second: UInt8, weekday: UInt8) -> [UInt8] {
+        let y = UInt16(max(0, min(Int(UInt16.max), year)))
+        return [0xBC, 0x0B, 0x07, UInt8(y >> 8), UInt8(y & 0xFF), month, day, hour, minute, second, 0x55, weekday]
     }
 
-    // BC0D: weekly firmware timer. Slot is the leading 0x01 seen in the APK capture.
-    // dayMask uses the same OEM bitmask as BC0B (bit0=Mon … bit6=Sun).
-    // Unused slots must be rewritten with enabled=false so a deleted Mac schedule
-    // cannot keep firing on the strip.
-    public static func weeklyTimer(slot: UInt8, powerOn: Bool, enabled: Bool,
-                            dayMask: UInt8, hour: UInt8, minute: UInt8) -> [UInt8] {
-        [0xBC, 0x0D, 0x06, slot, powerOn ? 0x01 : 0x00, enabled ? 0x01 : 0x00,
+    // BC0D: weekly firmware timer. The strip holds one power-on and one power-off
+    // timer; byte 3 is always 0x01 and byte 4 picks which (TimerFragment).
+    // dayMask uses the OEM bitmask (bit0=Mon … bit6=Sun).
+    public static func weeklyTimer(powerOn: Bool, enabled: Bool,
+                                   dayMask: UInt8, hour: UInt8, minute: UInt8) -> [UInt8] {
+        [0xBC, 0x0D, 0x06, 0x01, powerOn ? 0x01 : 0x00, enabled ? 0x01 : 0x00,
          dayMask, hour, minute, 0x55]
     }
-
-    /// Conservative BC0D slot cap. OEM captures used slot 0x01; unused slots
-    /// are rewritten disabled so deleted firmware schedules cannot keep firing.
-    public static let weeklyTimerSlotCount: UInt8 = 8
 
     // BC13: firmware animation scene 0x00–0xFF minus 0x3D/0x5B/0x96
     public static func animation(id: UInt8) -> [UInt8] {

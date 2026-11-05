@@ -33,16 +33,18 @@ Frame format: `BC [cmd] [data_len] [data × data_len] 55`. Invariant: `bytes[2] 
 | `0x07` | Effect direction |
 | `0x08` | Effect speed (1 byte; range unconfirmed vs hardware) |
 | `0x09` | Streaming colour |
-| `0x0B` | Time sync (auto on connect) |
-| `0x0D` | Weekly firmware timer |
+| `0x0B` | Time sync (auto on connect): 16-bit year, weekday 1=Mon…7=Sun **after** the `0x55` trailer |
+| `0x0D` | Firmware timer: one power-on + one power-off (byte 3 always `01`, byte 4 picks on/off) |
 | `0x0F` | Strip onboard mic |
 | `0x11` | Mic style 1–4 |
 | `0x12` | Mic sensitivity 0–255 |
 | `0x13` | Animation scene |
 
-GATT: advertised `0x2022`, service `FFF0`, write `FFF3` (Write + Write Without Response; OEM uses ATT Write Command / `withoutResponse`). Notify `FFF4` (never fires).
+GATT: advertised `0x2022`, service `FFF0`, write `FFF3` (Write + Write Without Response; OEM uses ATT Write Command / `withoutResponse`). Notify `FFF4` replies once subscribed: `BC0D` timer state after a `BC0C` query, and brightness (`05`), speed (`08`), mic sensitivity (`10`) reports.
 
-All BLE writes go through `BLEWriteCoalescer.enqueue()`. Dedup key is `bytes[1]`. Insertion-ordered, replace-in-place.
+All BLE writes go through `BLEWriteCoalescer.enqueue()`. Dedup key is `bytes[1]` (plus `bytes[4]` for `0x0D`, so the on- and off-timer both survive). Insertion-ordered, replace-in-place.
+
+The OEM app (MR Star 1.0.0, fully decompiled 2026-11-05) has no per-pixel or per-segment command. Phone-mic mode is `0x09` one colour every 200 ms; strip-mic patterns are drawn by the firmware.
 
 Hue LUT lives in `ColorMath.hueLUT` — do not regenerate casually.
 

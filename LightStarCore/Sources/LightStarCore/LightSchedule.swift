@@ -274,51 +274,38 @@ public enum ConnectAppearancePolicy: Sendable {
     }
 }
 
-/// Builds the full BC0D weekly-timer table, including disabled leftover slots.
+/// Builds the strip's two BC0D timers: one power-on, one power-off.
+/// The firmware has no more slots, so the first enabled firmware schedule of
+/// each kind wins; with none, that timer is written disabled so a deleted
+/// schedule cannot keep firing.
 public enum FirmwareTimerSync: Sendable {
     public static func frames(
         for schedules: [LightSchedule],
         calendar: Calendar = .current
     ) -> [[UInt8]] {
-        var frames: [[UInt8]] = []
-        var slot: UInt8 = 1
-        for schedule in schedules where schedule.firmwareTimerEnabled {
-            let hm = calendar.dateComponents([.hour, .minute], from: schedule.time)
-            let hour = UInt8(hm.hour ?? 0)
-            let minute = UInt8(hm.minute ?? 0)
-            let powerOn: Bool
-            switch schedule.action {
-            case .powerOn, .preset, .savedPreset: powerOn = true
-            case .powerOff: powerOn = false
+        [true, false].map { powerOn in
+            let schedule = schedules.first {
+                $0.firmwareTimerEnabled && $0.isEnabled && isPowerOn($0.action) == powerOn
             }
+            guard let schedule else {
+                return Cmd.weeklyTimer(powerOn: powerOn, enabled: false, dayMask: 0, hour: 0, minute: 0)
+            }
+            let hm = calendar.dateComponents([.hour, .minute], from: schedule.time)
             // Day byte is an OEM bitmask: bit0=Mon … bit6=Sun.
             var mask: UInt8 = 0
             for weekday in schedule.days {
                 mask |= UInt8(1 << ((weekday + 5) % 7))
             }
-            frames.append(Cmd.weeklyTimer(
-                slot: slot,
-                powerOn: powerOn,
-                enabled: schedule.isEnabled,
-                dayMask: mask,
-                hour: hour,
-                minute: minute
-            ))
-            slot &+= 1
-            if slot > Cmd.weeklyTimerSlotCount { break }
+            return Cmd.weeklyTimer(powerOn: powerOn, enabled: true, dayMask: mask,
+                                   hour: UInt8(hm.hour ?? 0), minute: UInt8(hm.minute ?? 0))
         }
-        while slot <= Cmd.weeklyTimerSlotCount {
-            frames.append(Cmd.weeklyTimer(
-                slot: slot,
-                powerOn: false,
-                enabled: false,
-                dayMask: 0,
-                hour: 0,
-                minute: 0
-            ))
-            slot &+= 1
+    }
+
+    private static func isPowerOn(_ action: LightSchedule.ScheduledAction) -> Bool {
+        switch action {
+        case .powerOn, .preset, .savedPreset: return true
+        case .powerOff: return false
         }
-        return frames
     }
 }
 

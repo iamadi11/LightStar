@@ -47,7 +47,7 @@ public extension LightBLEManager {
         Frame: BC [cmd] [data_len] [data × data_len] 55
         Transport: ATT Write-with-Response on FFF3
         Service: 0000FFF0-0000-1000-8000-00805F9B34FB
-        Notify:  0000FFF4-0000-1000-8000-00805F9B34FB (device never sends)
+        Notify:  0000FFF4-0000-1000-8000-00805F9B34FB (replies once subscribed)
         Scan UUID: 0x2022 (filterByte1=0x22 filterByte2=0x20)
 
         BC01 01 [00/01] 55                            — Power OFF / ON
@@ -136,14 +136,10 @@ public extension LightBLEManager {
         cal.timeZone = TimeZone.current
         let now = Date()
         let c = cal.dateComponents([.year, .month, .day, .hour, .minute, .second, .weekday], from: now)
-        let yr  = UInt8(max(0, min(255, (c.year ?? 2024) - 2000)))
-        let mo  = UInt8(c.month ?? 1)
-        let day = UInt8(c.day ?? 1)
-        let hr  = UInt8(c.hour ?? 0)
-        let mn  = UInt8(c.minute ?? 0)
-        let sc  = UInt8(c.second ?? 0)
-        // OEM bitmask: bit0=Mon…bit6=Sun. Calendar weekday: 1=Sun,2=Mon,…,7=Sat
-        let wd  = UInt8(1 << (((c.weekday ?? 1) + 5) % 7))
-        write(Cmd.timeSync(year: yr, month: mo, day: day, hour: hr, minute: mn, second: sc, weekdayMask: wd))
+        // OEM weekday: 1=Mon…7=Sun. Calendar weekday: 1=Sun,2=Mon,…,7=Sat
+        let wd = UInt8(((c.weekday ?? 1) + 5) % 7 + 1)
+        write(Cmd.timeSync(year: c.year ?? 2026, month: UInt8(c.month ?? 1), day: UInt8(c.day ?? 1),
+                           hour: UInt8(c.hour ?? 0), minute: UInt8(c.minute ?? 0),
+                           second: UInt8(c.second ?? 0), weekday: wd))
     }
 }
