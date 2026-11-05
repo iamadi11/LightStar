@@ -19,6 +19,8 @@ public struct WizLight: Equatable, Sendable, Identifiable {
     public var gradient: Bool?
     public var enabled: Bool
     public var connected: Bool
+    /// Where a plain bulb stands around the screen for screen sync.
+    public var side: LampGradient.Side = .whole
     public var id: String { mac }
     public var name: String {
         let kind = gradient == false ? "WiZ light" : "Lightbar"
@@ -104,6 +106,20 @@ public final class WizLampController {
         engine.setWhiteTone(tone)
     }
 
+    public func setSide(_ side: LampGradient.Side, for mac: String) {
+        engine.setSide(side, for: mac)
+    }
+
+    /// Mac asleep, locked, or on the screensaver: every WiZ light off until it's back.
+    public func setAway(_ away: Bool) {
+        engine.setAway(away)
+    }
+
+    /// Edge colours for plain bulbs while screen sync runs; nil when it stops.
+    public func streamSides(_ sides: [LampGradient.Side: WizRGB]?) {
+        engine.streamSides(sides)
+    }
+
     public func submit(_ update: YeelightMirrorUpdate) {
         if case .color = update { look = nil }
         engine.mirror(update)
@@ -170,6 +186,8 @@ private final class WizEngine: @unchecked Sendable {
     /// What the lights show when sync is not streaming to them.
     private var resting = WizPilot()
     private var streaming = false
+    private var sides: [LampGradient.Side: WizRGB]?
+    private var away = false
     private var whiteTone = UserDefaults.standard.object(forKey: WizLampController.whiteToneDefaultsKey) as? Double ?? 1
     private var lastSend = Date.distantPast
     /// Probes macOS let out during the current search.
@@ -206,6 +224,7 @@ private final class WizEngine: @unchecked Sendable {
             self.socket.close()
             self.links.removeAll()
             self.streaming = false
+            self.sides = nil
             self.desired = self.resting
             self.publishLights()
         }
@@ -230,6 +249,31 @@ private final class WizEngine: @unchecked Sendable {
         queue.async {
             self.whiteTone = tone
             self.resendAll()
+        }
+    }
+
+    func setSide(_ side: LampGradient.Side, for mac: String) {
+        queue.async {
+            LampGradient.setSide(side, for: mac)
+            self.publishLights()
+            self.resendAll()
+        }
+    }
+
+    func setAway(_ on: Bool) {
+        queue.async {
+            guard self.away != on else { return }
+            self.away = on
+            // Back from away: send power and colour again, whatever was sent before.
+            if !on { for mac in self.links.keys { self.links[mac]?.sent = WizPilot() } }
+            self.flush()
+        }
+    }
+
+    func streamSides(_ sides: [LampGradient.Side: WizRGB]?) {
+        queue.async {
+            self.sides = sides
+            if self.streaming { self.flush() }
         }
     }
 
@@ -385,7 +429,8 @@ private final class WizEngine: @unchecked Sendable {
         let on = enabled
         let lights = discovered.values.map { device in
             WizLight(mac: device.mac, host: device.host, gradient: links[device.mac]?.gradient,
-                     enabled: on.contains(device.mac), connected: links[device.mac] != nil)
+                     enabled: on.contains(device.mac), connected: links[device.mac] != nil,
+                     side: LampGradient.side(for: device.mac))
         }.sorted { $0.mac < $1.mac }
         handler?(.lights(lights))
     }
@@ -474,7 +519,13 @@ private final class WizEngine: @unchecked Sendable {
         }
         var sentAny = false
         for (mac, link) in links {
-            let messages = WizFlush.messages(desired: desired, sent: link.sent, layout: layout(for: link),
+            var want = desired
+            if away {
+                want.power = false
+            } else if streaming, link.gradient == false, let colour = sides?[LampGradient.side(for: mac)] {
+                want.mode = .color(colour)
+            }
+            let messages = WizFlush.messages(desired: want, sent: link.sent, layout: layout(for: link),
                                              mac: mac, gradientCapable: link.gradient ?? true, whiteTone: whiteTone)
             guard !messages.isEmpty else { continue }
             for (data, next) in messages {

@@ -18,6 +18,9 @@ struct WizLampSection: View {
     @AppStorage(LampGradient.musicStyleDefaultsKey) private var musicStyle = LampGradient.MusicStyle.meter
     @AppStorage(WizLampController.whiteToneDefaultsKey) private var whiteTone = 1.0
     @AppStorage(LampEffect.customColoursDefaultsKey) private var customColours = false
+    @AppStorage(LampGradient.dayWhiteDefaultsKey) private var dayWhite = false
+    @AppStorage(LampGradient.offWhenAwayDefaultsKey) private var offWhenAway = true
+    @AppStorage(BeatFlash.defaultsKey) private var beatFlash = true
     @State private var paletteColours: [Color] = []
 
     private var ready: Bool {
@@ -38,6 +41,17 @@ struct WizLampSection: View {
                     .accessibilityValue(whiteTone < 0.34 ? "Warm" : whiteTone > 0.66 ? "Cool" : "Neutral")
                 Text("Cool").font(.caption2).foregroundStyle(.secondary)
             }
+            Toggle("Day-cycle white", isOn: Binding(get: { dayWhite }, set: { on in
+                dayWhite = on
+                let colour = on ? LampGradient.dayWhite() : (ble.colorHue, ble.colorSat)
+                wizLamp.submit(.color(hue: colour.0, saturation: colour.1))
+            }))
+            .help("Instead of the strip's colour: cool white at midday, warm in the evening. Scenes, effects and sync still take over.")
+            Toggle("Turn off when the Mac sleeps or locks", isOn: Binding(get: { offWhenAway }, set: { on in
+                offWhenAway = on
+                if !on { wizLamp.setAway(false) }
+            }))
+            .help("Also while the screensaver runs. Comes back on when you return.")
 
             Toggle("Gradient sync", isOn: $gradientSync)
             Picker("Music", selection: $musicStyle) {
@@ -45,6 +59,9 @@ struct WizLampSection: View {
             }
             .pickerStyle(.segmented)
             .disabled(!gradientSync)
+            Toggle("Beat flash", isOn: $beatFlash)
+                .help("Music sync: a white flash runs up the lightbar on each beat.")
+                .disabled(!gradientSync)
             Picker("Orientation", selection: $orientation) {
                 ForEach(LampGradient.Orientation.allCases) { Text($0.title).tag($0) }
             }
@@ -53,6 +70,8 @@ struct WizLampSection: View {
             Toggle(orientation.flipTitle, isOn: $flipped)
                 .disabled(!gradientSync)
             LightbarFitControls(orientation: orientation)
+                .disabled(!gradientSync)
+            LightbarProfilesSection()
                 .disabled(!gradientSync)
             Text(orientationHint)
                 .font(.caption)
@@ -128,19 +147,33 @@ struct WizLampSection: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text("WiZ lights on this network").font(.caption).foregroundStyle(.secondary)
                 ForEach(wizLamp.lights) { light in
-                    Toggle(isOn: Binding(get: { light.enabled }, set: { wizLamp.setLight(light.mac, enabled: $0) })) {
-                        HStack(spacing: 6) {
-                            Text(light.name)
-                            if light.enabled {
-                                Text(light.connected ? "Connected" : "Looking…")
-                                    .font(.caption2)
-                                    .foregroundStyle(.secondary)
+                    HStack(spacing: 8) {
+                        Toggle(isOn: Binding(get: { light.enabled }, set: { wizLamp.setLight(light.mac, enabled: $0) })) {
+                            HStack(spacing: 6) {
+                                Text(light.name)
+                                if light.enabled {
+                                    Text(light.connected ? "Connected" : "Looking…")
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                }
                             }
                         }
+                        .toggleStyle(.checkbox)
+                        if light.gradient == false {
+                            Spacer(minLength: 6)
+                            Picker("Position of \(light.name)", selection: Binding(
+                                get: { light.side },
+                                set: { wizLamp.setSide($0, for: light.mac) }
+                            )) {
+                                ForEach(LampGradient.Side.allCases) { Text($0.title).tag($0) }
+                            }
+                            .labelsHidden()
+                            .controlSize(.small)
+                            .fixedSize()
+                        }
                     }
-                    .toggleStyle(.checkbox)
                 }
-                Text("Bulbs without segments show one colour: the average of the lightbar's.")
+                Text("Bulbs without segments show one colour. In screen sync, a bulb placed beside the screen shows that edge; otherwise the average of the lightbar's.")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
@@ -267,6 +300,7 @@ struct LightbarFitControls: View {
     @AppStorage(LampGradient.edgeDefaultsKey) private var edge = LampGradient.Edge.whole
     @AppStorage(LampGradient.edgeDepthDefaultsKey) private var edgeDepth = 0.25
     @AppStorage(LampGradient.ignoreBarsDefaultsKey) private var ignoreBars = true
+    @AppStorage(LampGradient.colourBoostDefaultsKey) private var colourBoost = 0.0
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -293,6 +327,20 @@ struct LightbarFitControls: View {
             Toggle("Ignore black bars", isOn: $ignoreBars)
                 .font(.caption)
                 .help("Films and 4:3 video: map the lightbar to the picture, not the black bars around it.")
+            HStack(spacing: 6) {
+                Text("Colour boost")
+                    .font(.caption)
+                    .frame(width: 78, alignment: .leading)
+                Slider(value: $colourBoost, in: 0...1)
+                    .controlSize(.small)
+                    .help("Makes dull screen colours more vivid on the lightbar. Whites stay white.")
+                    .accessibilityLabel("Colour boost")
+                    .accessibilityValue("\(Int((colourBoost * 100).rounded()))%")
+                Text(colourBoost == 0 ? "Off" : "\(Int((colourBoost * 100).rounded()))%")
+                    .font(.caption2.monospacedDigit())
+                    .foregroundStyle(.secondary)
+                    .frame(width: 34, alignment: .trailing)
+            }
             trimRow(orientation == .vertical ? "Off at bottom" : "Off at left",
                     value: Binding(get: { trimStart },
                                    set: { trimStart = min($0, 1 - LampGradient.minLit - trimEnd) }))
@@ -325,5 +373,61 @@ struct LightbarFitControls: View {
                 .foregroundStyle(.secondary)
                 .frame(width: 34, alignment: .trailing)
         }
+    }
+}
+
+/// The lightbar adapts screen sync to the app in front: films skip black bars,
+/// games react instantly over the whole screen, coding gets a steady white.
+/// Each recent app can be set by hand.
+struct LightbarProfilesSection: View {
+    @AppStorage(LightbarProfile.enabledDefaultsKey) private var enabled = true
+    @AppStorage(LightbarProfile.activeDefaultsKey) private var active = LightbarProfile.normal.rawValue
+    @State private var recent: [String] = []
+    @State private var overrides: [String: LightbarProfile] = [:]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Toggle("Match the app in front", isOn: $enabled)
+                .help("While screen sync runs. Video: skip black bars. Game: whole screen, instant. Work light: steady day-cycle white.")
+            if enabled, !recent.isEmpty {
+                ForEach(recent, id: \.self) { id in
+                    HStack(spacing: 6) {
+                        Text(Self.name(of: id))
+                            .font(.caption)
+                            .lineLimit(1)
+                        Spacer(minLength: 6)
+                        Picker("Profile for \(Self.name(of: id))", selection: Binding(
+                            get: { overrides[id] },
+                            set: { LightbarProfile.setOverride($0, for: id); overrides = LightbarProfile.overrides }
+                        )) {
+                            Text("Auto (\(LightbarProfile.detect(bundleID: id, category: Self.category(of: id)).title))")
+                                .tag(LightbarProfile?.none)
+                            ForEach(LightbarProfile.allCases) { Text($0.title).tag(Optional($0)) }
+                        }
+                        .labelsHidden()
+                        .controlSize(.small)
+                        .fixedSize()
+                    }
+                }
+            } else if enabled {
+                Text("Apps you use during screen sync show up here.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .onAppear {
+            recent = UserDefaults.standard.stringArray(forKey: LightbarProfile.recentDefaultsKey) ?? []
+            overrides = LightbarProfile.overrides
+        }
+    }
+
+    static func name(of bundleID: String) -> String {
+        guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) else { return bundleID }
+        return FileManager.default.displayName(atPath: url.path).replacingOccurrences(of: ".app", with: "")
+    }
+
+    static func category(of bundleID: String) -> String? {
+        NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID)
+            .flatMap { Bundle(url: $0)?.infoDictionary?["LSApplicationCategoryType"] as? String }
     }
 }

@@ -143,14 +143,16 @@ public enum LampGradient {
     public static let edgeDepthRange = 0.1...0.5
 
     public static var edge: Edge {
-        UserDefaults.standard.string(forKey: edgeDefaultsKey).flatMap(Edge.init) ?? .whole
+        if LightbarProfile.active == .game { return .whole }
+        return UserDefaults.standard.string(forKey: edgeDefaultsKey).flatMap(Edge.init) ?? .whole
     }
     public static var edgeDepth: Double {
         let d = UserDefaults.standard.object(forKey: edgeDepthDefaultsKey) as? Double ?? 0.25
         return min(edgeDepthRange.upperBound, max(edgeDepthRange.lowerBound, d.isFinite ? d : 0.25))
     }
     public static var ignoreBars: Bool {
-        UserDefaults.standard.object(forKey: ignoreBarsDefaultsKey) as? Bool ?? true
+        if LightbarProfile.active == .video { return true }
+        return UserDefaults.standard.object(forKey: ignoreBarsDefaultsKey) as? Bool ?? true
     }
 
     /// Black bars around the picture (a film's letterbox or a 4:3 pillarbox), in pixels.
@@ -368,5 +370,135 @@ public struct VUMeter: Sendable {
         let input = max(0, min(1, max(bands.bass, bands.rms * 1.5)))
         level = input >= level ? input : max(input, level * release)
         return level
+    }
+}
+
+// MARK: - Bulb sides, colour boost, day white
+
+public extension LampGradient {
+    /// Where a plain WiZ bulb stands around the screen. It shows that edge's
+    /// colour during screen sync; `whole` keeps the lightbar's average.
+    enum Side: String, CaseIterable, Sendable, Identifiable {
+        case whole, left, right, top, bottom
+        public var id: String { rawValue }
+        public var title: String {
+            switch self {
+            case .whole: return "Whole screen"
+            case .left: return "Left of screen"
+            case .right: return "Right of screen"
+            case .top: return "Above screen"
+            case .bottom: return "Below screen"
+            }
+        }
+    }
+    /// `[mac: Side]` for plain bulbs.
+    static let sidesDefaultsKey = "wizLightSides"
+
+    static func side(for mac: String) -> Side {
+        let stored = UserDefaults.standard.dictionary(forKey: sidesDefaultsKey) as? [String: String]
+        return stored?[mac].flatMap(Side.init) ?? .whole
+    }
+
+    static func setSide(_ side: Side, for mac: String) {
+        var stored = UserDefaults.standard.dictionary(forKey: sidesDefaultsKey) as? [String: String] ?? [:]
+        stored[mac] = side == .whole ? nil : side.rawValue
+        UserDefaults.standard.set(stored, forKey: sidesDefaultsKey)
+    }
+
+    /// One colour per edge of the picture (left, right, top, bottom), read
+    /// the same way as a lightbar zone at that edge.
+    static func sideColours(
+        bgra: UnsafePointer<UInt8>, width: Int, height: Int, bytesPerRow: Int,
+        depth: Double = 0.25, bars: Bars = .none, followBrightness: Bool = true
+    ) -> [Side: WizRGB] {
+        let reads: [(Side, Orientation, Edge)] = [
+            (.left, .vertical, .first), (.right, .vertical, .second),
+            (.top, .horizontal, .first), (.bottom, .horizontal, .second),
+        ]
+        var out: [Side: WizRGB] = [:]
+        for (side, orientation, edge) in reads {
+            out[side] = screenZones(bgra: bgra, width: width, height: height, bytesPerRow: bytesPerRow, count: 1,
+                                    orientation: orientation, followBrightness: followBrightness,
+                                    edge: edge, depth: depth, bars: bars).first ?? .off
+        }
+        return out
+    }
+
+    /// 0 (screen colours as they are) … 1 (much more vivid).
+    static let colourBoostDefaultsKey = "lightbarColourBoost"
+    static var colourBoost: Double {
+        let v = UserDefaults.standard.double(forKey: colourBoostDefaultsKey)
+        return v.isFinite ? max(0, min(1, v)) : 0
+    }
+
+    /// Pushes saturation toward full and keeps hue and peak brightness. Greys
+    /// and near-whites are left alone, so white light doesn't pick up a tint.
+    static func boosted(_ zones: [WizRGB], by amount: Double) -> [WizRGB] {
+        let a = max(0, min(1, amount.isFinite ? amount : 0))
+        guard a > 0 else { return zones }
+        return zones.map { c in
+            let hi = max(c.r, c.g, c.b), lo = min(c.r, c.g, c.b)
+            guard hi > 0 else { return c }
+            let s = Double(hi - lo) / Double(hi)
+            guard s > 0.1 else { return c }
+            let k = (1 - pow(1 - s, 1 + 2 * a)) / s
+            func channel(_ v: Int) -> Int { Int((Double(hi) - Double(hi - v) * k).rounded()) }
+            return WizRGB(r: channel(c.r), g: channel(c.g), b: channel(c.b))
+        }
+    }
+
+    /// Lightbar shows day-cycle white instead of the strip's colour.
+    static let dayWhiteDefaultsKey = "lightbarDayWhite"
+    static var dayWhiteEnabled: Bool { UserDefaults.standard.bool(forKey: dayWhiteDefaultsKey) }
+
+    /// Cool white at midday, warm amber in the evening and at night (2700–6500 K).
+    static func dayWhite(at date: Date = .now) -> (hue: Double, saturation: Double) {
+        let (h, s) = ColorMath.kelvinToHS(2700 + 3800 * ColorMath.circadianCCTValue(for: date))
+        return (h, s)
+    }
+
+    /// Lightbar (and other WiZ lights) go dark while the Mac sleeps, locks,
+    /// or shows the screensaver, and come back after.
+    static let offWhenAwayDefaultsKey = "lightbarOffWhenAway"
+    static var offWhenAway: Bool {
+        UserDefaults.standard.object(forKey: offWhenAwayDefaultsKey) as? Bool ?? true
+    }
+}
+
+/// A white flash that runs up the lightbar from the base on each beat, over
+/// the music frame. Pure function of time, like the effects.
+public struct BeatFlash: Sendable {
+    public static let defaultsKey = "lightbarBeatFlash"
+    public static var enabled: Bool { UserDefaults.standard.object(forKey: defaultsKey) as? Bool ?? true }
+
+    /// Seconds for a flash to cross the bar.
+    public var duration = 0.45
+    /// Beats closer than this don't start another flash.
+    public var minGap = 0.15
+    private var starts: [Double] = []
+
+    public init() {}
+
+    public mutating func beat(at time: Double) {
+        if let last = starts.last, time - last < minGap { return }
+        starts = Array((starts + [time]).suffix(3))
+    }
+
+    public mutating func apply(_ frame: [WizRGB], at time: Double) -> [WizRGB] {
+        starts.removeAll { time - $0 > duration }
+        guard !starts.isEmpty, !frame.isEmpty else { return frame }
+        let n = Double(frame.count)
+        let tail = max(1.5, n / 5)
+        return frame.enumerated().map { i, c in
+            let glow = starts.map { start -> Double in
+                let t = (time - start) / duration
+                let behind = t * (n + tail) - Double(i)
+                guard behind >= 0, behind < tail else { return 0 }
+                return (1 - behind / tail) * (1 - t * 0.5)
+            }.max() ?? 0
+            guard glow > 0 else { return c }
+            func mix(_ v: Int) -> Int { Int((Double(v) + (255 - Double(v)) * glow).rounded()) }
+            return WizRGB(r: mix(c.r), g: mix(c.g), b: mix(c.b))
+        }
     }
 }

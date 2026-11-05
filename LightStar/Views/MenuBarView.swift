@@ -465,6 +465,9 @@ struct SyncControlView: View {
     @AppStorage(LampGradient.flippedDefaultsKey) private var flipped = false
     @AppStorage(LampGradient.musicStyleDefaultsKey) private var musicStyle = LampGradient.MusicStyle.meter
     @AppStorage(FocusedDisplay.followDefaultsKey) private var followFocus = true
+    @AppStorage(BeatFlash.defaultsKey) private var beatFlash = true
+    @AppStorage(LightbarProfile.enabledDefaultsKey) private var matchApp = true
+    @AppStorage(LightbarProfile.activeDefaultsKey) private var activeProfile = LightbarProfile.normal.rawValue
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -572,12 +575,18 @@ struct SyncControlView: View {
                 .foregroundStyle(.secondary)
 
             if ble.syncMode == .audio, ble.outputTarget.sendsToLightbar, gradientSync {
-                Picker("Lightbar music style", selection: $musicStyle) {
-                    ForEach(LampGradient.MusicStyle.allCases) { Text($0.title).tag($0) }
+                HStack(spacing: 8) {
+                    Picker("Lightbar music style", selection: $musicStyle) {
+                        ForEach(LampGradient.MusicStyle.allCases) { Text($0.title).tag($0) }
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.segmented)
+                    .controlSize(.small)
+                    .fixedSize()
+                    Toggle("Beat flash", isOn: $beatFlash)
+                        .toggleStyle(.checkbox)
+                        .font(.caption)
                 }
-                .labelsHidden()
-                .pickerStyle(.segmented)
-                .controlSize(.small)
             }
 
             if ble.isSyncingVideo, ble.outputTarget.sendsToLightbar, gradientSync {
@@ -595,6 +604,11 @@ struct SyncControlView: View {
                         .font(.caption)
                 }
                 LightbarFitControls(orientation: orientation)
+                Toggle(matchApp ? "Match the app in front · \(LightbarProfile(rawValue: activeProfile)?.title ?? "Normal")"
+                                : "Match the app in front", isOn: $matchApp)
+                    .toggleStyle(.checkbox)
+                    .font(.caption)
+                    .help("Video: skip black bars. Game: whole screen, instant. Work light: steady white for coding. Set apps in Settings → Lightbar.")
             }
 
             if ble.isSyncingVideo {

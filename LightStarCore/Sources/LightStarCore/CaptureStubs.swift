@@ -77,6 +77,7 @@ public final class ScreenColorSampler: NSObject {
     public static func availableDisplays() async -> [(id: CGDirectDisplayID, name: String)] { [] }
     public func getDiagnostics() -> CaptureProviderDiagnostics { CaptureProviderDiagnostics() }
     public func resetProtectedContentDetection() {}
+    public func lampSides() -> [LampGradient.Side: WizRGB] { [:] }
 }
 
 @MainActor

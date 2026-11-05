@@ -39,6 +39,8 @@ public final class ScreenCaptureKitProvider: NSObject, ScreenFrameProvider {
 
     /// Lightbar zones of the latest frame under the current settings.
     public func currentLampZones() -> [WizRGB] { lampFrame.zones() }
+    /// Edge colours of the latest frame, for WiZ bulbs placed around the screen.
+    public func currentLampSides() -> [LampGradient.Side: WizRGB] { lampFrame.sides() }
     
     @MainActor
     public static func availableDisplays() async -> [(id: CGDirectDisplayID, name: String)] {
@@ -199,6 +201,21 @@ final class LampFrameStore: @unchecked Sendable {
 
     func clear() {
         lock.lock(); bytes = []; lock.unlock()
+    }
+
+    /// Edge colours of the latest frame, inside the bars the lightbar is skipping.
+    func sides() -> [LampGradient.Side: WizRGB] {
+        lock.lock()
+        let (b, w, h, bpr, frameBars) = (bytes, width, height, bytesPerRow, bars.current)
+        lock.unlock()
+        guard !b.isEmpty else { return [:] }
+        return b.withUnsafeBufferPointer {
+            LampGradient.sideColours(
+                bgra: $0.baseAddress!, width: w, height: h, bytesPerRow: bpr,
+                depth: LampGradient.edgeDepth, bars: LampGradient.ignoreBars ? frameBars : .none,
+                followBrightness: UserDefaults.standard.bool(forKey: "videoSyncBrightness")
+            )
+        }
     }
 
     /// Zones of the latest frame under the current lightbar settings.

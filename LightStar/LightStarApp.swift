@@ -196,6 +196,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         applyLampFollow(ble.outputTarget)
         ble.startFollowingFocus()
+        startDayWhiteTimer()
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -245,6 +246,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         ble.onLampMirror = { [weak self] update in
             self?.mirrorToLamps(update)
         }
+        ble.onLampSides = { [weak self] sides in
+            self?.wizLamp.streamSides(sides)
+        }
         let push = { [weak self] in
             guard let self else { return }
             let updates: [YeelightMirrorUpdate] = [
@@ -272,8 +276,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             homeKitLamp.submit(update)
         }
         if ble.outputTarget.sendsToLightbar {
-            wizLamp.submit(update)
+            if case .color = update, LampGradient.dayWhiteEnabled {
+                let white = LampGradient.dayWhite()
+                wizLamp.submit(.color(hue: white.hue, saturation: white.saturation))
+            } else {
+                wizLamp.submit(update)
+            }
         }
+    }
+
+    /// Day-cycle white drifts through the day; a scene or effect keeps the bar.
+    private func startDayWhiteTimer() {
+        let t = Timer(timeInterval: 60, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                guard let self, LampGradient.dayWhiteEnabled, self.ble.outputTarget.sendsToLightbar,
+                      self.wizLamp.look == nil, self.ble.lampEffect == nil else { return }
+                let white = LampGradient.dayWhite()
+                self.wizLamp.submit(.color(hue: white.hue, saturation: white.saturation))
+            }
+        }
+        RunLoop.main.add(t, forMode: .common)
     }
 
     /// Each lamp runs only while it is a chosen light.
@@ -670,6 +692,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // Carbon RegisterEventHotKey needs no Accessibility permission.
 
     private var hotKeyRef2: EventHotKeyRef?
+    private var awayReasons: Set<String> = []
 
     private func setupGlobalHotKey() {
         guard hotKeyRef == nil else { return }
@@ -745,11 +768,40 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
         nc.addObserver(forName: NSWorkspace.screensDidSleepNotification, object: nil, queue: .main) { [weak self] _ in
-            Task { @MainActor in self?.ble.pauseScreenSync() }
+            Task { @MainActor in
+                self?.ble.pauseScreenSync()
+                self?.setAway("screens", true)
+            }
         }
         nc.addObserver(forName: NSWorkspace.screensDidWakeNotification, object: nil, queue: .main) { [weak self] _ in
-            Task { @MainActor in self?.ble.resumeScreenSync() }
+            Task { @MainActor in
+                self?.ble.resumeScreenSync()
+                self?.setAway("screens", false)
+            }
         }
+        nc.addObserver(forName: NSWorkspace.willSleepNotification, object: nil, queue: .main) { [weak self] _ in
+            Task { @MainActor in self?.setAway("sleep", true) }
+        }
+        nc.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
+            Task { @MainActor in self?.setAway("sleep", false) }
+        }
+        let dnc = DistributedNotificationCenter.default()
+        let away: [(String, String, Bool)] = [
+            ("com.apple.screenIsLocked", "lock", true), ("com.apple.screenIsUnlocked", "lock", false),
+            ("com.apple.screensaver.didstart", "saver", true), ("com.apple.screensaver.didstop", "saver", false),
+        ]
+        for (name, reason, on) in away {
+            dnc.addObserver(forName: Notification.Name(name), object: nil, queue: .main) { [weak self] _ in
+                Task { @MainActor in self?.setAway(reason, on) }
+            }
+        }
+    }
+
+    /// WiZ lights stay dark while any reason holds (screens off, asleep,
+    /// locked, screensaver), so unlocking with the screens still off doesn't wake them.
+    private func setAway(_ reason: String, _ on: Bool) {
+        if on { awayReasons.insert(reason) } else { awayReasons.remove(reason) }
+        wizLamp.setAway(LampGradient.offWhenAway && !awayReasons.isEmpty)
     }
 }
 
