@@ -321,6 +321,7 @@ public extension LightBLEManager {
             self.reconcileBrowserHardwareAcceleration()
 #endif
         }
+        syncLampPipeSettings()
         // Repaints after a settings change and black frames the DRM guard
         // lets through; lit frames reach the pipe from the capture queue.
         screenSampler.onZones = { [weak self] zones in
@@ -464,16 +465,24 @@ public extension LightBLEManager {
 
     private func trackLampPipeSettings() {
         withObservationTracking {
-            let active = isSyncingVideo && isOn && sendsLampGradient
-            let responsiveness = syncResponsiveness, brightness = self.brightness
-            lampPipe.update {
-                $0.active = active
-                $0.responsiveness = responsiveness
-                $0.brightness = brightness
-            }
+            syncLampPipeSettings()
             _ = allLights
         } onChange: {
             Task { @MainActor [weak self] in self?.trackLampPipeSettings() }
+        }
+    }
+
+    /// Also called when screen sync's callbacks are set up. Changing display
+    /// (Follow the active screen) restarts capture with the same mode: the
+    /// teardown turns the pipe off and no observed value changes, so without
+    /// this the lightbar fell back to the strip's single mirrored colour.
+    func syncLampPipeSettings() {
+        let active = isSyncingVideo && isOn && sendsLampGradient
+        let responsiveness = syncResponsiveness, brightness = self.brightness
+        lampPipe.update {
+            $0.active = active
+            $0.responsiveness = responsiveness
+            $0.brightness = brightness
         }
     }
 

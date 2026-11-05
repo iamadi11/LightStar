@@ -1,6 +1,7 @@
 import Foundation
 
-/// How the lightbar treats screen sync for the app in front.
+/// How the lightbar tunes screen sync for the app in front. Every profile
+/// keeps the screen gradient; none replaces it with a single colour.
 public enum LightbarProfile: String, CaseIterable, Sendable, Identifiable {
     /// The user's own lightbar settings.
     case normal
@@ -8,8 +9,6 @@ public enum LightbarProfile: String, CaseIterable, Sendable, Identifiable {
     case video
     /// Games: whole screen, no easing, so hits and flashes land at once.
     case game
-    /// Coding and terminals: steady day-cycle white instead of dark editor colours.
-    case work
 
     public var id: String { rawValue }
     public var title: String {
@@ -17,7 +16,6 @@ public enum LightbarProfile: String, CaseIterable, Sendable, Identifiable {
         case .normal: return "Normal"
         case .video: return "Video"
         case .game: return "Game"
-        case .work: return "Work light"
         }
     }
 
@@ -51,12 +49,6 @@ public enum LightbarProfile: String, CaseIterable, Sendable, Identifiable {
         "com.apple.TV", "com.apple.QuickTimePlayerX", "org.videolan.vlc", "com.colliderli.iina",
         "io.mpv", "com.firecore.infuse", "tv.plex.desktop", "com.netflix.Netflix",
     ]
-    static let workApps: Set<String> = [
-        "com.apple.dt.Xcode", "com.microsoft.VSCode", "com.todesktop.230313mzl4w4u92", "com.apple.Terminal",
-        "com.googlecode.iterm2", "dev.warp.Warp-Stable", "dev.zed.Zed", "com.sublimetext.4",
-        "com.mitchellh.ghostty",
-    ]
-
     /// Built-in guess from the bundle ID and the app's declared category
     /// (`LSApplicationCategoryType`). Browsers stay normal: they play films
     /// and show pages alike.
@@ -64,8 +56,6 @@ public enum LightbarProfile: String, CaseIterable, Sendable, Identifiable {
         let category = category ?? ""
         if videoApps.contains(bundleID) || category == "public.app-category.video" { return .video }
         if category.hasSuffix("games") { return .game }
-        if workApps.contains(bundleID) || bundleID.hasPrefix("com.jetbrains.")
-            || category == "public.app-category.developer-tools" { return .work }
         return .normal
     }
 
