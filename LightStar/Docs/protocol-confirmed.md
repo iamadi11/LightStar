@@ -99,18 +99,18 @@ BC 0C 01 01 55
 ```
 Sent after BC0B. Likely commits the schedule write.
 
-### BC0F — Mic-Reactive Mode Toggle
+### BC0F — Strip Mic On/Off
 ```
-BC 0F 01 01 55   ← enable
-BC 0F 00 01 55   ← disable (note: len byte = 00 here, not 01)
+BC 0F 01 01 55   ← strip's own mic on (OEM "External MIC")
+BC 0F 01 00 55   ← off (OEM switches to phone mic)
 ```
-Confirmed via PacketLogger capture during mic-sync session.
+Camera-verified 2026-11-05: with BC0F on, LEDs stay dark in a quiet room and light in changing colours with real music or claps near the controller box. A synthetic 70 Hz beat from a speaker across the desk did not trigger it, even at BC12 = 0xFF.
 
 ### BC11 — Mic Visualization Pattern
 ```
 BC 11 01 [pattern] 55
 ```
-Selects how amplitude maps to light behaviour. Use after BC0F enable.
+Selects how amplitude maps to light behaviour. Use after BC0F enable. Sent **without** BC0F on, it runs a colour animation by itself (camera: purple → green, moving).
 
 | pattern | Effect (camera-confirmed) |
 |---------|--------------------------|
@@ -149,6 +149,10 @@ V varies 0–1000. S always 1000. Camera-confirmed changes at 00/01/64.
 | BC03 | 0/256 payloads respond at 1-byte. Needs different frame structure or active mode. | Shelved |
 
 ---
+
+## Sweep of unused command bytes (2026-11-05)
+
+BC00, BC0A, BC0E, BC14–BC20 and BC50, each with payloads `00`, `01 00`, `01 01`, `01 FF`, `02 00 01`, sent from solid red. The user watched the whole strip: **no change of any kind**, including no partially dark or partially coloured sections. With both OEM apps decompiled, this controller has no per-LED or per-segment command over BLE.
 
 ## Unknown Commands (Captured, Purpose Unknown)
 

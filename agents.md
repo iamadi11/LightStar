@@ -44,7 +44,7 @@ GATT: advertised `0x2022`, service `FFF0`, write `FFF3` (Write + Write Without R
 
 All BLE writes go through `BLEWriteCoalescer.enqueue()`. Dedup key is `bytes[1]` (plus `bytes[4]` for `0x0D`, so the on- and off-timer both survive). Insertion-ordered, replace-in-place.
 
-The OEM app (MR Star 1.0.0, fully decompiled 2026-11-05) has no per-pixel or per-segment command. Phone-mic mode is `0x09` one colour every 200 ms; strip-mic patterns are drawn by the firmware.
+The OEM apps (MR Star 1.0.0 Android, Symphony Light 1.1.1 iOS, decompiled 2026-11-05) have no per-pixel or per-segment command, and a sweep of every unused command byte (0x00, 0x0A, 0x0E, 0x14–0x20, 0x50) changed nothing on the strip. Screen-matched colour around the monitor needs a different controller (e.g. WLED). Phone-mic mode is `0x09` one colour every 200 ms; strip-mic patterns are drawn by the firmware.
 
 Hue LUT lives in `ColorMath.hueLUT` — do not regenerate casually.
 
