@@ -57,12 +57,14 @@ public extension LightBLEManager {
         screenSampler.onFrameAnalysis = nil
         screenSampler.onDiagnosticsUpdate = nil
         screenSampler.capturesAudio = false
-        lampScreenZones = nil
-        lampCombinedLevel = nil
+        // Before handing the lightbar back, so no capture frame lands after it.
+        lampPipe.update { $0.active = false; $0.musicLevel = nil }
         onLampZones?(nil, nil)
         onLampSides?(nil)
         flashLevel = 0
         syncColor = nil
+        liveColorShown = nil
+        liveColorPending = nil
         protectedContentBanner = nil
         write(Cmd.stripMic(enabled: false))
         await systemAudio.stop()
@@ -150,13 +152,15 @@ public extension LightBLEManager {
         screenSampler.onFrameAnalysis = nil
         screenSampler.onDiagnosticsUpdate = nil
         screenSampler.capturesAudio = false
-        lampScreenZones = nil
-        lampCombinedLevel = nil
+        // Before handing the lightbar back, so no capture frame lands after it.
+        lampPipe.update { $0.active = false; $0.musicLevel = nil }
         onLampZones?(nil, nil)
         onLampSides?(nil)
         flashLevel = 0
         syncMode = .off
         syncColor = nil
+        liveColorShown = nil
+        liveColorPending = nil
         protectedContentBanner = nil
         syncCleanupTask = Task { await self.systemAudio.stop(); await self.micAudio.stop(); await self.screenSampler.stop() }
         reconcileBrowserHardwareAcceleration(syncMode: .off)
@@ -317,36 +321,11 @@ public extension LightBLEManager {
             self.reconcileBrowserHardwareAcceleration()
 #endif
         }
-        var zoneSmoother = LampZoneSmoother()
-        var sideSmoother = LampZoneSmoother()
-        var lastZones: Double = 0
+        // Repaints after a settings change and black frames the DRM guard
+        // lets through; lit frames reach the pipe from the capture queue.
         screenSampler.onZones = { [weak self] zones in
-            guard let self, self.isSyncingVideo, self.isOn, self.sendsLampGradient else { return }
-            let now = CACurrentMediaTime()
-            guard now - lastZones >= 1.0 / 30.0 else { return }
-            lastZones = now
-            let profile = LightbarProfile.active
-            // Games land every frame at once; other apps ease as the slider says.
-            let alpha = profile == .game ? 1 : self.syncResponsiveness
-            var target = LampGradient.boosted(zones, by: LampGradient.colourBoost)
-            if profile == .work {
-                let white = LampGradient.dayWhite()
-                target = Array(repeating: WizRGB(hue: white.hue, saturation: white.saturation), count: zones.count)
-            }
-            let smoothed = zoneSmoother.next(target, alpha: alpha)
-            self.lampScreenZones = smoothed
-            // Combined: the music sets the brightness, as it does for the strip.
-            let level = (self.syncMode == .combined ? self.lampCombinedLevel : nil) ?? self.brightness
-            self.onLampZones?(LampGradient.scaled(smoothed, by: level), .current)
-            // Plain bulbs placed around the screen show their edge; with the
-            // work light they take the lightbar's colour instead.
-            guard let onLampSides = self.onLampSides else { return }
-            let sides = profile == .work ? [:] : self.screenSampler.lampSides()
-            guard !sides.isEmpty else { onLampSides(nil); return }
-            let order = LampGradient.Side.allCases.filter { $0 != .whole }
-            let raw = LampGradient.boosted(order.map { sides[$0] ?? .off }, by: LampGradient.colourBoost)
-            let lit = LampGradient.scaled(sideSmoother.next(raw, alpha: alpha), by: level)
-            onLampSides(Dictionary(uniqueKeysWithValues: zip(order, lit)))
+            guard let self else { return }
+            self.lampPipe.push(zones, sides: { self.screenSampler.lampSides() })
         }
         screenSampler.onColor = { [weak self] h, s, v in
             guard let self, self.isSyncingVideo, self.isOn else { return }
@@ -372,7 +351,7 @@ public extension LightBLEManager {
             let boostedS = min(1.0, smoothS * 1.15)
             self.lastScreenH = smoothH
             self.lastScreenS = boostedS
-            self.syncColor = Color(hue: smoothH, saturation: boostedS, brightness: 1)
+            self.showLiveColor(hue: smoothH, saturation: boostedS)
             guard hueDelta > 0.008 || now - lastWrite > 0.5 else { return }
             if CombinedSyncMixer.screenShouldWriteHue(mode: self.syncMode, flashLevel: self.flashLevel) {
                 lastWrite = now
@@ -416,8 +395,8 @@ public extension LightBLEManager {
                 )
                 self.writeMirroredBrightness(level)
                 // The lightbar pulses too, between screen frames.
-                self.lampCombinedLevel = level
-                if self.sendsLampGradient, let zones = self.lampScreenZones {
+                self.lampPipe.update { $0.musicLevel = level }
+                if self.sendsLampGradient, let zones = self.lampPipe.easedZones {
                     self.onLampZones?(LampGradient.scaled(zones, by: level), .current)
                 }
                 return
@@ -444,7 +423,7 @@ public extension LightBLEManager {
                     self.beatHue = (self.beatHue + bands.high * 0.006).truncatingRemainder(dividingBy: 1.0)
                 }
                 let rainbowS = min(1.0, 0.6 + bands.mid * 0.4)
-                self.syncColor = Color(hue: self.beatHue, saturation: rainbowS, brightness: 1)
+                self.showLiveColor(hue: self.beatHue, saturation: rainbowS)
                 if CombinedSyncMixer.audioShouldWriteStreamingHue(
                     mode: self.syncMode, audioSyncMode: .rainbow
                 ) {
@@ -452,12 +431,12 @@ public extension LightBLEManager {
                 }
                 self.writeMirroredBrightness(min(1.0, max(0.05, bands.bass * 1.3 + bands.rms * 0.3)))
             case .pulse:
-                self.syncColor = Color(hue: self.audioPulseH, saturation: 1.0, brightness: 1)
+                self.showLiveColor(hue: self.audioPulseH, saturation: 1.0)
                 self.writeMirroredBrightness(min(1.0, max(0.03, bands.bass * 1.5 + bands.rms * 0.2)))
             case .frequency:
                 let hTotal = bands.mid + bands.high + 0.001
                 let h = (bands.mid * (120/360.0) + bands.high * (240/360.0)) / hTotal
-                self.syncColor = Color(hue: h, saturation: 1.0, brightness: 1)
+                self.showLiveColor(hue: h, saturation: 1.0)
                 if CombinedSyncMixer.audioShouldWriteStreamingHue(
                     mode: self.syncMode, audioSyncMode: .frequency
                 ) {
@@ -473,6 +452,61 @@ public extension LightBLEManager {
         } else {
             systemAudio.onBands = callback
         }
+    }
+
+    /// Sends lightbar screen frames to `output` from the capture queue, and
+    /// keeps the pipe's copy of power, brightness, mode and responsiveness current.
+    public func startLampPipe(output: @escaping @Sendable (LampZonePipe.Frame) -> Void) {
+        lampPipe.setOutput(output)
+        screenSampler.attach(lampPipe)
+        trackLampPipeSettings()
+    }
+
+    private func trackLampPipeSettings() {
+        withObservationTracking {
+            let active = isSyncingVideo && isOn && sendsLampGradient
+            let responsiveness = syncResponsiveness, brightness = self.brightness
+            lampPipe.update {
+                $0.active = active
+                $0.responsiveness = responsiveness
+                $0.brightness = brightness
+            }
+            _ = allLights
+        } onChange: {
+            Task { @MainActor [weak self] in self?.trackLampPipeSettings() }
+        }
+    }
+
+    /// The live colour the menu-bar icon, popover and iPhone show. Every
+    /// change redraws them, so it changes at most 5 times a second and only
+    /// when the colour visibly moves; the last colour always lands.
+    func showLiveColor(hue: Double, saturation: Double) {
+        let now = CACurrentMediaTime()
+        if let shown = liveColorShown {
+            let dh = min(abs(hue - shown.hue), 1 - abs(hue - shown.hue))
+            guard dh > 0.01 || abs(saturation - shown.saturation) > 0.03 else {
+                liveColorPending = nil
+                return
+            }
+            let wait = 0.2 - (now - shown.at)
+            if wait > 0 {
+                liveColorPending = (hue, saturation)
+                guard liveColorTrailing == nil else { return }
+                liveColorTrailing = Task { @MainActor [weak self] in
+                    do { try await Task.sleep(nanoseconds: UInt64(wait * 1e9)) } catch { return }
+                    guard let self else { return }
+                    self.liveColorTrailing = nil
+                    if let p = self.liveColorPending, self.syncMode != .off {
+                        self.liveColorPending = nil
+                        self.showLiveColor(hue: p.hue, saturation: p.saturation)
+                    }
+                }
+                return
+            }
+        }
+        liveColorShown = (hue, saturation, now)
+        liveColorPending = nil
+        syncColor = Color(hue: hue, saturation: saturation, brightness: 1)
     }
 
     /// Gradient lamps get per-segment sync instead of the bar's single colour.

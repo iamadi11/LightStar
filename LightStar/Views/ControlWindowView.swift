@@ -66,7 +66,7 @@ struct ControlWindowView: View {
                     .ignoresSafeArea()
             }
         }
-        .tint(ble.stripAccent)
+        .tint(ble.controlAccent)
         .frame(minWidth: 640, minHeight: 520)
     }
 

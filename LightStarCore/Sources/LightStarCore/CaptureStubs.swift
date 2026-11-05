@@ -78,6 +78,7 @@ public final class ScreenColorSampler: NSObject {
     public func getDiagnostics() -> CaptureProviderDiagnostics { CaptureProviderDiagnostics() }
     public func resetProtectedContentDetection() {}
     public func lampSides() -> [LampGradient.Side: WizRGB] { [:] }
+    public func attach(_ pipe: LampZonePipe) {}
 }
 
 @MainActor

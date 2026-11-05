@@ -142,7 +142,7 @@ struct SettingsView: View {
         }
         .formStyle(.grouped)
         .scrollContentBackground(.hidden)
-        .tint(ble.stripAccent)
+        .tint(ble.controlAccent)
         .frame(minWidth: 420, minHeight: 360)
         .padding()
         .background {

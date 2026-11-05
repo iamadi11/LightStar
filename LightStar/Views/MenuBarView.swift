@@ -47,7 +47,7 @@ struct MenuBarView: View {
             .animation(LightStarMotion.snappy(reduceMotion), value: ble.isOn)
         }
         .frame(width: 336)
-        .tint(ble.stripAccent)
+        .tint(ble.controlAccent)
         .background {
             LightStarVisualEffect(material: .menu)
                 .ignoresSafeArea()
@@ -56,18 +56,22 @@ struct MenuBarView: View {
 
     private var headerBar: some View {
         VStack(spacing: 10) {
-            Capsule()
-                .fill(ble.stripAccent)
-                .frame(height: 3)
-                .padding(.horizontal, 72)
-                .animation(LightStarMotion.snappy(reduceMotion), value: ble.stripAccent)
+            LiveAccent { accent in
+                Capsule()
+                    .fill(accent)
+                    .frame(height: 3)
+                    .padding(.horizontal, 72)
+                    .animation(LightStarMotion.snappy(reduceMotion), value: accent)
+            }
 
             HStack(alignment: .center, spacing: 10) {
-                Image(systemName: headerIcon)
-                    .font(.system(size: 15, weight: .medium))
-                    .foregroundStyle(ble.stripAccent)
-                    .frame(width: 28, height: 28)
-                    .contentTransition(.symbolEffect(.replace))
+                LiveAccent { accent in
+                    Image(systemName: headerIcon)
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundStyle(accent)
+                        .frame(width: 28, height: 28)
+                        .contentTransition(.symbolEffect(.replace))
+                }
                 VStack(alignment: .leading, spacing: 1) {
                     Text("LightStar")
                         .font(.headline)
@@ -476,12 +480,14 @@ struct SyncControlView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Spacer()
-                if let sc = ble.syncColor {
-                    Circle()
-                        .fill(sc)
-                        .frame(width: 8, height: 8)
-                        .accessibilityHidden(true)
-                        .transition(.opacity)
+                if ble.syncMode != .off {
+                    LiveAccent { accent in
+                        Circle()
+                            .fill(accent)
+                            .frame(width: 8, height: 8)
+                            .accessibilityHidden(true)
+                    }
+                    .transition(.opacity)
                 }
                 Text("⌘⇧S")
                     .font(.caption2)
@@ -489,7 +495,7 @@ struct SyncControlView: View {
                     .help("Global shortcut: ⌘⇧S toggles sync")
                 if ble.syncTransitioning { ProgressView().controlSize(.mini) }
             }
-            .animation(LightStarMotion.snappy(reduceMotion), value: ble.syncColor != nil)
+            .animation(LightStarMotion.snappy(reduceMotion), value: ble.syncMode != .off)
 
             Picker("Sync mode", selection: Binding(
                 get: { ble.syncMode },
