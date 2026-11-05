@@ -146,7 +146,7 @@ V varies 0–1000. S always 1000. Camera-confirmed changes at 00/01/64.
 |-----|---------|--------|
 | BC07 | 2 valid values: 0x00 (dims+hue shift) and 0x02 (brightens). Likely zone/segment selector or LED count. | Needs visual test — which part of strip changes? |
 | BC10 | iOS app sends `BC 10 01 [v] 55` from a "Sensitivity" slider. Camera 2026-11-05: v=00 → green, v=01 → magenta, v=80/FF → no change; 2-byte `BC 10 02 00 [x] 55` → pale white. Changes colour but not as a plain hue. | Unresolved |
-| BC03 | 0/256 payloads respond at 1-byte. Needs different frame structure or active mode. | Shelved |
+| BC03 | Pixel count `BC 03 02 [hi] [lo] 55` (8–300). User-verified 2026-11-05: lowering it lights only the first N LEDs from the controller end and leaves the rest dark, so it works as a length trim (one colour, no middle sections). Changing it 5–50×/s never looked smooth, and it may be written to flash, so it isn't usable for a live level bar. | Static length setting only |
 
 ---
 
