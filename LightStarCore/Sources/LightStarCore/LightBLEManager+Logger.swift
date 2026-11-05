@@ -47,7 +47,7 @@ public extension LightBLEManager {
         Frame: BC [cmd] [data_len] [data × data_len] 55
         Transport: ATT Write-with-Response on FFF3
         Service: 0000FFF0-0000-1000-8000-00805F9B34FB
-        Notify:  0000FFF4-0000-1000-8000-00805F9B34FB (replies once subscribed)
+        Notify:  0000FFF4-0000-1000-8000-00805F9B34FB (subscribed; this strip never replies)
         Scan UUID: 0x2022 (filterByte1=0x22 filterByte2=0x20)
 
         BC01 01 [00/01] 55                            — Power OFF / ON
@@ -64,7 +64,7 @@ public extension LightBLEManager {
         BC0F 01 [00/01] 55                            — Strip's onboard mic ON/OFF
         BC11 01 [1–4] 55                              — Onboard mic style: 1=Classic 2=Soft 3=Dynamic 4=Disco
         BC12 01 [0–255] 55                            — Mic sensitivity
-        BC13 01 [id 0x00–0xFD] 55                    — Firmware animation scenes (253 scenes)
+        BC13 02 [hi] [lo] 55                         — White-tone wheel, angle 0–360
 
         ── Restore Instructions ─────────────────────────────────
         If custom firmware breaks the device:
@@ -101,7 +101,7 @@ public extension LightBLEManager {
                 ["cmd": "BC0F", "desc": "Strip onboard mic", "format": "BC 0F 01 [0=off|1=on] 55"],
                 ["cmd": "BC11", "desc": "Mic style", "format": "BC 11 01 [1=Classic|2=Soft|3=Dynamic|4=Disco] 55"],
                 ["cmd": "BC12", "desc": "Mic sensitivity (0-255)", "format": "BC 12 01 [0-255] 55"],
-                ["cmd": "BC13", "desc": "Firmware animation scene", "format": "BC 13 01 [id 0x00-0xFD] 55"],
+                ["cmd": "BC13", "desc": "White-tone wheel (cool → warm)", "format": "BC 13 02 [angle hi] [angle lo] 55"],
             ]
         ]
 

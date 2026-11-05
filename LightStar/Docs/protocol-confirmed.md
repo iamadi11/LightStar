@@ -125,20 +125,12 @@ BC 12 01 [level] 55
 ```
 level 0–100. Send at ~10 Hz while BC0F enabled to stream live amplitude.
 
-### BC13 — Animation / Scene Selector
+### BC13 — White-Tone Wheel
 ```
-BC 13 01 [scene_id] 55
+BC 13 02 [angle_hi] [angle_lo] 55
 ```
-253 valid scenes (0x00–0xFF, gaps at 0x3D, 0x5B, 0x96).
-Camera-probe confirmed: 253/256 payloads cause visible hue+brightness changes.
-Each value selects a distinct pre-programmed animation. 0x00 causes largest change.
-
-| Range | Count |
-|-------|-------|
-| 0x00–0x3C | 61 |
-| 0x3E–0x5A | 29 |
-| 0x5C–0x95 | 58 |
-| 0x97–0xFF | 105 |
+Angle 0–360 on the OEM white-tone wheel (Android `CustomColorPicker2`). Camera-verified 2026-11-05: 0 = cool bluish white, 90 = neutral white, 180 = warm amber.
+The 1-byte form `BC 13 01 [id] 55` (EffectGridView) is never sent by either OEM app. It gives **static** colours (0x10 white-ish, 0x80 purple; no motion over 4 s), which is what the earlier camera probe saw as "253 animations".
 
 ### BC09 — Secondary Color / Zone Color
 ```
@@ -153,7 +145,7 @@ V varies 0–1000. S always 1000. Camera-confirmed changes at 00/01/64.
 | Cmd | Finding | Status |
 |-----|---------|--------|
 | BC07 | 2 valid values: 0x00 (dims+hue shift) and 0x02 (brightens). Likely zone/segment selector or LED count. | Needs visual test — which part of strip changes? |
-| BC10 | 2 valid values: 0x00 (massive bri+hue reset, +0.297 bri) and 0x01 (minor). Likely mode-reset or static/dynamic toggle. | BC10 00 may force solid-color mode |
+| BC10 | iOS app sends `BC 10 01 [v] 55` from a "Sensitivity" slider. Camera 2026-11-05: v=00 → green, v=01 → magenta, v=80/FF → no change; 2-byte `BC 10 02 00 [x] 55` → pale white. Changes colour but not as a plain hue. | Unresolved |
 | BC03 | 0/256 payloads respond at 1-byte. Needs different frame structure or active mode. | Shelved |
 
 ---

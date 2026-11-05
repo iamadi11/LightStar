@@ -7,7 +7,7 @@ import UIKit
 
 // MARK: - Command encoder (BC/55 protocol, confirmed via APK reverse-engineering 2026-08-26)
 // Frame: BC [cmd] [data_len] [data × data_len] 55
-// Service: FFF0  Write char: FFF3  Notify char: FFF4 (replies once subscribed: BC0D timers, brightness, speed)
+// Service: FFF0  Write char: FFF3  Notify char: FFF4 (subscribed, but this strip has never replied)
 
 public enum Cmd {
     // BC01: power
@@ -104,7 +104,8 @@ public enum Cmd {
          dayMask, hour, minute, 0x55]
     }
 
-    // BC13: firmware animation scene 0x00–0xFF minus 0x3D/0x5B/0x96
+    // BC13 1-byte form: a static colour per id (camera-checked). The OEM apps only
+    // send the 2-byte form, BC 13 02 hi lo 55 = white-tone wheel angle 0–360.
     public static func animation(id: UInt8) -> [UInt8] {
         [0xBC, 0x13, 0x01, id, 0x55]
     }

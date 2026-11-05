@@ -38,9 +38,9 @@ Frame format: `BC [cmd] [data_len] [data × data_len] 55`. Invariant: `bytes[2] 
 | `0x0F` | Strip onboard mic |
 | `0x11` | Mic style 1–4 |
 | `0x12` | Mic sensitivity 0–255 |
-| `0x13` | Animation scene |
+| `0x13` | White-tone wheel `BC 13 02 [hi] [lo] 55`, angle 0–360: 0 cool blue-white, 90 neutral, 180 warm amber (camera-verified). The 1-byte form LightStar's scene grid sends gives static colours, not animations |
 
-GATT: advertised `0x2022`, service `FFF0`, write `FFF3` (Write + Write Without Response; OEM uses ATT Write Command / `withoutResponse`). Notify `FFF4` replies once subscribed: `BC0D` timer state after a `BC0C` query, and brightness (`05`), speed (`08`), mic sensitivity (`10`) reports.
+GATT: advertised `0x2022`, service `FFF0`, write `FFF3` (Write + Write Without Response; OEM uses ATT Write Command / `withoutResponse`). Notify `FFF4` never fired on this strip, even for a `BC0C` timer query (camera test 2026-11-05), although the OEM Android app has parsers for `BC0D` timer, `05` brightness, `08` speed and `10` sensitivity replies. LightStar logs any reply as `RX` (subsystem `com.adityaraj.LightStar`, category `ble`).
 
 All BLE writes go through `BLEWriteCoalescer.enqueue()`. Dedup key is `bytes[1]` (plus `bytes[4]` for `0x0D`, so the on- and off-timer both survive). Insertion-ordered, replace-in-place.
 
