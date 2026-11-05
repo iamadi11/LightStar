@@ -1,12 +1,13 @@
 import Foundation
 
 // Coalesces BLE writes: keyed by command sub-byte (bytes[1]), latest value wins.
+// BC0D also keys on bytes[4]: the on- and off-timer are separate frames.
 // Insertion-ordered array with replace-in-place so apply(_:) write order is preserved.
 // Drains one entry per 20ms tick so the ATT stack always has headroom.
 @MainActor
 public final class BLEWriteCoalescer {
     private struct Item {
-        var cmd: UInt8
+        var cmd: UInt16
         var data: Data
     }
 
@@ -28,6 +29,11 @@ public final class BLEWriteCoalescer {
 
     deinit { timer?.invalidate() }
 
+    static func key(_ bytes: [UInt8]) -> UInt16 {
+        let cmd = UInt16(bytes[1])
+        return cmd == 0x0D && bytes.count > 4 ? cmd | UInt16(bytes[4]) << 8 : cmd
+    }
+
     public func enqueue(_ bytes: [UInt8]) {
         guard isConnected(), bytes.count >= 2 else { return }
         // Hue/brightness after BC01-off wakes the strip. Power-off must be the
@@ -37,7 +43,7 @@ public final class BLEWriteCoalescer {
             drainGeneration &+= 1
             items.removeAll()
         }
-        let cmd = bytes[1]
+        let cmd = Self.key(bytes)
         let data = Data(bytes)
         if let idx = items.firstIndex(where: { $0.cmd == cmd }) {
             items[idx].data = data

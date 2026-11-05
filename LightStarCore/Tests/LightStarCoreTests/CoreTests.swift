@@ -21,8 +21,7 @@ final class BLEProtocolTests: XCTestCase {
             Cmd.effectDirection(forward: true),
             Cmd.speed(0.5),
             Cmd.audioHue(0.2, saturation: 0.8),
-            Cmd.timeSync(year: 26, month: 9, day: 18, hour: 8, minute: 0, second: 0, weekdayMask: 0x01),
-            Cmd.weeklyTimer(slot: 1, powerOn: false, enabled: true, dayMask: 0x1F, hour: 23, minute: 30),
+            Cmd.weeklyTimer(powerOn: false, enabled: true, dayMask: 0x1F, hour: 23, minute: 30),
             Cmd.stripMic(enabled: true),
             Cmd.micStyle(2),
             Cmd.micSensitivity(128),
@@ -41,8 +40,16 @@ final class BLEProtocolTests: XCTestCase {
 
     func testWeeklyTimerPayload() {
         XCTAssertEqual(
-            Cmd.weeklyTimer(slot: 1, powerOn: false, enabled: true, dayMask: 0x1F, hour: 23, minute: 30),
+            Cmd.weeklyTimer(powerOn: false, enabled: true, dayMask: 0x1F, hour: 23, minute: 30),
             [0xBC, 0x0D, 0x06, 1, 0x00, 0x01, 0x1F, 23, 30, 0x55]
+        )
+    }
+
+    func testTimeSyncMatchesOEMLayout() {
+        // OEM TimerUtils.sendPhoneTime: 16-bit year, weekday after the trailer.
+        XCTAssertEqual(
+            Cmd.timeSync(year: 2026, month: 11, day: 5, hour: 15, minute: 30, second: 9, weekday: 4),
+            [0xBC, 0x0B, 0x07, 0x07, 0xEA, 11, 5, 15, 30, 9, 0x55, 4]
         )
     }
 
@@ -276,6 +283,15 @@ final class BLEWriteCoalescerTests: XCTestCase {
         coalescer.enqueue(Cmd.brightness(0.4))
         let drained = coalescer.drainOrderedForTesting()
         XCTAssertEqual(drained.map { $0[1] }, [0x04, 0x09, 0x05])
+    }
+
+    func testOnAndOffTimersBothSurviveCoalescing() {
+        let coalescer = BLEWriteCoalescer(send: { _ in }, isConnected: { true })
+        for frame in FirmwareTimerSync.frames(for: []) { coalescer.enqueue(frame) }
+        coalescer.enqueue(Cmd.weeklyTimer(powerOn: false, enabled: true, dayMask: 1, hour: 23, minute: 0))
+        let drained = coalescer.drainOrderedForTesting().map { [UInt8]($0) }
+        XCTAssertEqual(drained.map { $0[4] }, [1, 0])
+        XCTAssertEqual(drained[1][5], 1, "a newer off-timer replaces the old one in place")
     }
 
     func testFlushClearsQueue() {
@@ -820,43 +836,26 @@ final class ConnectAndSchedulePolicyTests: XCTestCase {
         XCTAssertFalse(BLEDiscoveryPolicy.shouldStartConnectSequence(writeCharAlreadyReady: true))
     }
 
-    func testFirmwareTimersDisableUnusedSlots() {
+    func testFirmwareTimersAreOneOnAndOneOff() {
         var cal = Calendar(identifier: .gregorian)
         cal.timeZone = TimeZone(secondsFromGMT: 0)!
-        var comps = DateComponents()
-        comps.year = 2026; comps.month = 1; comps.day = 5
-        comps.hour = 23; comps.minute = 30
-        let time = cal.date(from: comps)!
-        let bedtime = LightSchedule(
-            label: "Bed",
-            time: time,
-            days: [2],
-            action: .powerOff,
-            useFirmwareTimer: true
-        )
-        let ignored = LightSchedule(
-            label: "Mac only",
-            time: time,
-            days: [2],
-            action: .powerOn,
-            useFirmwareTimer: false
-        )
-        let frames = FirmwareTimerSync.frames(for: [bedtime, ignored], calendar: cal)
-        XCTAssertEqual(frames.count, Int(Cmd.weeklyTimerSlotCount))
-        XCTAssertEqual(frames[0][3], 1, "first firmware schedule occupies slot 1")
-        XCTAssertEqual(frames[0][4], 0, "powerOff")
-        XCTAssertEqual(frames[0][5], 1, "enabled")
-        XCTAssertEqual(frames[0][7], 23)
-        XCTAssertEqual(frames[0][8], 30)
-        XCTAssertEqual(frames[1][3], 2)
-        XCTAssertEqual(frames[1][5], 0, "unused slot must be disabled")
-        XCTAssertEqual(frames.last?[3], Cmd.weeklyTimerSlotCount)
-        XCTAssertEqual(frames.last?[5], 0)
+        func at(_ h: Int, _ m: Int) -> Date {
+            cal.date(from: DateComponents(year: 2026, month: 1, day: 5, hour: h, minute: m))!
+        }
+        let bedtime = LightSchedule(label: "Bed", time: at(23, 30), days: [2], action: .powerOff, useFirmwareTimer: true)
+        let later = LightSchedule(label: "Later", time: at(23, 50), days: [2], action: .powerOff, useFirmwareTimer: true)
+        let macOnly = LightSchedule(label: "Mac only", time: at(7, 0), days: [2], action: .powerOn, useFirmwareTimer: false)
+        let frames = FirmwareTimerSync.frames(for: [bedtime, later, macOnly], calendar: cal)
+        XCTAssertEqual(frames.count, 2)
+        XCTAssertEqual(frames[0], Cmd.weeklyTimer(powerOn: true, enabled: false, dayMask: 0, hour: 0, minute: 0),
+                       "no firmware power-on schedule → on-timer disabled")
+        XCTAssertEqual(frames[1], [0xBC, 0x0D, 0x06, 0x01, 0x00, 0x01, 0x01, 23, 30, 0x55],
+                       "first firmware power-off schedule wins, Monday = bit0")
     }
 
-    func testFirmwareTimerCapClearsWhenNoneRemain() {
+    func testFirmwareTimersClearWhenNoneRemain() {
         let frames = FirmwareTimerSync.frames(for: [])
-        XCTAssertEqual(frames.count, Int(Cmd.weeklyTimerSlotCount))
+        XCTAssertEqual(frames.map { $0[4] }, [1, 0])
         XCTAssertTrue(frames.allSatisfy { $0[5] == 0 })
     }
 

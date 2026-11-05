@@ -169,7 +169,7 @@ private struct AddScheduleSheet: View {
             Toggle("Firmware timer (works with Mac asleep)", isOn: $useFirmwareTimer)
                 .font(.caption)
                 .toggleStyle(.checkbox)
-                .help("Pushes BC0D weekly timers to the strip so bedtime still works when this Mac is off.")
+                .help("Saves the time on the strip so it still fires when this Mac is off. The strip keeps one on-time and one off-time; the first of each is used.")
 
             HStack {
                 Button("Cancel") { dismiss() }
