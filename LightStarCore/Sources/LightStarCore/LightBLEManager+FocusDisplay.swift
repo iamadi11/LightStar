@@ -1,6 +1,9 @@
 #if os(macOS)
 import AppKit
 import CoreGraphics
+import os
+
+private let focusLog = Logger(subsystem: "com.adityaraj.LightStar", category: "focus")
 
 extension LightBLEManager {
     /// Checks twice a second; does nothing unless screen sync runs, the
@@ -21,6 +24,7 @@ extension LightBLEManager {
         let seen = FocusedDisplay.display(for: window, displays: displays)
         let current = selectedDisplayID ?? CGMainDisplayID()
         if let next = focusDebouncer.next(seen, current: current, now: CACurrentMediaTime()) {
+            focusLog.notice("Following the active screen: display \(next, privacy: .public)")
             selectedDisplayID = next
         }
     }

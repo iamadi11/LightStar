@@ -3,7 +3,7 @@ import LightStarCore
 
 struct SyncModePickerView: View {
     @Environment(LightBLEManager.self) private var ble
-    @AppStorage(FocusedDisplay.followDefaultsKey) private var followFocus = false
+    @AppStorage(FocusedDisplay.followDefaultsKey) private var followFocus = true
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {

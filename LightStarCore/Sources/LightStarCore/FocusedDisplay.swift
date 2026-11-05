@@ -6,7 +6,8 @@ import CoreGraphics
 /// drifts to the other screen while a film plays.
 public enum FocusedDisplay {
     public static let followDefaultsKey = "syncFollowsFocusedDisplay"
-    public static var follows: Bool { UserDefaults.standard.bool(forKey: followDefaultsKey) }
+    /// On unless the user switched it off: with two screens, sync should follow the one in use.
+    public static var follows: Bool { UserDefaults.standard.object(forKey: followDefaultsKey) as? Bool ?? true }
 
     /// The display covering most of `window`; nil when it's on none of them.
     public static func display(for window: CGRect, displays: [(id: CGDirectDisplayID, frame: CGRect)]) -> CGDirectDisplayID? {
