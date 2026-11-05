@@ -64,13 +64,13 @@ final class LightbarExtrasTests: XCTestCase {
     }
 
     func testProfileDetection() {
-        XCTAssertEqual(LightbarProfile.detect(bundleID: "com.apple.dt.Xcode", category: nil), .work)
-        XCTAssertEqual(LightbarProfile.detect(bundleID: "com.jetbrains.intellij", category: nil), .work)
+        XCTAssertEqual(LightbarProfile.detect(bundleID: "com.apple.dt.Xcode", category: "public.app-category.developer-tools"), .normal)
+        XCTAssertEqual(LightbarProfile.detect(bundleID: "com.anthropic.claudefordesktop", category: "public.app-category.developer-tools"), .normal)
         XCTAssertEqual(LightbarProfile.detect(bundleID: "org.videolan.vlc", category: nil), .video)
         XCTAssertEqual(LightbarProfile.detect(bundleID: "com.example.game", category: "public.app-category.action-games"), .game)
         XCTAssertEqual(LightbarProfile.detect(bundleID: "com.apple.Safari", category: "public.app-category.productivity"), .normal)
         XCTAssertEqual(LightbarProfile.resolve(bundleID: "com.apple.dt.Xcode", category: nil,
-                                               overrides: ["com.apple.dt.Xcode": .normal]), .normal, "the user's pick wins")
+                                               overrides: ["com.apple.dt.Xcode": .game]), .game, "the user's pick wins")
     }
 
     func testRecentAppsNewestFirstWithoutRepeats() {

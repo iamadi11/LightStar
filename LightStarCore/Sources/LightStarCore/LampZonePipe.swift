@@ -1,4 +1,7 @@
 import Foundation
+import os
+
+private let pipeLog = Logger(subsystem: "com.adityaraj.LightStar", category: "lightbar")
 
 /// Screen zones → lightbar frame. Runs on the capture queue, so the lightbar
 /// gets each frame without waiting for the main thread (the UI, the strip,
@@ -27,6 +30,7 @@ public final class LampZonePipe: @unchecked Sendable {
     private var sideSmoother = LampZoneSmoother()
     private var lastFrame = -Double.infinity
     private var eased: [WizRGB]?
+    private var framesSent = 0
     private var output: (@Sendable (Frame) -> Void)?
 
     public init() {}
@@ -55,6 +59,12 @@ public final class LampZonePipe: @unchecked Sendable {
         lock.lock(); defer { lock.unlock() }
         guard let frame = process(zones, sides: sides, now: now) else { return }
         output?(frame)
+        // Every 2 s at 30 fps: enough to see the gradient in `log stream --level debug`.
+        framesSent += 1
+        if framesSent % 60 == 1 {
+            let distinct = Set(frame.zones).count
+            pipeLog.debug("Lightbar frame: \(frame.zones.count, privacy: .public) zones, \(distinct, privacy: .public) colours")
+        }
     }
 
     /// Caller holds the lock.
@@ -67,25 +77,17 @@ public final class LampZonePipe: @unchecked Sendable {
         let boost = LampGradient.colourBoost
         // Games land every frame at once; other apps ease as the slider says.
         let alpha = profile == .game ? 1 : settings.responsiveness
-        var target = LampGradient.boosted(zones, by: boost)
-        if profile == .work {
-            let white = LampGradient.dayWhite()
-            target = Array(repeating: WizRGB(hue: white.hue, saturation: white.saturation), count: zones.count)
-        }
-        let smoothed = zoneSmoother.next(target, alpha: alpha)
+        let smoothed = zoneSmoother.next(LampGradient.boosted(zones, by: boost), alpha: alpha)
         eased = smoothed
         let level = settings.musicLevel ?? settings.brightness
         var frame = Frame(zones: LampGradient.scaled(smoothed, by: level), sides: nil)
-        // Plain bulbs placed around the screen show their edge; with the
-        // work light they take the lightbar's colour instead.
-        if profile != .work {
-            let found = sides()
-            if !found.isEmpty {
-                let order = LampGradient.Side.allCases.filter { $0 != .whole }
-                let raw = LampGradient.boosted(order.map { found[$0] ?? .off }, by: boost)
-                let lit = LampGradient.scaled(sideSmoother.next(raw, alpha: alpha), by: level)
-                frame.sides = Dictionary(uniqueKeysWithValues: zip(order, lit))
-            }
+        // Plain bulbs placed around the screen show their edge.
+        let found = sides()
+        if !found.isEmpty {
+            let order = LampGradient.Side.allCases.filter { $0 != .whole }
+            let raw = LampGradient.boosted(order.map { found[$0] ?? .off }, by: boost)
+            let lit = LampGradient.scaled(sideSmoother.next(raw, alpha: alpha), by: level)
+            frame.sides = Dictionary(uniqueKeysWithValues: zip(order, lit))
         }
         return frame
     }

@@ -614,7 +614,7 @@ struct SyncControlView: View {
                                 : "Match the app in front", isOn: $matchApp)
                     .toggleStyle(.checkbox)
                     .font(.caption)
-                    .help("Video: skip black bars. Game: whole screen, instant. Work light: steady white for coding. Set apps in Settings → Lightbar.")
+                    .help("Video players skip black bars; games use the whole screen, instantly. The gradient always follows the screen. Set apps in Settings → Lightbar.")
             }
 
             if ble.isSyncingVideo {

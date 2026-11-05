@@ -377,7 +377,7 @@ struct LightbarFitControls: View {
 }
 
 /// The lightbar adapts screen sync to the app in front: films skip black bars,
-/// games react instantly over the whole screen, coding gets a steady white.
+/// games react instantly over the whole screen. The gradient always stays.
 /// Each recent app can be set by hand.
 struct LightbarProfilesSection: View {
     @AppStorage(LightbarProfile.enabledDefaultsKey) private var enabled = true
@@ -388,7 +388,7 @@ struct LightbarProfilesSection: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             Toggle("Match the app in front", isOn: $enabled)
-                .help("While screen sync runs. Video: skip black bars. Game: whole screen, instant. Work light: steady day-cycle white.")
+                .help("While screen sync runs. Video players skip black bars; games use the whole screen, instantly. The gradient always follows the screen.")
             if enabled, !recent.isEmpty {
                 ForEach(recent, id: \.self) { id in
                     HStack(spacing: 6) {
