@@ -264,9 +264,35 @@ struct LightbarFitControls: View {
     let orientation: LampGradient.Orientation
     @AppStorage(LampGradient.trimStartDefaultsKey) private var trimStart = 0.0
     @AppStorage(LampGradient.trimEndDefaultsKey) private var trimEnd = 0.0
+    @AppStorage(LampGradient.edgeDefaultsKey) private var edge = LampGradient.Edge.whole
+    @AppStorage(LampGradient.edgeDepthDefaultsKey) private var edgeDepth = 0.25
+    @AppStorage(LampGradient.ignoreBarsDefaultsKey) private var ignoreBars = true
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
+            Picker("Read", selection: $edge) {
+                ForEach(LampGradient.Edge.allCases) { Text($0.title(for: orientation)).tag($0) }
+            }
+            .font(.caption)
+            .help("Follow the edge of the screen next to the lightbar, like an ambient light.")
+            if edge != .whole {
+                HStack(spacing: 6) {
+                    Text("Edge depth")
+                        .font(.caption)
+                        .frame(width: 78, alignment: .leading)
+                    Slider(value: $edgeDepth, in: LampGradient.edgeDepthRange)
+                        .controlSize(.small)
+                        .accessibilityLabel("Edge depth")
+                        .accessibilityValue("\(Int((edgeDepth * 100).rounded()))% of the screen")
+                    Text("\(Int((edgeDepth * 100).rounded()))%")
+                        .font(.caption2.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                        .frame(width: 34, alignment: .trailing)
+                }
+            }
+            Toggle("Ignore black bars", isOn: $ignoreBars)
+                .font(.caption)
+                .help("Films and 4:3 video: map the lightbar to the picture, not the black bars around it.")
             trimRow(orientation == .vertical ? "Off at bottom" : "Off at left",
                     value: Binding(get: { trimStart },
                                    set: { trimStart = min($0, 1 - LampGradient.minLit - trimEnd) }))

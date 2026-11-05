@@ -120,6 +120,69 @@ public enum LampGradient {
         }
     }
 
+    /// Which part of the screen the lightbar reads. A lightbar beside the
+    /// monitor should follow the edge next to it, not the whole width.
+    /// first = left (vertical bar) or top (horizontal bar); second = right or bottom.
+    public enum Edge: String, CaseIterable, Sendable, Identifiable {
+        case whole, first, second, both
+        public var id: String { rawValue }
+        public func title(for orientation: Orientation) -> String {
+            switch (self, orientation) {
+            case (.whole, _): return "Whole screen"
+            case (.first, .vertical): return "Left edge"
+            case (.second, .vertical): return "Right edge"
+            case (.first, .horizontal): return "Top edge"
+            case (.second, .horizontal): return "Bottom edge"
+            case (.both, _): return "Both edges"
+            }
+        }
+    }
+    public static let edgeDefaultsKey = "lightbarEdge"
+    public static let edgeDepthDefaultsKey = "lightbarEdgeDepth"
+    public static let ignoreBarsDefaultsKey = "lightbarIgnoreBars"
+    public static let edgeDepthRange = 0.1...0.5
+
+    public static var edge: Edge {
+        UserDefaults.standard.string(forKey: edgeDefaultsKey).flatMap(Edge.init) ?? .whole
+    }
+    public static var edgeDepth: Double {
+        let d = UserDefaults.standard.object(forKey: edgeDepthDefaultsKey) as? Double ?? 0.25
+        return min(edgeDepthRange.upperBound, max(edgeDepthRange.lowerBound, d.isFinite ? d : 0.25))
+    }
+    public static var ignoreBars: Bool {
+        UserDefaults.standard.object(forKey: ignoreBarsDefaultsKey) as? Bool ?? true
+    }
+
+    /// Black bars around the picture (a film's letterbox or a 4:3 pillarbox), in pixels.
+    public struct Bars: Equatable, Sendable {
+        public var top = 0, bottom = 0, left = 0, right = 0
+        public init(top: Int = 0, bottom: Int = 0, left: Int = 0, right: Int = 0) {
+            self.top = top; self.bottom = bottom; self.left = left; self.right = right
+        }
+        public static let none = Bars()
+    }
+
+    /// Rows or columns that are black from edge to edge count as a bar, but
+    /// only in matching pairs (a dark sky at the top alone is picture) and at
+    /// most 45% of the screen. An all-black frame has no bars.
+    public static func blackBars(bgra: UnsafePointer<UInt8>, width: Int, height: Int, bytesPerRow: Int) -> Bars {
+        guard width > 2, height > 2 else { return .none }
+        func dark(_ i: Int) -> Bool { max(bgra[i], bgra[i + 1], bgra[i + 2]) < 20 }
+        func rowDark(_ r: Int) -> Bool { (0..<width).allSatisfy { dark(r * bytesPerRow + $0 * 4) } }
+        func colDark(_ c: Int) -> Bool { (0..<height).allSatisfy { dark($0 * bytesPerRow + c * 4) } }
+        func pair(_ length: Int, _ isDark: (Int) -> Bool) -> (Int, Int) {
+            var a = 0; while a < length, isDark(a) { a += 1 }
+            guard a < length else { return (0, 0) }   // all black: no picture to frame
+            var b = 0; while b < length, isDark(length - 1 - b) { b += 1 }
+            // ponytail: ±2 px symmetry at 48×27; widen if captures grow.
+            guard a > 0, b > 0, abs(a - b) <= 2, Double(a + b) <= Double(length) * 0.45 else { return (0, 0) }
+            return (a, b)
+        }
+        let (t, bo) = pair(height, rowDark)
+        let (l, r) = pair(width, colDark)
+        return Bars(top: t, bottom: bo, left: l, right: r)
+    }
+
     public static var enabled: Bool {
         UserDefaults.standard.object(forKey: enabledDefaultsKey) as? Bool ?? true
     }
@@ -133,18 +196,25 @@ public enum LampGradient {
     /// averaging instead would mix colours into grey.
     public static func screenZones(
         bgra: UnsafePointer<UInt8>, width: Int, height: Int, bytesPerRow: Int, count: Int = zoneCount,
-        orientation: Orientation = .vertical, flipped: Bool = false, followBrightness: Bool = true
+        orientation: Orientation = .vertical, flipped: Bool = false, followBrightness: Bool = true,
+        edge: Edge = .whole, depth: Double = 0.25, bars: Bars = .none
     ) -> [WizRGB] {
         guard width > 0, height > 0, count > 0 else { return [] }
         let bins = 36
+        // The picture inside any black bars.
+        let pictureRows = min(bars.top, height - 1)..<max(min(bars.top, height - 1) + 1, height - bars.bottom)
+        let pictureCols = min(bars.left, width - 1)..<max(min(bars.left, width - 1) + 1, width - bars.right)
         let zones = (0..<count).map { zone -> WizRGB in
             // Zone 0 is the lightbar's base: the bottom rows, or the left columns.
-            var rows = 0..<height, cols = 0..<width
+            // Across the bar, only the chosen edge of the picture is read.
+            var rows = [pictureRows], cols = [pictureCols]
             switch orientation {
             case .vertical:
-                rows = band(zone, of: height, count: count, fromEnd: true)
+                rows = [band(zone, of: pictureRows, count: count, fromEnd: true)]
+                cols = edgeSlices(pictureCols, edge: edge, depth: depth)
             case .horizontal:
-                cols = band(zone, of: width, count: count, fromEnd: false)
+                cols = [band(zone, of: pictureCols, count: count, fromEnd: false)]
+                rows = edgeSlices(pictureRows, edge: edge, depth: depth)
             }
             var histogram = [Double](repeating: 0, count: bins)
             var satSum = [Double](repeating: 0, count: bins)
@@ -154,8 +224,8 @@ public enum LampGradient {
             var binCount = [Int](repeating: 0, count: bins)
             var pixels = 0, colourful = 0
             var valueTotal = 0.0
-            for row in rows {
-                for col in cols {
+            for row in rows.joined() {
+                for col in cols.joined() {
                     let i = row * bytesPerRow + col * 4
                     let (h, s, v) = hsv(r: bgra[i + 2], g: bgra[i + 1], b: bgra[i])
                     pixels += 1
@@ -194,11 +264,25 @@ public enum LampGradient {
         return flipped ? zones.reversed() : zones
     }
 
-    /// Slice `zone` of `count` along a side `length` long, never empty.
-    private static func band(_ zone: Int, of length: Int, count: Int, fromEnd: Bool) -> Range<Int> {
+    /// Slice `zone` of `count` along `span`, never empty.
+    private static func band(_ zone: Int, of span: Range<Int>, count: Int, fromEnd: Bool) -> Range<Int> {
+        let length = span.count
         let lo = min(length - 1, zone * length / count)
         let hi = min(length, max(lo + 1, (zone + 1) * length / count))
-        return fromEnd ? (length - hi)..<(length - lo) : lo..<hi
+        let local = fromEnd ? (length - hi)..<(length - lo) : lo..<hi
+        return (span.lowerBound + local.lowerBound)..<(span.lowerBound + local.upperBound)
+    }
+
+    /// The part of `span` an edge reads: all of it, `depth` of it at one end, or both ends.
+    static func edgeSlices(_ span: Range<Int>, edge: Edge, depth: Double) -> [Range<Int>] {
+        let k = max(1, min(span.count, Int((Double(span.count) * depth).rounded())))
+        let first = span.lowerBound..<(span.lowerBound + k), second = (span.upperBound - k)..<span.upperBound
+        switch edge {
+        case .whole: return [span]
+        case .first: return [first]
+        case .second: return [second]
+        case .both: return first.upperBound >= second.lowerBound ? [span] : [first, second]
+        }
     }
 
     private static func hsv(r: UInt8, g: UInt8, b: UInt8) -> (Double, Double, Double) {
@@ -231,6 +315,24 @@ public enum LampGradient {
         return zones.map {
             WizRGB(r: Int((Double($0.r) * f).rounded()), g: Int((Double($0.g) * f).rounded()), b: Int((Double($0.b) * f).rounded()))
         }
+    }
+}
+
+/// Black bars change only after the same bars show for `frames` frames in a
+/// row (half a second at 20 fps), so a dark scene can't make the bar jump.
+public struct BarsTracker: Sendable {
+    public private(set) var current = LampGradient.Bars.none
+    private var candidate = LampGradient.Bars.none
+    private var streak = 0
+    public var frames = 10
+
+    public init() {}
+
+    public mutating func next(_ seen: LampGradient.Bars) -> LampGradient.Bars {
+        if seen == current { streak = 0; return current }
+        if seen == candidate { streak += 1 } else { candidate = seen; streak = 1 }
+        if streak >= frames { current = seen; streak = 0 }
+        return current
     }
 }
 

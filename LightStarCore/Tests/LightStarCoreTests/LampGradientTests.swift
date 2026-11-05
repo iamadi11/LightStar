@@ -54,6 +54,72 @@ final class LampGradientTests: XCTestCase {
     }
 
     /// 14×4 frame: left half red, right half blue.
+    /// 20×8 BGRA frame from a per-pixel colour (row 0 = top).
+    private func grid(width: Int = 20, height: Int = 8, _ pixel: (Int, Int) -> [UInt8]) -> [UInt8] {
+        (0..<height).flatMap { r in (0..<width).flatMap { c in pixel(r, c) } }
+    }
+
+    func testRightEdgeFollowsTheRightSideOfTheScreen() {
+        // Left 3/4 blue, right 1/4 red: the whole width is mostly blue,
+        // but a lightbar standing on the right should go red.
+        let frame = grid { _, c in c >= 15 ? [0, 0, 255, 255] : [255, 0, 0, 255] }
+        let read: (LampGradient.Edge) -> [WizRGB] = { edge in
+            frame.withUnsafeBufferPointer {
+                LampGradient.screenZones(bgra: $0.baseAddress!, width: 20, height: 8, bytesPerRow: 80, count: 2,
+                                         followBrightness: false, edge: edge, depth: 0.25)
+            }
+        }
+        XCTAssertEqual(read(.whole), [WizRGB(r: 0, g: 0, b: 255), WizRGB(r: 0, g: 0, b: 255)])
+        XCTAssertEqual(read(.second), [WizRGB(r: 255, g: 0, b: 0), WizRGB(r: 255, g: 0, b: 0)])
+        XCTAssertEqual(read(.first), [WizRGB(r: 0, g: 0, b: 255), WizRGB(r: 0, g: 0, b: 255)])
+    }
+
+    func testEdgeSlicesNeverEmptyAndMergeWhenTheyMeet() {
+        XCTAssertEqual(LampGradient.edgeSlices(0..<48, edge: .first, depth: 0.25), [0..<12])
+        XCTAssertEqual(LampGradient.edgeSlices(0..<48, edge: .second, depth: 0.25), [36..<48])
+        XCTAssertEqual(LampGradient.edgeSlices(0..<48, edge: .both, depth: 0.25), [0..<12, 36..<48])
+        XCTAssertEqual(LampGradient.edgeSlices(0..<4, edge: .both, depth: 0.5), [0..<4])
+        XCTAssertEqual(LampGradient.edgeSlices(5..<6, edge: .first, depth: 0.1), [5..<6])
+    }
+
+    func testLetterboxBarsAreFoundAndSkipped() {
+        // 10 rows: 2 black at top and bottom around a picture, green above red.
+        let frame = grid(height: 10) { r, _ in r < 2 || r > 7 ? [0, 0, 0, 255] : r < 5 ? [0, 255, 0, 255] : [0, 0, 255, 255] }
+        let bars = frame.withUnsafeBufferPointer {
+            LampGradient.blackBars(bgra: $0.baseAddress!, width: 20, height: 10, bytesPerRow: 80)
+        }
+        XCTAssertEqual(bars, LampGradient.Bars(top: 2, bottom: 2))
+        let read: (LampGradient.Bars) -> [WizRGB] = { bars in
+            frame.withUnsafeBufferPointer {
+                LampGradient.screenZones(bgra: $0.baseAddress!, width: 20, height: 10, bytesPerRow: 80, count: 4,
+                                         followBrightness: false, bars: bars)
+            }
+        }
+        let red = WizRGB(r: 255, g: 0, b: 0), green = WizRGB(r: 0, g: 255, b: 0)
+        XCTAssertEqual(read(.none).first, .off, "without bar handling the base reads the bottom bar")
+        XCTAssertEqual(read(bars), [red, red, green, green], "with it the bar spans just the picture")
+    }
+
+    func testOneSidedDarknessIsPictureNotABar() {
+        let skyOnly = grid { r, _ in r < 3 ? [0, 0, 0, 255] : [0, 255, 0, 255] }
+        let allBlack = grid { _, _ in [0, 0, 0, 255] }
+        for frame in [skyOnly, allBlack] {
+            let bars = frame.withUnsafeBufferPointer {
+                LampGradient.blackBars(bgra: $0.baseAddress!, width: 20, height: 8, bytesPerRow: 80)
+            }
+            XCTAssertEqual(bars, .none)
+        }
+    }
+
+    func testBarsTrackerIgnoresAFewDarkFrames() {
+        var tracker = BarsTracker()
+        let film = LampGradient.Bars(top: 3, bottom: 3)
+        for _ in 0..<9 { XCTAssertEqual(tracker.next(film), .none) }
+        XCTAssertEqual(tracker.next(film), film, "adopted after 10 frames in a row")
+        XCTAssertEqual(tracker.next(.none), film, "one frame without bars doesn't drop them")
+        XCTAssertEqual(tracker.next(film), film)
+    }
+
     private func sideBySide(_ orientation: LampGradient.Orientation, flipped: Bool = false) -> [WizRGB] {
         let frame = (0..<4).flatMap { _ in (0..<14).flatMap { col in col < 7 ? [0, 0, 255, 255] : [255, 0, 0, 255] as [UInt8] } }
         return frame.withUnsafeBufferPointer {
