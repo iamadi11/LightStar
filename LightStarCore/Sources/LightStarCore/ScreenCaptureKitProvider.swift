@@ -72,8 +72,9 @@ public final class ScreenCaptureKitProvider: NSObject, ScreenFrameProvider {
         cfg.width = 48
         cfg.height = 27
         cfg.pixelFormat = kCVPixelFormatType_32BGRA
-        // EE-011: match SCStream cadence to ≤20 Hz BLE hue writes (was 60 Hz analyze waste).
-        cfg.minimumFrameInterval = CMTime(value: 1, timescale: 20)
+        // 30 Hz: the lightbar takes 30 fps; the strip's BLE writes stay gated at 20 Hz
+        // in the sync loop. EE-011 had 20 here when only the strip existed.
+        cfg.minimumFrameInterval = CMTime(value: 1, timescale: 30)
         cfg.capturesAudio = capturesAudio
         cfg.showsCursor = false
         if capturesAudio {
@@ -183,6 +184,7 @@ final class LampFrameStore: @unchecked Sendable {
     private let lock = NSLock()
     private var bytes: [UInt8] = []
     private var width = 0, height = 0, bytesPerRow = 0
+    private var bars = BarsTracker()
 
     func store(_ pb: CVPixelBuffer) {
         CVPixelBufferLockBaseAddress(pb, .readOnly)
@@ -206,12 +208,16 @@ final class LampFrameStore: @unchecked Sendable {
         lock.unlock()
         guard !b.isEmpty else { return [] }
         return b.withUnsafeBufferPointer {
-            LampGradient.screenZones(
+            let seen = LampGradient.ignoreBars
+                ? LampGradient.blackBars(bgra: $0.baseAddress!, width: w, height: h, bytesPerRow: bpr) : .none
+            lock.lock(); let frameBars = bars.next(seen); lock.unlock()
+            return LampGradient.screenZones(
                 bgra: $0.baseAddress!, width: w, height: h, bytesPerRow: bpr,
                 count: LampGradient.colourCount(for: .current, segments: LampGradient.segmentCount),
                 orientation: LampGradient.orientation,
                 flipped: LampGradient.flipped,
-                followBrightness: UserDefaults.standard.bool(forKey: "videoSyncBrightness")
+                followBrightness: UserDefaults.standard.bool(forKey: "videoSyncBrightness"),
+                edge: LampGradient.edge, depth: LampGradient.edgeDepth, bars: frameBars
             )
         }
     }

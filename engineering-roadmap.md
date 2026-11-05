@@ -27,7 +27,7 @@ Ordered by impact × evidence × small blast radius. Product behavior preserved 
 | EE-008 | Do not adopt extras as primary | Tracker + scan policy |
 | EE-009 | Combined/resume `CancellationError` wiring | `CaptureSessionPolicy.disposition` |
 | EE-010 | Serialize screen pause/resume (await stop before start) | `sleepWakeTask` chain + `SleepWakeCapturePolicy`; CoreTests |
-| EE-011 | Match screen `minimumFrameInterval` to ≤20 Hz writes | `ScreenCaptureKitProvider` timescale 20 (was 60) |
+| EE-011 | Match screen `minimumFrameInterval` to ≤20 Hz writes | `ScreenCaptureKitProvider` timescale 20 (was 60). Raised to 30 on 2026-11-05 for the lightbar (30 fps); strip writes stay gated at 20 Hz in the sync loop. |
 | EE-012 | Prepare FFT before legacy display-stream audio start | `SystemAudioSampler.startDisplayStream` order fix |
 
 ## Follow-up (this pass)
