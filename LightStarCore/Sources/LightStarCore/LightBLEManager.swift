@@ -322,7 +322,9 @@ public final class LightBLEManager: NSObject {
     var wantsMacStripConnection = false
 #endif
 
-    public override init() {
+    /// `bluetooth: false` skips the CoreBluetooth central, so tests can drive
+    /// the sync lifecycle without a Bluetooth permission prompt or radio.
+    public init(bluetooth: Bool = true) {
         super.init()
         if circadianEnabled { startCircadianTimer() }
 #if os(iOS)
@@ -334,7 +336,7 @@ public final class LightBLEManager: NSObject {
         )
         configureRemoteTransport()
 #else
-        central = CBCentralManager(delegate: self, queue: .main)
+        if bluetooth { central = CBCentralManager(delegate: self, queue: .main) }
         coalescer = BLEWriteCoalescer(
             send: { [weak self] data in
                 self?.transmit(data)

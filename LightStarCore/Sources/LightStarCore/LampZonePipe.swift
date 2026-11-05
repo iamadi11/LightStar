@@ -46,6 +46,11 @@ public final class LampZonePipe: @unchecked Sendable {
         lock.unlock()
     }
 
+    var isActive: Bool {
+        lock.lock(); defer { lock.unlock() }
+        return settings.active
+    }
+
     /// Last eased zones at full brightness, for Combined's beat pulse between frames.
     public var easedZones: [WizRGB]? {
         lock.lock(); defer { lock.unlock() }

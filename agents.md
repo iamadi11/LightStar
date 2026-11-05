@@ -94,7 +94,7 @@ LightStariOS/           iOS remote (sideload)
 LightStarWidget/        WidgetKit source shared by both widget extensions
 ```
 
-Views get state via `@Environment(LightBLEManager.self)`. AppIntents use `LightStarRuntime`.
+Views get state via `@Environment(LightBLEManager.self)`. AppIntents use `LightStarRuntime`. Every macOS window gets its environment from `AppDelegate.withAppState` — the ⌘, Settings scene once had its own list without `WizLampController` and crashed on open. `LightBLEManager(bluetooth: false)` skips the CoreBluetooth central so tests can drive the sync lifecycle (`SyncLifecycleTests`).
 
 ## Autonomous company
 
@@ -151,6 +151,10 @@ Messages are length-prefixed (4-byte big-endian) JSON:
 | `mouseMove`, `keyDown`, `macAction` | iPhone → Mac | Trackpad, typing, and Mac system actions |
 
 The phone Lights tab shows that choice. Power for the strip waits until the strip is connected. Power for the lamp or both does not. One switch drives every selected light.
+
+Coming back to the foreground (`resumeFromBackground`): a connected phone pings and reconnects to the same Mac if there's no pong in 2 s (iOS may drop the link while suspended; the 5 s ping alone takes 15 s to notice); a dropped link looks for the Mac again unless the user tapped Disconnect.
+
+The Mac reads output volume through CoreAudio (~0.6 ms) and falls back to AppleScript only for outputs that report none: the AppleScript read runs on the main thread and took 1.1 s on its first call, 40–80 ms after. Setting volume stays AppleScript (CoreAudio set is unreliable on HDMI).
 
 State to the phone is always `stateForClients()` (snapshot + system levels + lamp + lightbar): observation broadcasts and command replies alike. The bare `createStateSnapshot()` has no lamp/lightbar fields and hid those rows on every colour change. Broadcasts are throttled to 100 ms with a trailing send, so the last value of a drag always lands. The phone's sliders ignore incoming state while being dragged (`dragging`), or a late echo yanks the thumb back.
 

@@ -54,6 +54,10 @@ public final class RemoteControlClient: ObservableObject {
     private var connectionTimeoutTask: Task<Void, Never>?
     /// Invalidates receive / state callbacks from a cancelled NWConnection after reconnect.
     private var connectionGeneration: UInt64 = 0
+    /// The Mac last connected to, for reconnecting after the app was suspended.
+    private var lastServer: DiscoveredServer?
+    /// The user tapped Disconnect: coming back to the app must not undo it.
+    private var userDisconnected = false
     
     public init() {
         #if os(iOS)
@@ -67,6 +71,7 @@ public final class RemoteControlClient: ObservableObject {
     // MARK: - Discovery
     
     public func startDiscovery() {
+        userDisconnected = false
         if case .discovering = state, browser != nil { return }
         stopBrowser()
         state = .discovering
@@ -129,6 +134,8 @@ public final class RemoteControlClient: ObservableObject {
     }
     
     public func connect(to server: DiscoveredServer) {
+        userDisconnected = false
+        lastServer = server
         connectionGeneration &+= 1
         let generation = connectionGeneration
         pingTask?.cancel()
@@ -167,8 +174,32 @@ public final class RemoteControlClient: ObservableObject {
     }
     
     public func disconnect() {
+        userDisconnected = true
         cleanupConnection()
         state = .disconnected
+    }
+
+    /// Back in the foreground. While suspended, iOS may drop the TCP link
+    /// without telling us, and the 5 s ping only notices after 15 s, so the
+    /// controls would talk to a dead link. Ask the Mac now and reconnect if it
+    /// doesn't answer in 2 s; after a dropped link, look for the Mac again.
+    public func resumeFromBackground() {
+        switch RemoteClientSessionPolicy.resumeAction(state: state, userDisconnected: userDisconnected) {
+        case .none:
+            break
+        case .rediscover:
+            startDiscovery()
+        case .probe:
+            let asked = Date()
+            send(RemoteMessage(type: .ping))
+            requestState()
+            Task { @MainActor [weak self] in
+                do { try await Task.sleep(nanoseconds: 2_000_000_000) } catch { return }
+                guard let self, case .connected = self.state, let server = self.lastServer,
+                      (self.lastPongTime ?? .distantPast) < asked else { return }
+                self.connect(to: server)
+            }
+        }
     }
 
     private func fail(_ message: String) {
@@ -560,6 +591,17 @@ public enum RemoteClientSessionPolicy: Sendable {
     ) -> RemoteControlClient.ConnectionState {
         if case .error = current { return current }
         return .disconnected
+    }
+
+    public enum ResumeAction: Equatable, Sendable { case none, probe, rediscover }
+
+    /// What to do when the app comes back to the foreground.
+    public static func resumeAction(state: RemoteControlClient.ConnectionState, userDisconnected: Bool) -> ResumeAction {
+        switch state {
+        case .connected: return .probe
+        case .error, .disconnected: return userDisconnected ? .none : .rediscover
+        case .discovering, .connecting, .authenticating: return .none
+        }
     }
 
     public static func shouldHandleCallback(

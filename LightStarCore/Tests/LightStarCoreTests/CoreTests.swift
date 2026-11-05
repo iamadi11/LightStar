@@ -1487,3 +1487,16 @@ final class FocusedDisplayTests: XCTestCase {
         XCTAssertEqual(d.next(2, current: 1, now: 2.6), 2)
     }
 }
+
+final class RemoteResumeTests: XCTestCase {
+    func testComingBackToTheAppChecksTheLinkOrLooksForTheMac() {
+        typealias P = RemoteClientSessionPolicy
+        XCTAssertEqual(P.resumeAction(state: .connected("Mac"), userDisconnected: false), .probe,
+                       "a link may have died while suspended")
+        XCTAssertEqual(P.resumeAction(state: .error("Connection timed out"), userDisconnected: false), .rediscover)
+        XCTAssertEqual(P.resumeAction(state: .disconnected, userDisconnected: false), .rediscover)
+        XCTAssertEqual(P.resumeAction(state: .disconnected, userDisconnected: true), .none,
+                       "never undo the user's Disconnect")
+        XCTAssertEqual(P.resumeAction(state: .connecting("Mac"), userDisconnected: false), .none, "already on it")
+    }
+}
