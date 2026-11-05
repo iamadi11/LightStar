@@ -13,9 +13,9 @@ public enum LightOutputTarget: String, CaseIterable, Sendable, Identifiable {
     public var id: String { rawValue }
     public static let defaultsKey = "lightOutputTarget"
 
-    public var sendsToStrip: Bool { self == .strip || self == .both }
-    public var sendsToMiLamp: Bool { self == .lamp || self == .both }
-    public var sendsToLightbar: Bool { self == .lightbar || self == .both }
+    public var sendsToStrip: Bool { includes(.strip) }
+    public var sendsToMiLamp: Bool { includes(.lamp) }
+    public var sendsToLightbar: Bool { includes(.lightbar) }
     /// Any Wi-Fi lamp: the mirror path runs.
     public var sendsToLamp: Bool { sendsToMiLamp || sendsToLightbar }
 
@@ -26,6 +26,23 @@ public enum LightOutputTarget: String, CaseIterable, Sendable, Identifiable {
         case .lightbar: return "Lightbar"
         case .both: return "All"
         }
+    }
+
+    /// The lights "All" drives. The user can leave some out; never none.
+    public static let allLightsDefaultsKey = "allOutputLights"
+    public static let allChoices: [LightOutputTarget] = [.strip, .lamp, .lightbar]
+
+    public static var allLights: Set<LightOutputTarget> {
+        allLights(from: UserDefaults.standard.stringArray(forKey: allLightsDefaultsKey))
+    }
+
+    public static func allLights(from raw: [String]?) -> Set<LightOutputTarget> {
+        let chosen = Set((raw ?? []).compactMap(LightOutputTarget.init).filter { $0 != .both })
+        return chosen.isEmpty ? Set(allChoices) : chosen
+    }
+
+    private func includes(_ light: LightOutputTarget) -> Bool {
+        self == light || (self == .both && Self.allLights.contains(light))
     }
 
     public static var stored: LightOutputTarget {

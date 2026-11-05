@@ -85,6 +85,8 @@ public final class LightBLEManager: NSObject {
     /// Per-segment colours for a gradient lamp while sync runs; nil hands the
     /// lamp back to the mirrored colour.
     public var onLampZones: (([WizRGB]?, LampGradient.Placement?) -> Void)?
+    /// Edge colours for plain WiZ bulbs placed around the screen; nil when screen sync stops.
+    public var onLampSides: (([LampGradient.Side: WizRGB]?) -> Void)?
     /// Starts or stops the bedside lamp when the user picks Strip, Lamp, or Both.
     public var onOutputTargetChange: ((LightOutputTarget) -> Void)?
     public var outputTarget: LightOutputTarget = .stored {
@@ -92,6 +94,15 @@ public final class LightBLEManager: NSObject {
             guard outputTarget != oldValue else { return }
             UserDefaults.standard.set(outputTarget.rawValue, forKey: LightOutputTarget.defaultsKey)
             onOutputTargetChange?(outputTarget)
+        }
+    }
+    /// Which lights "All" drives. Re-applies the target so lamps start or stop.
+    public var allLights: Set<LightOutputTarget> = LightOutputTarget.allLights {
+        didSet {
+            guard !allLights.isEmpty else { allLights = oldValue; return }
+            guard allLights != oldValue else { return }
+            UserDefaults.standard.set(allLights.map(\.rawValue).sorted(), forKey: LightOutputTarget.allLightsDefaultsKey)
+            if outputTarget == .both { onOutputTargetChange?(.both) }
         }
     }
     public enum AudioSyncMode: String, CaseIterable { case rainbow = "Rainbow"; case pulse = "Pulse"; case frequency = "Frequency" }
@@ -154,6 +165,8 @@ public final class LightBLEManager: NSObject {
 
     // Display picker
     var focusTimer: Timer?
+    /// Front app (bundle ID, declared category) the lightbar profile was last worked out for.
+    var profileFrontApp: (id: String, category: String?)?
     var focusDebouncer = FocusDebouncer()
     public var availableDisplays: [(id: CGDirectDisplayID, name: String)] = []
     public var selectedDisplayID: CGDirectDisplayID? = nil {

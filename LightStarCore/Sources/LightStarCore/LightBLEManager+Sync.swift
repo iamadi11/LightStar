@@ -60,6 +60,7 @@ public extension LightBLEManager {
         lampScreenZones = nil
         lampCombinedLevel = nil
         onLampZones?(nil, nil)
+        onLampSides?(nil)
         flashLevel = 0
         syncColor = nil
         protectedContentBanner = nil
@@ -152,6 +153,7 @@ public extension LightBLEManager {
         lampScreenZones = nil
         lampCombinedLevel = nil
         onLampZones?(nil, nil)
+        onLampSides?(nil)
         flashLevel = 0
         syncMode = .off
         syncColor = nil
@@ -316,17 +318,35 @@ public extension LightBLEManager {
 #endif
         }
         var zoneSmoother = LampZoneSmoother()
+        var sideSmoother = LampZoneSmoother()
         var lastZones: Double = 0
         screenSampler.onZones = { [weak self] zones in
             guard let self, self.isSyncingVideo, self.isOn, self.sendsLampGradient else { return }
             let now = CACurrentMediaTime()
             guard now - lastZones >= 1.0 / 30.0 else { return }
             lastZones = now
-            let smoothed = zoneSmoother.next(zones, alpha: self.syncResponsiveness)
+            let profile = LightbarProfile.active
+            // Games land every frame at once; other apps ease as the slider says.
+            let alpha = profile == .game ? 1 : self.syncResponsiveness
+            var target = LampGradient.boosted(zones, by: LampGradient.colourBoost)
+            if profile == .work {
+                let white = LampGradient.dayWhite()
+                target = Array(repeating: WizRGB(hue: white.hue, saturation: white.saturation), count: zones.count)
+            }
+            let smoothed = zoneSmoother.next(target, alpha: alpha)
             self.lampScreenZones = smoothed
             // Combined: the music sets the brightness, as it does for the strip.
             let level = (self.syncMode == .combined ? self.lampCombinedLevel : nil) ?? self.brightness
             self.onLampZones?(LampGradient.scaled(smoothed, by: level), .current)
+            // Plain bulbs placed around the screen show their edge; with the
+            // work light they take the lightbar's colour instead.
+            guard let onLampSides = self.onLampSides else { return }
+            let sides = profile == .work ? [:] : self.screenSampler.lampSides()
+            guard !sides.isEmpty else { onLampSides(nil); return }
+            let order = LampGradient.Side.allCases.filter { $0 != .whole }
+            let raw = LampGradient.boosted(order.map { sides[$0] ?? .off }, by: LampGradient.colourBoost)
+            let lit = LampGradient.scaled(sideSmoother.next(raw, alpha: alpha), by: level)
+            onLampSides(Dictionary(uniqueKeysWithValues: zip(order, lit)))
         }
         screenSampler.onColor = { [weak self] h, s, v in
             guard let self, self.isSyncingVideo, self.isOn else { return }
@@ -370,6 +390,7 @@ public extension LightBLEManager {
     public func setupAudioCallback(useMic: Bool = false, screenAudio: Bool = false) {
         var lastWrite: Double = 0
         var meter = VUMeter()
+        var flash = BeatFlash()
         let callback: (FrequencyBands) -> Void = { [weak self] (bands: FrequencyBands) in
             guard let self, self.isSyncingAudio, self.isOn else { return }
             let now = CACurrentMediaTime()
@@ -405,9 +426,13 @@ public extension LightBLEManager {
             if self.sendsLampGradient {
                 let level = meter.next(bands)
                 let count = LampGradient.colourCount(for: LampGradient.Placement(), segments: LampGradient.segmentCount)
-                let frame = LampGradient.musicStyle == .spectrum
+                var frame = LampGradient.musicStyle == .spectrum
                     ? LampGradient.spectrum(bands, count: count)
                     : LampGradient.vu(level: level, count: count)
+                if BeatFlash.enabled {
+                    if isBeat { flash.beat(at: now) }
+                    frame = flash.apply(frame, at: now)
+                }
                 self.onLampZones?(LampGradient.scaled(frame, by: self.brightness), nil)
             }
 

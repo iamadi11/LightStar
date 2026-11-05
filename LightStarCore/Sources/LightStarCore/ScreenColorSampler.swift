@@ -79,6 +79,8 @@ public final class ScreenColorSampler: NSObject {
         }
     }
 
+    public func lampSides() -> [LampGradient.Side: WizRGB] { provider.currentLampSides() }
+
     private func paintLatestZones() {
         guard isRunning, let onZones else { return }
         let zones = provider.currentLampZones()

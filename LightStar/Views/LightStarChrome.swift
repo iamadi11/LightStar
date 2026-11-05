@@ -92,6 +92,10 @@ struct LightTargetSection: View {
             .labelsHidden()
             .accessibilityLabel("Which lights to control")
 
+            if ble.outputTarget == .both {
+                allLightsRow
+            }
+
             if ble.outputTarget.sendsToStrip {
                 stripRow
             }
@@ -102,6 +106,39 @@ struct LightTargetSection: View {
                 lightbarRow
             }
         }
+    }
+
+    /// The lights "All" runs. The last one can't be unticked.
+    private var allLightsRow: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 12) {
+                ForEach(LightOutputTarget.allChoices) { light in
+                    Toggle(light.title, isOn: Binding(
+                        get: { ble.allLights.contains(light) },
+                        set: { on in
+                            if on { ble.allLights.insert(light) } else { ble.allLights.remove(light) }
+                        }
+                    ))
+                    .toggleStyle(.checkbox)
+                    .font(.caption)
+                    .disabled(ble.allLights == [light])
+                }
+            }
+            // Each WiZ light on its own, once there is more than one.
+            if ble.allLights.contains(.lightbar), wizLamp.lights.count > 1 {
+                HStack(spacing: 12) {
+                    ForEach(wizLamp.lights) { light in
+                        Toggle(light.name, isOn: Binding(
+                            get: { light.enabled },
+                            set: { wizLamp.setLight(light.mac, enabled: $0) }
+                        ))
+                        .toggleStyle(.checkbox)
+                        .font(.caption2)
+                    }
+                }
+            }
+        }
+        .accessibilityLabel("Lights that All controls")
     }
 
     private var stripRow: some View {
