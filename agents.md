@@ -26,7 +26,7 @@ Frame format: `BC [cmd] [data_len] [data × data_len] 55`. Invariant: `bytes[2] 
 |-----|----------|
 | `0x01` | Power on/off |
 | `0x02` | Channel order 1=RGB…6=BGR |
-| `0x03` | Pixel count 16-bit BE, 8–300 |
+| `0x03` | Pixel count 16-bit BE, 8–300. Lowering it darkens everything past LED N (a length trim); too slow and maybe flash-backed, so never stream it |
 | `0x04` | Static colour (hue LUT + sat 0–1000) |
 | `0x05` | Brightness 16-bit BE **100–1000** |
 | `0x06` | Effect select (58 IDs) |
