@@ -65,4 +65,7 @@ public struct WidgetState: Codable, Equatable, Sendable {
             done()
         }
     }
+
+    /// Returns once every queued background write has landed (tests).
+    static func waitForPendingWrites() { writer.sync {} }
 }
