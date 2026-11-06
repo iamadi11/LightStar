@@ -1490,3 +1490,22 @@ final class RemoteResumeTests: XCTestCase {
         XCTAssertEqual(P.resumeAction(state: .connecting("Mac"), userDisconnected: false), .none, "already on it")
     }
 }
+
+final class WidgetStateBackgroundSaveTests: XCTestCase {
+    func testSaveInBackgroundWritesTheLatestState() throws {
+        let saved = try? Data(contentsOf: WidgetState.storeURL)
+        defer { if let saved { try? saved.write(to: WidgetState.storeURL) } }
+        // Earlier tests' queued writes land first, so they can't overwrite this burst.
+        WidgetState.waitForPendingWrites()
+        // CI's unsigned test runner can't write the App Group store at all.
+        WidgetState(hue: 0.42).save()
+        guard WidgetState.load().hue == 0.42 else { throw XCTSkip("widget store isn't writable here") }
+        WidgetState(isOn: true, hue: 0.1).saveInBackground()
+        WidgetState(isOn: true, hue: 0.2).saveInBackground()
+        WidgetState(isOn: false, hue: 0.3).saveInBackground()
+        WidgetState.waitForPendingWrites()
+        let written = WidgetState.load()
+        XCTAssertEqual(written.hue, 0.3, accuracy: 1e-9, "a burst writes its last state")
+        XCTAssertFalse(written.isOn)
+    }
+}

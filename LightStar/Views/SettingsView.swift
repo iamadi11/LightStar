@@ -156,6 +156,12 @@ enum WindowActions {
     @MainActor static var openControl: (() -> Void)?
     @MainActor static var openSettings: (() -> Void)?
     @MainActor static var closePopover: (() -> Void)?
+    @MainActor static var openCanvas: (() -> Void)?
+}
+
+@MainActor func openLightStarCanvas() {
+    WindowActions.closePopover?()
+    WindowActions.openCanvas?()
 }
 
 @MainActor func openLightStarSettings() {

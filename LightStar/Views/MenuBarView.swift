@@ -81,6 +81,15 @@ struct MenuBarView: View {
                 }
                 Spacer()
                 Button {
+                    openLightStarCanvas()
+                } label: {
+                    Image(systemName: "drop.halffull")
+                        .frame(width: 28, height: 28)
+                }
+                .buttonStyle(.plain)
+                .help("Open Canvas")
+                .accessibilityLabel("Open Canvas")
+                Button {
                     openLightStarControlWindow()
                 } label: {
                     Image(systemName: "macwindow")
@@ -691,6 +700,7 @@ struct SyncControlView: View {
             case .frequency: return "Bass → red · mids → green · treble → blue"
             }
         case .combined: return "Screen color · music pulses brightness like Music Pulse"
+        case .canvas:   return "Lights follow the Canvas · no screen recording"
         }
     }
 }

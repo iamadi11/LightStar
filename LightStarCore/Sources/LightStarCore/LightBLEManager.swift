@@ -20,6 +20,8 @@ public final class LightBLEManager: NSObject {
         case video    = "Video"
         case audio    = "Audio"
         case combined = "Video+Audio"
+        /// The lights follow the Canvas liquid; no screen capture.
+        case canvas   = "Canvas"
 
         public var displayName: String {
             switch self {
@@ -27,6 +29,7 @@ public final class LightBLEManager: NSObject {
             case .video:    return "Screen"
             case .audio:    return "Music"
             case .combined: return "Both"
+            case .canvas:   return "Canvas"
             }
         }
     }
@@ -85,6 +88,10 @@ public final class LightBLEManager: NSObject {
     public var onLampZones: (([WizRGB]?, LampGradient.Placement?) -> Void)?
     /// Edge colours for plain WiZ bulbs placed around the screen; nil when screen sync stops.
     public var onLampSides: (([LampGradient.Side: WizRGB]?) -> Void)?
+    /// Canvas mode started (true) or stopped: the app runs the liquid for the lights.
+    public var onCanvasMode: ((Bool) -> Void)?
+    /// Last strip write from the canvas, for its 20 Hz limit.
+    @ObservationIgnored var canvasStripWrite: (hue: Double, at: Double)?
     /// Starts or stops the bedside lamp when the user picks Strip, Lamp, or Both.
     public var onOutputTargetChange: ((LightOutputTarget) -> Void)?
     public var outputTarget: LightOutputTarget = .stored {
@@ -1070,7 +1077,7 @@ public enum CombinedSyncMixer: Sendable {
         _ = flashLevel
         switch mode {
         case .video, .combined: return true
-        case .audio, .off: return false
+        case .audio, .off, .canvas: return false
         }
     }
 
@@ -1103,7 +1110,7 @@ public enum CombinedSyncMixer: Sendable {
 public enum CombinedCapturePolicy: Sendable {
     public static func shouldCaptureAudioOnScreenStream(mode: LightBLEManager.SyncMode) -> Bool {
         switch mode {
-        case .combined, .video, .audio, .off:
+        case .combined, .video, .audio, .off, .canvas:
             return false
         }
     }

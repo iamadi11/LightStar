@@ -19,6 +19,18 @@ public struct WizRGB: Equatable, Hashable, Sendable {
     }
 
     public static let off = WizRGB(r: 0, g: 0, b: 0)
+
+    /// Hue and saturation, 0…1, in the app's terms (the strip LUT applies later).
+    public var hueSaturation: (Double, Double) {
+        let rf = Double(r) / 255, gf = Double(g) / 255, bf = Double(b) / 255
+        let hi = max(rf, gf, bf), lo = min(rf, gf, bf), d = hi - lo
+        guard hi > 0, d > 0 else { return (0, 0) }
+        var h: Double
+        if hi == rf { h = (gf - bf) / d } else if hi == gf { h = (bf - rf) / d + 2 } else { h = (rf - gf) / d + 4 }
+        h /= 6
+        if h < 0 { h += 1 }
+        return (h, d / hi)
+    }
     public var isOff: Bool { r == 0 && g == 0 && b == 0 }
 
     /// App hue/saturation (0…1, before the strip LUT) at full scale.

@@ -19,7 +19,8 @@ struct iOSRootView: View {
             isOn: ble.isOn,
             hue: h,
             saturation: s
-        ).save()
-        WidgetCenter.shared.reloadTimelines(ofKind: "LightStarWidget")
+        ).saveInBackground {
+            WidgetCenter.shared.reloadTimelines(ofKind: "LightStarWidget")
+        }
     }
 }

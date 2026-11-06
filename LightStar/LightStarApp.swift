@@ -50,6 +50,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     lazy var homeKitLamp = HomeKitLampController()
     /// Philips / WiZ gradient floor lamp over WiZ UDP. Follows the strip and takes segments.
     lazy var wizLamp = WizLampController()
+    /// The Canvas liquid; runs for its window and, in canvas mode, for the lights.
+    lazy var canvas: CanvasEngine = {
+        let engine = CanvasEngine()
+        if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion { engine.pilot.speed = 0.4 }
+        return engine
+    }()
 
     /// Every shared object a LightStar view may read. One list for the popover,
     /// the control window, and both ways of opening Settings: the ⌘, Settings
@@ -79,6 +85,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         WindowActions.openControl = { [weak self] in self?.showControlWindow() }
         WindowActions.openSettings = { [weak self] in self?.showSettingsWindow() }
+        WindowActions.openCanvas = { [weak self] in self?.showCanvasWindow() }
         WindowActions.closePopover = { [weak self] in self?.popover?.performClose(nil) }
         setupMenuBar()
         if UserDefaults.standard.object(forKey: "autoConnectOnLaunch") as? Bool ?? true {
@@ -205,6 +212,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         applyLampFollow(ble.outputTarget)
         let lamp = wizLamp
         ble.startLampPipe { frame in lamp.streamFrame(frame.zones, sides: frame.sides) }
+        let ble = self.ble
+        let (w, h) = CanvasEngine.lightSize
+        canvas.onLightFrame = { bytes, bytesPerRow in
+            ble.takeCanvasFrame(bytes, bytesPerRow: bytesPerRow, width: w, height: h)
+        }
+        ble.onCanvasMode = { [weak self] on in self?.canvas.drivesLights = on }
         startDayWhiteTimer()
     }
 
@@ -414,8 +427,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 hue: h,
                 saturation: s,
                 lightbar: self.widgetLightbarLine
-            ).save()
-            WidgetCenter.shared.reloadTimelines(ofKind: "LightStarWidget")
+            ).saveInBackground {
+                WidgetCenter.shared.reloadTimelines(ofKind: "LightStarWidget")
+            }
         }
     }
 
@@ -575,6 +589,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         menu.addItem(NSMenuItem(title: "Open Window", action: #selector(showControlWindow), keyEquivalent: ""))
+        let canvasItem = NSMenuItem(title: "Open Canvas", action: #selector(showCanvasWindow), keyEquivalent: "")
+        canvasItem.target = self
+        menu.addItem(canvasItem)
         let settingsItem = NSMenuItem(title: "Settings…", action: #selector(showSettings), keyEquivalent: "")
         settingsItem.target = self
         menu.addItem(settingsItem)
@@ -676,7 +693,44 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func application(_ application: NSApplication, open urls: [URL]) {
-        openLightStarControlWindow()
+        if urls.contains(where: { $0.host == "canvas" }) {
+            showCanvasWindow()
+        } else {
+            openLightStarControlWindow()
+        }
+    }
+
+    // MARK: - Canvas
+
+    private var canvasWindowController: NSWindowController?
+
+    /// Live liquid art. Closing the window frees its GPU textures.
+    @objc func showCanvasWindow() {
+        popover?.performClose(nil)
+        NSApp.activate(ignoringOtherApps: true)
+        if let existing = canvasWindowController?.window {
+            existing.makeKeyAndOrderFront(nil)
+            return
+        }
+        // Opening the Canvas is asking for it: the lights follow it right away.
+        if ble.syncMode != .canvas { ble.setSyncMode(.canvas) }
+        let window = NSWindow(contentViewController: NSHostingController(rootView: withAppState(CanvasView(engine: canvas))))
+        window.title = "Canvas"
+        window.styleMask.insert([.titled, .closable, .miniaturizable, .resizable])
+        window.collectionBehavior.insert(.fullScreenPrimary)
+        window.setContentSize(NSSize(width: 960, height: 600))
+        window.backgroundColor = .black
+        window.identifier = NSUserInterfaceItemIdentifier("canvas")
+        window.isReleasedWhenClosed = false
+        // Opening it switches the lights to Canvas, so it must not reopen by itself after a relaunch.
+        window.isRestorable = false
+        window.center()
+        let controller = NSWindowController(window: window)
+        canvasWindowController = controller
+        controller.showWindow(nil)
+        NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: window, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.canvasWindowController = nil }
+        }
     }
 
     // MARK: - Global keyboard shortcuts
