@@ -44,25 +44,6 @@ public enum CanvasQuality: String, CaseIterable, Identifiable, Sendable {
     }
 }
 
-/// The display shader's `DisplayParams`, same layout.
-public struct DisplayLook {
-    /// CanvasStyle order.
-    public var look: Int32 = 0
-    /// Seconds of drift for the drawn-only parts (lava blobs, aurora curtains, stars).
-    public var time: Float = 0
-    private var pad = SIMD2<Float>()
-    public var palette: (SIMD4<Float>, SIMD4<Float>, SIMD4<Float>, SIMD4<Float>) = (.zero, .zero, .zero, .zero)
-    public init() {}
-
-    public init(style: CanvasStyle, time: Float = 0) {
-        look = Int32(CanvasStyle.allCases.firstIndex(of: style) ?? 0)
-        self.time = time
-        let hues = style.look.hues
-        let rgb = (0..<4).map { SIMD4(FluidAutoPilot.rgb(hue: hues[$0 % hues.count]), 1) }
-        palette = (rgb[0], rgb[1], rgb[2], rgb[3])
-    }
-}
-
 public final class FluidSimulation {
     public struct Settings: Equatable, Sendable {
         /// Short side of the velocity grid, in cells.
@@ -90,6 +71,17 @@ public final class FluidSimulation {
         var origin = SIMD2<UInt32>(0, 0)
     }
 
+    /// The `forces` kernel's `ForceParams`, same layout.
+    private struct ForceParams {
+        var gravity: SIMD2<Float>
+        var dt: Float
+        var aspect: Float
+        var wellCount: Int32
+        var pad = SIMD3<Float>(0, 0, 0)
+        var wells: (SIMD4<Float>, SIMD4<Float>, SIMD4<Float>, SIMD4<Float>,
+                    SIMD4<Float>, SIMD4<Float>, SIMD4<Float>, SIMD4<Float>) = (.zero, .zero, .zero, .zero, .zero, .zero, .zero, .zero)
+    }
+
     /// Two textures: read one, write the other, then swap.
     private struct Pair {
         var read: MTLTexture
@@ -99,8 +91,12 @@ public final class FluidSimulation {
 
     public let device: MTLDevice
     public var settings: Settings
-    /// How the colour is drawn; not a Setting, so changing it never rebuilds the textures.
-    public var display = DisplayLook()
+    /// Solid edges (Tilt mode): colour pools instead of leaving the canvas.
+    public var walls = false
+    /// Tilt: screen-space pull (cells/s² on full-strength colour), y down.
+    public var gravity = SIMD2<Float>(0, 0)
+    /// Gravity wells: x, y (0…1, y down), strength (+ pulls, − pushes), swirl. Up to 8.
+    public var wells: [SIMD4<Float>] = []
     private let pipelines: [String: MTLComputePipelineState]
     private let library: MTLLibrary
     private var velocity: Pair?
@@ -118,7 +114,7 @@ public final class FluidSimulation {
     public init?(device: MTLDevice? = MTLCreateSystemDefaultDevice(), settings: Settings = Settings()) {
         guard let device, let library = try? device.makeLibrary(source: FluidShaders.source, options: nil) else { return nil }
         var pipelines: [String: MTLComputePipelineState] = [:]
-        for name in ["advect", "curl", "vorticity", "divergence", "clear", "scale", "jacobi", "gradientSubtract", "splat", "splatPatch"] {
+        for name in ["advect", "curl", "vorticity", "divergence", "clear", "scale", "jacobi", "gradientSubtract", "splat", "splatPatch", "forces", "gradientSubtractWalls"] {
             guard let function = library.makeFunction(name: name),
                   let state = try? device.makeComputePipelineState(function: function) else { return nil }
             pipelines[name] = state
@@ -140,8 +136,9 @@ public final class FluidSimulation {
            let d = dye?.read, d.width == dyeSize.0, d.height == dyeSize.1 { return }
         aspect = newAspect
         velocity = makePair(.rg16Float, sim)
-        pressure = makePair(.r16Float, sim)
-        divergenceTex = makeTexture(.r16Float, sim)
+        // 32-bit: tilt builds up hydrostatic pressure past half-float's 65504.
+        pressure = makePair(.r32Float, sim)
+        divergenceTex = makeTexture(.r32Float, sim)
         curlTex = makeTexture(.r16Float, sim)
         dye = makePair(.rgba16Float, dyeSize, mipmapped: true)
         uncleared = [velocity?.read, velocity?.write, pressure?.read, pressure?.write, divergenceTex, curlTex,
@@ -182,6 +179,20 @@ public final class FluidSimulation {
             run(encoder, "splat", [velocity.read, velocity.write], p, size: velocity.write); velocity.swap()
         }
         pendingVelocity.removeAll()
+        if gravity != .zero || !wells.isEmpty, let dye = dye?.read {
+            var f = ForceParams(gravity: gravity, dt: dt, aspect: aspect, wellCount: Int32(min(8, wells.count)))
+            withUnsafeMutableBytes(of: &f.wells) { raw in
+                let slots = raw.bindMemory(to: SIMD4<Float>.self)
+                for (i, w) in wells.prefix(8).enumerated() { slots[i] = w }
+            }
+            encoder.setComputePipelineState(pipelines["forces"]!)
+            encoder.setTexture(velocity.read, index: 0)
+            encoder.setTexture(dye, index: 1)
+            encoder.setTexture(velocity.write, index: 2)
+            encoder.setBytes(&f, length: MemoryLayout<ForceParams>.stride, index: 0)
+            dispatch(encoder, pipelines["forces"]!, width: velocity.write.width, height: velocity.write.height)
+            velocity.swap()
+        }
 
         run(encoder, "curl", [velocity.read, curlTex], nil, size: curlTex)
         run(encoder, "vorticity", [velocity.read, curlTex, velocity.write], p, size: velocity.write); velocity.swap()
@@ -190,7 +201,7 @@ public final class FluidSimulation {
         for _ in 0..<settings.pressureIterations {
             run(encoder, "jacobi", [pressure.read, divergenceTex, pressure.write], nil, size: pressure.write); pressure.swap()
         }
-        run(encoder, "gradientSubtract", [pressure.read, velocity.read, velocity.write], nil, size: velocity.write); velocity.swap()
+        run(encoder, walls ? "gradientSubtractWalls" : "gradientSubtract", [pressure.read, velocity.read, velocity.write], nil, size: velocity.write); velocity.swap()
         p.dissipation = settings.velocityDissipation
         run(encoder, "advect", [velocity.read, velocity.read, velocity.write], p, size: velocity.write); velocity.swap()
         encoder.endEncoding()
@@ -238,35 +249,27 @@ public final class FluidSimulation {
         p.radius = Float(s.radius) * (aspect > 1 ? aspect : 1)
     }
 
-    /// Draws the colour into a render target (the view's drawable, or a small
-    /// texture to read the lights' colours from).
-    public func draw(_ commandBuffer: MTLCommandBuffer, to pass: MTLRenderPassDescriptor, format: MTLPixelFormat) {
-        guard let dye = dye?.read, let state = displayPipeline(format) else { return }
-        if mipsStale, dye.mipmapLevelCount > 1, let blit = commandBuffer.makeBlitCommandEncoder() {
-            blit.generateMipmaps(for: dye)
-            blit.endEncoding()
-            mipsStale = false
-        }
-        guard let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: pass) else { return }
-        encoder.setRenderPipelineState(state)
-        encoder.setFragmentTexture(dye, index: 0)
-        var display = display
-        encoder.setFragmentBytes(&display, length: MemoryLayout<DisplayLook>.stride, index: 0)
-        encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
-        encoder.endEncoding()
+    /// The flow (cells per second) and the colour, for the renderer.
+    public var velocityTexture: MTLTexture? { velocity?.read }
+    public var dyeTexture: MTLTexture? { dye?.read }
+    /// One over the velocity grid's size: velocity × this = canvas widths per second.
+    public var simTexel: SIMD2<Float> { params(dt: 0).simTexel }
+    public var canvasAspect: Float { aspect }
+
+    /// Rebuilds the colour's mipmaps once after it moved (looks blur with them,
+    /// the lights average with them).
+    public func prepareMips(_ commandBuffer: MTLCommandBuffer) {
+        guard mipsStale, let dye = dye?.read, dye.mipmapLevelCount > 1,
+              let blit = commandBuffer.makeBlitCommandEncoder() else { return }
+        blit.generateMipmaps(for: dye)
+        blit.endEncoding()
+        mipsStale = false
     }
 
-    private var displayCache: [MTLPixelFormat: MTLRenderPipelineState] = [:]
-
-    private func displayPipeline(_ format: MTLPixelFormat) -> MTLRenderPipelineState? {
-        if let state = displayCache[format] { return state }
-        let d = MTLRenderPipelineDescriptor()
-        d.vertexFunction = library.makeFunction(name: "displayVertex")
-        d.fragmentFunction = library.makeFunction(name: "displayFragment")
-        d.colorAttachments[0].pixelFormat = format
-        let state = try? device.makeRenderPipelineState(descriptor: d)
-        displayCache[format] = state
-        return state
+    /// Wipes the colour and the flow (a fresh canvas).
+    public func clear() {
+        uncleared = [velocity?.read, velocity?.write, pressure?.read, pressure?.write, dye?.read, dye?.write].compactMap { $0 }
+        pendingDye.removeAll(); pendingVelocity.removeAll()
     }
 
     private func run(_ encoder: MTLComputeCommandEncoder, _ name: String, _ textures: [MTLTexture],
@@ -280,6 +283,10 @@ public final class FluidSimulation {
         encoder.setComputePipelineState(state)
         for (i, t) in textures.enumerated() { encoder.setTexture(t, index: i) }
         if var params { encoder.setBytes(&params, length: MemoryLayout<Params>.stride, index: 0) }
+        dispatch(encoder, state, width: width, height: height)
+    }
+
+    private func dispatch(_ encoder: MTLComputeCommandEncoder, _ state: MTLComputePipelineState, width: Int, height: Int) {
         let w = state.threadExecutionWidth, h = max(1, state.maxTotalThreadsPerThreadgroup / w)
         encoder.dispatchThreads(MTLSize(width: width, height: height, depth: 1),
                                 threadsPerThreadgroup: MTLSize(width: w, height: h, depth: 1))

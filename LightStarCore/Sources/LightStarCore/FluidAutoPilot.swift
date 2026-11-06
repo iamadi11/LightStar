@@ -1,17 +1,5 @@
 import Foundation
 
-/// How the Canvas behaves. Auto: the liquid moves by itself and can still be
-/// stirred. Interactive: it only moves when stirred (mouse, trackpad, iPhone).
-public enum CanvasMode: String, CaseIterable, Identifiable, Sendable {
-    case auto, interactive
-    public var id: String { rawValue }
-    public var title: String { self == .auto ? "Auto" : "Interactive" }
-    public static let defaultsKey = "canvasMode"
-    public static var stored: CanvasMode {
-        UserDefaults.standard.string(forKey: defaultsKey).flatMap(CanvasMode.init) ?? .auto
-    }
-}
-
 /// The Canvas animations, each after a kind of calming ambient video: its own
 /// drawing (the display shader's look), palette, motion and physics. All slow,
 /// on dark backgrounds (bar Ink), with no flicker.
@@ -90,6 +78,8 @@ public struct FluidAutoPilot: Sendable {
     public var radius: Double
     public var force: Double
     public var amount: Double
+    /// Moves every emitter along the palette (Music: treble cools, bass warms).
+    public var hueShift = 0.0
     private let phases: [(x: Double, y: Double, hue: Double)]
 
     /// Lissajous frequencies with irrational ratios, so paths don't close.
@@ -161,7 +151,7 @@ public struct FluidAutoPilot: Sendable {
 
     /// Each emitter walks the hue list slowly, blending between neighbours.
     func colourHue(_ i: Int, at t: Double) -> Double {
-        paletteHue(t * speed * 0.035 + phases[i].hue)
+        paletteHue(t * speed * 0.035 + phases[i].hue + hueShift)
     }
 
     /// The palette as a loop: 0…1 walks once through every hue, blending.

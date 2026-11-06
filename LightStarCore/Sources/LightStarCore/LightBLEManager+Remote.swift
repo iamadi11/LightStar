@@ -287,9 +287,8 @@ public final class RemoteControlCoordinator: ObservableObject {
         case .setCanvas:
             guard let cmd = try? message.decode(SetCanvasMessage.self) else { return nil }
             onCanvas?(cmd)
-            // A stir comes 30+ times a second; only a settings change needs the state back.
-            return cmd.stir != nil && cmd.mode == nil && cmd.style == nil && cmd.quality == nil
-                ? nil : try? RemoteMessage(type: .stateUpdate, content: stateForClients())
+            // Stirs and tilt come 30+ times a second; only a settings change needs the state back.
+            return cmd.isPlayOnly ? nil : try? RemoteMessage(type: .stateUpdate, content: stateForClients())
         case .setLightbar:
             if let cmd = try? message.decode(SetLightbarMessage.self) {
                 onLightbar?(cmd)

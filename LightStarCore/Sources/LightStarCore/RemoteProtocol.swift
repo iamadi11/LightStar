@@ -267,26 +267,61 @@ public struct LightStarState: Codable, Sendable, Equatable {
 }
 
 /// What the phone shows for the Canvas. Whether the lights follow it is
-/// `syncMode == "Canvas"`.
+/// `syncMode == "Canvas"`. Everything after `quality` is optional, so older
+/// phones and Macs still decode it.
 public struct CanvasState: Codable, Sendable, Equatable {
     public var mode: String
     public var style: String
     public var quality: String
+    public var symmetry: Int?
+    public var mood: String?
+    public var sound: Bool?
+    /// Phones that stirred in the last 30 s.
+    public var players: Int?
+    public var wells: Int?
+    public var discoveries: Int?
+    /// Breathe mode: seconds per breath and where in it the Mac was when it sent this (0…1).
+    public var breathCycle: Double?
+    public var breathPhase: Double?
     public init(mode: String, style: String, quality: String) {
         self.mode = mode; self.style = style; self.quality = quality
     }
 }
 
-/// From the phone: Canvas settings, and/or a stir (a finger moving from one
-/// point to another, 0…1 with y down).
+/// From the phone: Canvas settings, and/or play. Points are 0…1 with y down.
 public struct SetCanvasMessage: Codable, Sendable, Equatable {
     public var mode: String?
     public var style: String?
     public var quality: String?
     public var stir: [Double]?   // [fromX, fromY, toX, toY]
+    public var symmetry: Int?
+    public var mood: String?
+    public var sound: Bool?
+    /// The phone's own id: its stirs paint in its own colour (several phones, one canvas).
+    public var player: String?
+    /// Which finger a stir belongs to; `strokeEnd` lifts it.
+    public var finger: Int?
+    public var strokeEnd: Bool?
+    public var tap: [Double]?    // [x, y]
+    public var well: [Double]?   // [x, y, ±1] (+1 pulls, -1 pushes)
+    public var clearWells: Bool?
+    public var tilt: [Double]?   // gravity [x, y], screen axes, each -1…1
+    public var shake: Bool?
 
-    public init(mode: String? = nil, style: String? = nil, quality: String? = nil, stir: [Double]? = nil) {
+    public init(mode: String? = nil, style: String? = nil, quality: String? = nil, stir: [Double]? = nil,
+                symmetry: Int? = nil, mood: String? = nil, sound: Bool? = nil, player: String? = nil,
+                finger: Int? = nil, strokeEnd: Bool? = nil, tap: [Double]? = nil, well: [Double]? = nil,
+                clearWells: Bool? = nil, tilt: [Double]? = nil, shake: Bool? = nil) {
         self.mode = mode; self.style = style; self.quality = quality; self.stir = stir
+        self.symmetry = symmetry; self.mood = mood; self.sound = sound; self.player = player
+        self.finger = finger; self.strokeEnd = strokeEnd; self.tap = tap; self.well = well
+        self.clearWells = clearWells; self.tilt = tilt; self.shake = shake
+    }
+
+    /// True when this only plays (no setting changed), so it needs no state reply.
+    public var isPlayOnly: Bool {
+        mode == nil && style == nil && quality == nil && symmetry == nil && mood == nil && sound == nil
+            && well == nil && clearWells == nil
     }
 }
 

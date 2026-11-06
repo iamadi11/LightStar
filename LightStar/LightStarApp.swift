@@ -54,8 +54,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     lazy var canvas: CanvasEngine = {
         let engine = CanvasEngine()
         if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion { engine.motionScale = 0.4 }
+        let sound = CanvasSound()
+        sound.enabled = CanvasSound.stored
+        engine.sound = sound
         return engine
     }()
+    /// The Mac's sound for the Canvas's Music mode; separate from Music sync's own tap.
+    private let canvasAudio = SystemAudioSampler()
 
     /// Every shared object a LightStar view may read. One list for the popover,
     /// the control window, and both ways of opening Settings: the ⌘, Settings
@@ -199,29 +204,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if let ignore = change.ignoreBars { d.set(ignore, forKey: LampGradient.ignoreBarsDefaultsKey) }
             self.remoteControl.publishState()
         }
-        remoteControl.canvasStatus = {
-            CanvasState(mode: CanvasMode.stored.rawValue, style: CanvasStyle.stored.rawValue,
-                        quality: CanvasQuality.stored.rawValue)
-        }
-        // Same settings as the Canvas section; a stir moves the liquid.
+        remoteControl.canvasStatus = { [weak self] in self?.canvas.remoteState(quality: .stored) }
+        // Same settings as the Canvas section, plus play from the phone (stirs,
+        // taps, wells, tilt, shakes). Each phone paints in its own colour.
         remoteControl.onCanvas = { [weak self] change in
             guard let self else { return }
-            let d = UserDefaults.standard
-            var settingsChanged = false
-            if let raw = change.mode, CanvasMode(rawValue: raw) != nil {
-                d.set(raw, forKey: CanvasMode.defaultsKey); settingsChanged = true
-            }
-            if let raw = change.style, CanvasStyle(rawValue: raw) != nil {
-                d.set(raw, forKey: CanvasStyle.defaultsKey); settingsChanged = true
-            }
-            if let raw = change.quality, CanvasQuality(rawValue: raw) != nil {
-                d.set(raw, forKey: CanvasQuality.defaultsKey)
-                self.canvas.applyQuality()
-            }
-            if settingsChanged { self.canvas.applySettings() }
-            if let s = change.stir, s.count == 4, s.allSatisfy({ $0.isFinite && (-0.1...1.1).contains($0) }) {
-                self.canvas.stir(from: CGPoint(x: s[0], y: s[1]), to: CGPoint(x: s[2], y: s[3]))
-            }
+            self.applyCanvasChange(change)
         }
         homeKitLamp.onStateChange = { [weak self] in
             self?.remoteControl.publishState()
@@ -243,6 +231,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             ble.takeCanvasFrame(bytes, bytesPerRow: bytesPerRow, width: w, height: h)
         }
         ble.onCanvasMode = { [weak self] on in self?.canvas.drivesLights = on }
+        let canvasAudio = self.canvasAudio
+        canvas.onNeedsAudio = { [weak self] on in
+            Task { @MainActor in
+                if on {
+                    canvasAudio.onBands = { b in
+                        self?.canvas.feedAudio(bass: b.bass, mid: b.mid, high: b.high, rms: b.rms, flux: b.flux)
+                    }
+                    try? await canvasAudio.start()
+                } else {
+                    await canvasAudio.stop()
+                }
+            }
+        }
+        canvas.onStateChange = { [weak self] in self?.remoteControl.publishState() }
+        canvas.onMoodEnded = { [weak self] mood in
+            guard let self, mood == .windDown else { return }
+            // Wind-down's room has already dimmed to almost nothing: finish by turning the lights off.
+            if self.ble.syncMode == .canvas { self.ble.setSyncMode(.off) }
+            self.ble.setPower(on: false)
+            UserDefaults.standard.set(CanvasMood.none.rawValue, forKey: CanvasMood.defaultsKey)
+            self.canvas.applySettings()
+        }
         startDayWhiteTimer()
     }
 
@@ -727,6 +737,48 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: - Canvas
 
+    /// A Canvas change from the phone: settings first, then play.
+    private func applyCanvasChange(_ change: SetCanvasMessage) {
+        let d = UserDefaults.standard
+        var settingsChanged = false
+        if let raw = change.mood, let mood = CanvasMood(rawValue: raw) { canvas.applyMood(mood) }
+        if let raw = change.mode, CanvasMode(rawValue: raw) != nil {
+            d.set(raw, forKey: CanvasMode.defaultsKey); settingsChanged = true
+        }
+        if let raw = change.style, CanvasStyle(rawValue: raw) != nil {
+            d.set(raw, forKey: CanvasStyle.defaultsKey); settingsChanged = true
+        }
+        if let folds = change.symmetry, CanvasSymmetry.choices.contains(folds) {
+            d.set(folds, forKey: CanvasSymmetry.defaultsKey); settingsChanged = true
+        }
+        if let raw = change.quality, CanvasQuality(rawValue: raw) != nil {
+            d.set(raw, forKey: CanvasQuality.defaultsKey)
+            canvas.applyQuality()
+        }
+        if let on = change.sound {
+            d.set(on, forKey: CanvasSound.defaultsKey)
+            canvas.sound?.enabled = on
+        }
+        if settingsChanged { canvas.applySettings() }
+
+        // Phones send points 0…1; anything outside a small margin is dropped.
+        func point(_ v: [Double], _ i: Int = 0) -> CGPoint? {
+            guard v.count >= i + 2, v[i...i + 1].allSatisfy({ $0.isFinite && (-0.1...1.1).contains($0) }) else { return nil }
+            return CGPoint(x: v[i], y: v[i + 1])
+        }
+        let player = change.player.map { String($0.prefix(64)) }
+        let finger = "finger\(change.finger ?? 0)"
+        if let s = change.stir, s.count == 4, let a = point(s), let b = point(s, 2) {
+            canvas.stir(from: a, to: b, pressure: 0.5, player: player, pointer: finger)
+        }
+        if change.strokeEnd == true { canvas.endStroke(player: player, pointer: finger) }
+        if let t = change.tap, let p = point(t) { canvas.tap(at: p, player: player) }
+        if let w = change.well, w.count == 3, let p = point(w) { canvas.plantWell(at: p, repel: w[2] < 0, player: player) }
+        if change.clearWells == true { canvas.clearWells() }
+        if let g = change.tilt, g.count == 2, g.allSatisfy(\.isFinite) { canvas.setTilt(x: g[0], y: g[1]) }
+        if change.shake == true { canvas.shake() }
+    }
+
     private var canvasWindowController: NSWindowController?
 
     /// Live liquid art. Closing the window frees its GPU textures.
@@ -749,10 +801,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         window.isReleasedWhenClosed = false
         // Opening it switches the lights to Canvas, so it must not reopen by itself after a relaunch.
         window.isRestorable = false
-        window.center()
+        // Open on the screen being used (the pointer's), not wherever the menu bar is.
+        let mouse = NSEvent.mouseLocation
+        if let screen = NSScreen.screens.first(where: { NSMouseInRect(mouse, $0.frame, false) }) {
+            let v = screen.visibleFrame
+            window.setFrameOrigin(NSPoint(x: v.midX - window.frame.width / 2, y: v.midY - window.frame.height / 2))
+        } else {
+            window.center()
+        }
         let controller = NSWindowController(window: window)
         canvasWindowController = controller
         controller.showWindow(nil)
+        // A monitor that is asleep or switched to another input (a console)
+        // still counts as a screen, but nothing on it can be seen: if the
+        // Canvas lands there, move it to the first screen where it shows.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak window] in
+            guard let window, window.isVisible, !window.occlusionState.contains(.visible) else { return }
+            for screen in NSScreen.screens where screen != window.screen {
+                let v = screen.visibleFrame
+                window.setFrameOrigin(NSPoint(x: v.midX - window.frame.width / 2, y: v.midY - window.frame.height / 2))
+                if window.occlusionState.contains(.visible) { break }
+            }
+        }
         NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: window, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.canvasWindowController = nil }
         }
