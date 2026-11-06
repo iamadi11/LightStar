@@ -1509,3 +1509,26 @@ final class WidgetStateBackgroundSaveTests: XCTestCase {
         XCTAssertFalse(written.isOn)
     }
 }
+
+final class CanvasRemoteTests: XCTestCase {
+    func testCanvasMessagesRoundTrip() throws {
+        let change = SetCanvasMessage(style: "galaxy", stir: [0.1, 0.2, 0.3, 0.4])
+        let msg = try RemoteMessage(type: .setCanvas, content: change)
+        XCTAssertEqual(try msg.decode(SetCanvasMessage.self), change)
+
+        let state = LightStarState(isConnected: true, isOn: true, brightness: 1, colorHue: 0, colorSaturation: 1,
+                                   colorTemperature: 0.5, syncMode: "Canvas")
+            .withCanvas(CanvasState(mode: "auto", style: "lava", quality: "uhd"))
+        let decoded = try JSONDecoder().decode(LightStarState.self, from: JSONEncoder().encode(state))
+        XCTAssertEqual(decoded.canvas, CanvasState(mode: "auto", style: "lava", quality: "uhd"))
+    }
+
+    func testStateFromAMacWithoutCanvasStillDecodes() throws {
+        let old = LightStarState(isConnected: true, isOn: true, brightness: 1, colorHue: 0, colorSaturation: 1,
+                                 colorTemperature: 0.5, syncMode: "Video")
+        var json = try JSONSerialization.jsonObject(with: JSONEncoder().encode(old)) as! [String: Any]
+        json["canvas"] = nil
+        let decoded = try JSONDecoder().decode(LightStarState.self, from: JSONSerialization.data(withJSONObject: json))
+        XCTAssertNil(decoded.canvas)
+    }
+}

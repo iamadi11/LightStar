@@ -289,6 +289,9 @@ struct RemoteLightControlView: View {
                     if RemoteLightControls.target(from: state.outputTarget).sendsToLightbar, let bar = state.lightbar {
                         lightbarSection(bar)
                     }
+                    if let canvas = state.canvas {
+                        canvasSection(canvas, following: state.syncMode == "Canvas")
+                    }
                     let target = RemoteLightControls.target(from: state.outputTarget)
                     let live = RemoteLightControls.canAdjust(
                         target: target,
@@ -406,6 +409,44 @@ struct RemoteLightControlView: View {
 
     /// Effects, scenes, white tone and sync options for the WiZ lightbar,
     /// the same as Settings → Lightbar on the Mac.
+    /// The Mac's Canvas: whether the lights follow it, its mode, animation,
+    /// quality, and a pad to stir it from the phone.
+    private func canvasSection(_ canvas: CanvasState, following: Bool) -> some View {
+        Section {
+            Toggle("Lights follow the Canvas", isOn: Binding(
+                get: { following },
+                set: { client.setSyncMode($0 ? "Canvas" : "Off") }
+            ))
+            Picker("Mode", selection: Binding(
+                get: { canvas.mode },
+                set: { client.setCanvas(SetCanvasMessage(mode: $0)) }
+            )) {
+                ForEach(CanvasMode.allCases) { Text($0.title).tag($0.rawValue) }
+            }
+            .pickerStyle(.segmented)
+            Picker("Animation", selection: Binding(
+                get: { canvas.style },
+                set: { client.setCanvas(SetCanvasMessage(style: $0)) }
+            )) {
+                ForEach(CanvasStyle.allCases) { Text($0.title).tag($0.rawValue) }
+            }
+            Picker("Quality", selection: Binding(
+                get: { canvas.quality },
+                set: { client.setCanvas(SetCanvasMessage(quality: $0)) }
+            )) {
+                ForEach(CanvasQuality.allCases) { Text($0.title).tag($0.rawValue) }
+            }
+            .pickerStyle(.segmented)
+            CanvasStirPad { from, to in
+                client.setCanvas(SetCanvasMessage(stir: [from.x, from.y, to.x, to.y]))
+            }
+        } header: {
+            Text("Canvas")
+        } footer: {
+            Text("Drag on the pad to stir the liquid on the Mac. The lights follow it, no screen recording.")
+        }
+    }
+
     @ViewBuilder
     private func lightbarSection(_ bar: LightbarState) -> some View {
         let orientation = LampGradient.Orientation(rawValue: bar.orientation) ?? .vertical
@@ -714,4 +755,37 @@ struct RemoteSettingsView: View {
 
 #Preview {
     RemoteControlView(client: RemoteControlClient())
+}
+
+
+/// A 16:9 pad: a finger dragging over it stirs the Mac's Canvas at the same
+/// spot. Sends at most 60 moves a second.
+private struct CanvasStirPad: View {
+    let onStir: (CGPoint, CGPoint) -> Void
+    @State private var last: CGPoint?
+    @State private var lastSent = Date.distantPast
+
+    var body: some View {
+        GeometryReader { geo in
+            RoundedRectangle(cornerRadius: 12)
+                .fill(LinearGradient(colors: [.pink, .purple, .blue, .cyan], startPoint: .topLeading, endPoint: .bottomTrailing)
+                    .opacity(0.35))
+                .overlay(Image(systemName: "hand.draw").font(.title2).foregroundStyle(.secondary))
+                .contentShape(Rectangle())
+                .gesture(DragGesture(minimumDistance: 0)
+                    .onChanged { drag in
+                        let p = CGPoint(x: min(1, max(0, drag.location.x / max(1, geo.size.width))),
+                                        y: min(1, max(0, drag.location.y / max(1, geo.size.height))))
+                        defer { last = p }
+                        guard let from = last, Date().timeIntervalSince(lastSent) >= 1.0 / 60 else { return }
+                        lastSent = Date()
+                        onStir(from, p)
+                    }
+                    .onEnded { _ in last = nil })
+        }
+        .aspectRatio(16 / 9, contentMode: .fit)
+        .accessibilityElement()
+        .accessibilityLabel("Stir pad")
+        .accessibilityHint("Drag to stir the Canvas on the Mac")
+    }
 }

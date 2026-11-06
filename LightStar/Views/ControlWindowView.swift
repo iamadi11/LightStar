@@ -49,6 +49,8 @@ struct ControlWindowView: View {
                             presetsBlock
                             Divider()
                             SyncControlView()
+                            Divider()
+                            CanvasSection()
                             if ble.outputTarget.sendsToStrip {
                                 Divider()
                                 EffectsView()

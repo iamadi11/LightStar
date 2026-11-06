@@ -21,6 +21,48 @@ import simd
 /// Real-time 2-D fluid on the GPU for the Canvas. Velocity runs on a coarse
 /// grid; colour ("dye") on a finer one that is drawn at the view's own
 /// resolution. All GPU work is encoded into the caller's command buffer.
+/// How finely the colour is drawn, whatever the screen. Above the screen's
+/// own resolution the picture is filtered down through mipmaps
+/// (supersampling), which keeps fine filaments sharp without shimmer.
+/// Measured on the BenQ (6016×3384): Native 6.3 ms GPU, 4K 7.3 ms, both 60 fps;
+/// 8K was tried and dropped: 458 ms a frame (4 fps) and ~1 GB.
+public enum CanvasQuality: String, CaseIterable, Identifiable, Sendable {
+    case native, uhd
+    public var id: String { rawValue }
+    public var title: String { self == .native ? "Standard" : "4K" }
+    public static let defaultsKey = "canvasQuality"
+    public static var stored: CanvasQuality {
+        UserDefaults.standard.string(forKey: defaultsKey).flatMap(CanvasQuality.init) ?? .uhd
+    }
+
+    /// Short side of the colour texture for a drawable whose short side is `screen` pixels.
+    public func colourResolution(screen: Int) -> Int {
+        switch self {
+        case .native: return min(1440, max(256, screen))
+        case .uhd: return 2160
+        }
+    }
+}
+
+/// The display shader's `DisplayParams`, same layout.
+public struct DisplayLook {
+    /// CanvasStyle order.
+    public var look: Int32 = 0
+    /// Seconds of drift for the drawn-only parts (lava blobs, aurora curtains, stars).
+    public var time: Float = 0
+    private var pad = SIMD2<Float>()
+    public var palette: (SIMD4<Float>, SIMD4<Float>, SIMD4<Float>, SIMD4<Float>) = (.zero, .zero, .zero, .zero)
+    public init() {}
+
+    public init(style: CanvasStyle, time: Float = 0) {
+        look = Int32(CanvasStyle.allCases.firstIndex(of: style) ?? 0)
+        self.time = time
+        let hues = style.look.hues
+        let rgb = (0..<4).map { SIMD4(FluidAutoPilot.rgb(hue: hues[$0 % hues.count]), 1) }
+        palette = (rgb[0], rgb[1], rgb[2], rgb[3])
+    }
+}
+
 public final class FluidSimulation {
     public struct Settings: Equatable, Sendable {
         /// Short side of the velocity grid, in cells.
@@ -57,6 +99,8 @@ public final class FluidSimulation {
 
     public let device: MTLDevice
     public var settings: Settings
+    /// How the colour is drawn; not a Setting, so changing it never rebuilds the textures.
+    public var display = DisplayLook()
     private let pipelines: [String: MTLComputePipelineState]
     private let library: MTLLibrary
     private var velocity: Pair?
@@ -99,7 +143,7 @@ public final class FluidSimulation {
         pressure = makePair(.r16Float, sim)
         divergenceTex = makeTexture(.r16Float, sim)
         curlTex = makeTexture(.r16Float, sim)
-        dye = makePair(.rgba16Float, dyeSize)
+        dye = makePair(.rgba16Float, dyeSize, mipmapped: true)
         uncleared = [velocity?.read, velocity?.write, pressure?.read, pressure?.write, divergenceTex, curlTex,
                      dye?.read, dye?.write].compactMap { $0 }
     }
@@ -177,7 +221,11 @@ public final class FluidSimulation {
         run(encoder, "advect", [velocity.read, dye.read, dye.write], p, size: dye.write); dye.swap()
         encoder.endEncoding()
         self.dye = dye
+        mipsStale = true
     }
+
+    /// Set when the colour moved; the next draw rebuilds the mipmaps once.
+    private var mipsStale = true
 
     private func params(dt: Float) -> Params {
         guard let v = velocity?.read else { return Params() }
@@ -193,10 +241,17 @@ public final class FluidSimulation {
     /// Draws the colour into a render target (the view's drawable, or a small
     /// texture to read the lights' colours from).
     public func draw(_ commandBuffer: MTLCommandBuffer, to pass: MTLRenderPassDescriptor, format: MTLPixelFormat) {
-        guard let dye = dye?.read, let state = displayPipeline(format),
-              let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: pass) else { return }
+        guard let dye = dye?.read, let state = displayPipeline(format) else { return }
+        if mipsStale, dye.mipmapLevelCount > 1, let blit = commandBuffer.makeBlitCommandEncoder() {
+            blit.generateMipmaps(for: dye)
+            blit.endEncoding()
+            mipsStale = false
+        }
+        guard let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: pass) else { return }
         encoder.setRenderPipelineState(state)
         encoder.setFragmentTexture(dye, index: 0)
+        var display = display
+        encoder.setFragmentBytes(&display, length: MemoryLayout<DisplayLook>.stride, index: 0)
         encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
         encoder.endEncoding()
     }
@@ -230,15 +285,16 @@ public final class FluidSimulation {
                                 threadsPerThreadgroup: MTLSize(width: w, height: h, depth: 1))
     }
 
-    private func makeTexture(_ format: MTLPixelFormat, _ size: (Int, Int)) -> MTLTexture? {
-        let d = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: format, width: size.0, height: size.1, mipmapped: false)
+    private func makeTexture(_ format: MTLPixelFormat, _ size: (Int, Int), mipmapped: Bool = false) -> MTLTexture? {
+        let d = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: format, width: size.0, height: size.1, mipmapped: mipmapped)
         d.usage = [.shaderRead, .shaderWrite]
         d.storageMode = .private
         return device.makeTexture(descriptor: d)
     }
 
-    private func makePair(_ format: MTLPixelFormat, _ size: (Int, Int)) -> Pair? {
-        guard let a = makeTexture(format, size), let b = makeTexture(format, size) else { return nil }
+    private func makePair(_ format: MTLPixelFormat, _ size: (Int, Int), mipmapped: Bool = false) -> Pair? {
+        guard let a = makeTexture(format, size, mipmapped: mipmapped),
+              let b = makeTexture(format, size, mipmapped: mipmapped) else { return nil }
         return Pair(read: a, write: b)
     }
 }

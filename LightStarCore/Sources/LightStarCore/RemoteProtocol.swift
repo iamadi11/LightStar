@@ -63,6 +63,7 @@ public enum RemoteMessageType: UInt8, Codable, Sendable {
     case setOutputTarget = 0x2C
     case setLampCode = 0x2D
     case setLightbar = 0x2E
+    case setCanvas = 0x2F
     
     // Mac control (input)
     case mouseMove = 0x30
@@ -189,6 +190,8 @@ public struct LightStarState: Codable, Sendable, Equatable {
     public var lampDetail: String?
     /// The WiZ lightbar, when the Mac has one. Nil on older Macs.
     public var lightbar: LightbarState?
+    /// Canvas settings. Nil on Macs without the Canvas.
+    public var canvas: CanvasState?
     
     public init(
         isConnected: Bool,
@@ -254,6 +257,36 @@ public struct LightStarState: Codable, Sendable, Equatable {
         var copy = self
         copy.lightbar = lightbar
         return copy
+    }
+
+    public func withCanvas(_ canvas: CanvasState?) -> LightStarState {
+        var copy = self
+        copy.canvas = canvas
+        return copy
+    }
+}
+
+/// What the phone shows for the Canvas. Whether the lights follow it is
+/// `syncMode == "Canvas"`.
+public struct CanvasState: Codable, Sendable, Equatable {
+    public var mode: String
+    public var style: String
+    public var quality: String
+    public init(mode: String, style: String, quality: String) {
+        self.mode = mode; self.style = style; self.quality = quality
+    }
+}
+
+/// From the phone: Canvas settings, and/or a stir (a finger moving from one
+/// point to another, 0…1 with y down).
+public struct SetCanvasMessage: Codable, Sendable, Equatable {
+    public var mode: String?
+    public var style: String?
+    public var quality: String?
+    public var stir: [Double]?   // [fromX, fromY, toX, toY]
+
+    public init(mode: String? = nil, style: String? = nil, quality: String? = nil, stir: [Double]? = nil) {
+        self.mode = mode; self.style = style; self.quality = quality; self.stir = stir
     }
 }
 

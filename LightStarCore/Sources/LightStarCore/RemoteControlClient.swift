@@ -557,6 +557,12 @@ public final class RemoteControlClient: ObservableObject {
         }
     }
 
+    public func setCanvas(_ change: SetCanvasMessage) {
+        if let msg = try? RemoteMessage(type: .setCanvas, content: change) {
+            send(msg)
+        }
+    }
+
     public func setLightbar(_ change: SetLightbarMessage) {
         if let msg = try? RemoteMessage(type: .setLightbar, content: change) {
             send(msg)

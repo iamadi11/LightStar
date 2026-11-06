@@ -11,6 +11,9 @@ enum FluidShaders {
     using namespace metal;
 
     constexpr sampler linearClamp(filter::linear, address::clamp_to_edge);
+    // Drawing a big colour texture into a smaller target needs its mipmaps:
+    // plain linear sampling skips texels and shimmers.
+    constexpr sampler displaySampler(filter::linear, mip_filter::linear, address::clamp_to_edge);
 
     struct FluidParams {
         float2 simTexel;     // 1 / velocity texture size
@@ -159,12 +162,146 @@ enum FluidShaders {
         return o;
     }
 
+    struct DisplayParams {
+        int look;            // CanvasStyle order: liquid, aura, lava, aurora, ocean, nebula, ink
+        float time;          // seconds of drift (slowed by Reduce Motion)
+        float2 pad;
+        float4 palette[4];   // the animation's first hues as RGB
+    };
+
+    // Compress brightness, not each channel: a per-channel curve pulled bright
+    // colours towards white and dim ones towards grey (dull). Then vibrance:
+    // push colours away from their own grey so mixed folds stay vivid.
+    float3 popTone(float3 c, float gain) {
+        float peak = max(c.r, max(c.g, c.b));
+        if (peak < 1e-4) return float3(0);
+        c = c / peak * (1.0 - exp(-peak * gain));
+        float luma = dot(c, float3(0.2126, 0.7152, 0.0722));
+        float chroma = (peak - min(c.r, min(c.g, c.b))) / peak;
+        return clamp(mix(float3(luma), c, 1.35 + 0.25 * chroma), 0.0, 1.0);
+    }
+
+    // The colour at full strength: what a thin line or a solid blob shows.
+    float3 pure(float3 c) { return c / max(max(c.r, max(c.g, c.b)), 1e-4); }
+
+    float hash(float2 p) { return fract(sin(dot(p, float2(127.1, 311.7))) * 43758.5453); }
+
+    // A fixed star field; each star twinkles slowly on its own beat.
+    float stars(float2 uv, float aspect, float density, float time) {
+        float2 g = uv * float2(density * aspect, density);
+        float2 cell = floor(g);
+        float h = hash(cell);
+        if (h < 0.93) return 0;
+        float2 off = float2(hash(cell + 7.1), hash(cell + 3.3)) * 0.6 + 0.2;
+        float r = length(g - cell - off);
+        float size = 0.05 + 0.12 * fract(h * 97.0);
+        float twinkle = 0.7 + 0.3 * sin(time * (0.4 + 0.8 * fract(h * 31.0)) + h * 60.0);
+        return exp(-r * r / (size * size)) * twinkle * (0.4 + 0.6 * fract(h * 13.0));
+    }
+
+    // Edges where the colour folds: the bright lines of glowing water.
+    float folds(texture2d<float, access::sample> dye, float2 uv) {
+        float2 t = 2.0 / float2(dye.get_width(), dye.get_height());
+        float3 gx = dye.sample(displaySampler, uv + float2(t.x, 0)).rgb - dye.sample(displaySampler, uv - float2(t.x, 0)).rgb;
+        float3 gy = dye.sample(displaySampler, uv + float2(0, t.y)).rgb - dye.sample(displaySampler, uv - float2(0, t.y)).rgb;
+        return smoothstep(0.02, 0.25, length(gx) + length(gy));
+    }
+
     fragment float4 displayFragment(DisplayOut in [[stage_in]],
-                                    texture2d<float, access::sample> dye [[texture(0)]]) {
-        float3 c = dye.sample(linearClamp, in.uv).rgb;
-        // Soft shoulder instead of a hard clip, so bright folds keep their colour.
-        c = 1.0 - exp(-c * 1.6);
-        return float4(c, 1.0);
+                                    texture2d<float, access::sample> dye [[texture(0)]],
+                                    constant DisplayParams &d [[buffer(0)]]) {
+        float2 uv = in.uv;
+        float aspect = float(dye.get_width()) / float(dye.get_height());
+        float3 a = max(dye.sample(displaySampler, uv).rgb, 0.0);
+        float peak = max(a.r, max(a.g, a.b));
+        float3 c;
+        switch (d.look) {
+        case 1: {
+            // Aura: the liquid blurred into a soft, slowly shifting gradient.
+            float3 soft = max(dye.sample(displaySampler, uv, level(6)).rgb, 0.0)
+                        + 0.5 * max(dye.sample(displaySampler, uv, level(4)).rgb, 0.0);
+            c = max(popTone(soft, 4.0) * 0.95, d.palette[2].rgb * 0.05);
+            break;
+        }
+        case 2: {
+            // Lava lamp: wax blobs rising and sinking, merging where they meet.
+            float2 p = float2(uv.x * aspect, uv.y);
+            float field = 0;
+            float3 col = float3(0);
+            for (int i = 0; i < 7; i++) {
+                float fi = float(i);
+                float h1 = hash(float2(fi, 1.3)), h2 = hash(float2(fi, 7.7)), h3 = hash(float2(fi, 4.1));
+                float r = 0.07 + 0.06 * h1;
+                float x = (0.15 + 0.7 * h2) * aspect + 0.06 * sin(d.time * 0.07 * (1.0 + h3) + fi * 2.1);
+                float y = 0.5 + 0.45 * sin(d.time * (0.05 + 0.04 * h3) + fi * 1.7);
+                float2 delta = p - float2(x, y);
+                float f = r * r / max(dot(delta, delta), 1e-5);
+                field += f;
+                col += d.palette[i % 4].rgb * f;
+            }
+            col /= max(field, 1e-4);
+            float inside = smoothstep(0.97, 1.03, field);   // a crisp wax edge
+            float shade = 0.6 + 0.4 * smoothstep(1.0, 3.0, field);
+            float3 glass = mix(float3(0.03, 0.0, 0.02), float3(0.1, 0.02, 0.04), uv.y);   // lit from below
+            c = glass + col * 0.18 * smoothstep(0.4, 0.97, field) + col * inside * shade
+              + popTone(a, 1.5) * 0.35 * (1.0 - inside);   // stirs show as warm glow
+            break;
+        }
+        case 3: {
+            // Aurora: two curtains hanging from a bright lower edge, in fine rays.
+            float3 sky = mix(float3(0.0, 0.01, 0.04), float3(0.01, 0.03, 0.07), uv.y);
+            float3 sum = float3(0);
+            for (int k = 0; k < 2; k++) {
+                float fk = float(k);
+                float yc = 0.62 - 0.14 * fk + 0.07 * sin(uv.x * 3.1 + d.time * 0.09 + fk * 2.0)
+                         + 0.035 * sin(uv.x * 7.7 - d.time * 0.13 + fk) + 0.015 * sin(uv.x * 17.0 + d.time * 0.21);
+                float above = yc - uv.y;
+                float curtain = above > 0 ? exp(-above / (0.16 - 0.05 * fk)) : exp(above / 0.012);
+                // Uneven rays: three unrelated frequencies, so no regular bars.
+                float rays = 0.72 + 0.12 * sin(uv.x * 61.0 + 3.0 * sin(uv.x * 11.0 + d.time * 0.17) + fk * 5.0)
+                           + 0.1 * sin(uv.x * 147.3 - d.time * 0.23) + 0.06 * sin(uv.x * 389.7 + d.time * 0.11);
+                float3 tint = mix(d.palette[k].rgb, d.palette[3].rgb, smoothstep(0.02, 0.3, above));
+                sum += tint * curtain * rays * (1.0 - 0.45 * fk);
+            }
+            // Stirs and drift add more light, drawn upward like the curtains.
+            float3 streak = float3(0);
+            float w = 0;
+            for (int i = 0; i < 6; i++) {
+                float k = float(i) / 5.0;
+                streak += max(dye.sample(displaySampler, uv + float2(0, k * 0.12), level(2)).rgb, 0.0) * (1.0 - k);
+                w += 1.0 - k;
+            }
+            c = sky + sum * 0.9 + popTone(streak / w, 2.0) * 0.3 + stars(uv, aspect, 140.0, d.time) * 0.5;
+            break;
+        }
+        case 4: {
+            // Ocean glow: bioluminescent edges where the water folds, on a dark sea.
+            float3 sea = mix(float3(0.0, 0.015, 0.05), float3(0.0, 0.04, 0.09), uv.y);
+            float edge = folds(dye, uv);
+            float3 halo = max(dye.sample(displaySampler, uv, level(4)).rgb, 0.0);
+            c = sea + pure(a) * edge * smoothstep(0.02, 0.15, peak) * 0.95 + popTone(halo, 1.2) * 0.4
+              + float3(0.6, 0.9, 1.0) * edge * edge * 0.2 * smoothstep(0.1, 0.4, peak);
+            break;
+        }
+        case 5: {
+            // Nebula: soft clouds over a twinkling star field.
+            float3 cloud = max(dye.sample(displaySampler, uv, level(2)).rgb, 0.0);
+            float3 neb = popTone(mix(a, cloud, 0.6), 1.4) * 0.8;
+            float s = stars(uv, aspect, 120.0, d.time);
+            c = float3(0.0, 0.0, 0.015) + neb + float3(0.9, 0.93, 1.0) * s * (1.0 - 0.6 * max(neb.r, max(neb.g, neb.b)));
+            break;
+        }
+        case 6: {
+            // Ink: colour soaking into warm paper.
+            float ink = 1.0 - exp(-peak * 2.8);
+            c = mix(float3(0.97, 0.95, 0.9), pure(a) * 0.8, ink);
+            break;
+        }
+        default:
+            // Liquid: paint in water.
+            c = popTone(a, 2.2);
+        }
+        return float4(clamp(c, 0.0, 1.0), 1.0);
     }
     """
 }

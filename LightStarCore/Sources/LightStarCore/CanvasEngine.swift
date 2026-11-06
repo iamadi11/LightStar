@@ -19,7 +19,14 @@ public final class CanvasEngine {
 
     public let sim: FluidSimulation?
     private let queue: MTLCommandQueue?
-    public var pilot = FluidAutoPilot()
+    private(set) var pilot = FluidAutoPilot(style: .stored)
+    private var mode = CanvasMode.stored
+    private var style = CanvasStyle.stored
+    /// Interactive mode plays a newly picked animation this long, so the pick shows.
+    static let previewSeconds = 4.0
+    private(set) var previewUntil = 0.0
+    /// Reduce Motion: slower animations (the app sets 0.4).
+    public var motionScale = 1.0 { didSet { applySettings() } }
     private var start = CACurrentMediaTime()
     private var last: CFTimeInterval?
     private var unsimulated = 0.0
@@ -43,6 +50,7 @@ public final class CanvasEngine {
 
     public init() {
         sim = FluidSimulation()
+        defer { applySettings() }
         queue = sim?.device.makeCommandQueue()
         if let device = sim?.device {
             lightTargets = (0..<3).compactMap { _ in
@@ -61,8 +69,9 @@ public final class CanvasEngine {
     /// A drag from `a` to `b` (0…1, y down) stirs the liquid and adds colour.
     public func stir(from a: CGPoint, to b: CGPoint) {
         guard let sim else { return }
+        // Stirring paints in the animation's own palette, walking through it.
         hueWalk = (hueWalk + 0.004).truncatingRemainder(dividingBy: 1)
-        let c = WizRGB(hue: hueWalk, saturation: 1)
+        let c = WizRGB(hue: pilot.paletteHue(hueWalk), saturation: 1)
         let cells = Double(sim.settings.simResolution)
         sim.add(FluidSplat(x: b.x, y: b.y,
                            dx: (b.x - a.x) * cells * 45, dy: (b.y - a.y) * cells * 45,
@@ -73,10 +82,37 @@ public final class CanvasEngine {
     /// Size the canvas for a view's drawable.
     public func resize(_ size: CGSize) {
         guard let sim, size.width > 0, size.height > 0 else { return }
-        // Colour at the drawable's own resolution, up to 1440 on the short side.
-        sim.settings.dyeResolution = min(1440, max(256, Int(min(size.width, size.height))))
+        lastSize = size
+        // Lights only (no window) never needs more than a small canvas.
+        let quality = viewIsShowing ? CanvasQuality.stored : .native
+        sim.settings.dyeResolution = quality.colourResolution(screen: Int(min(size.width, size.height)))
         sim.resize(width: Int(size.width), height: Int(size.height))
         sized = true
+    }
+
+    private var lastSize: CGSize?
+
+    /// Picks up the stored animation and mode (Settings, the Canvas section, the phone).
+    public func applySettings() {
+        let style = CanvasStyle.stored
+        pilot = FluidAutoPilot(style: style, speedScale: motionScale)
+        mode = CanvasMode.stored
+        // Interactive never moves by itself, so a new pick would look like nothing happened.
+        if style != self.style { previewUntil = CACurrentMediaTime() + Self.previewSeconds }
+        self.style = style
+        guard let sim else { return }
+        let look = style.look
+        sim.display = DisplayLook(style: style, time: sim.display.time)
+        sim.settings.curl = look.curl
+        sim.settings.dyeDissipation = look.dyeDissipation
+        sim.settings.velocityDissipation = look.velocityDissipation
+    }
+
+    func runsPilot(at now: CFTimeInterval) -> Bool { mode == .auto || now < previewUntil }
+
+    /// After the quality setting changes: rebuild the colour at the new size.
+    public func applyQuality() {
+        if let lastSize { resize(lastSize) }
     }
 
     /// One frame: physics catch-up at 240 Hz, colour, the lights' copy, and
@@ -100,12 +136,13 @@ public final class CanvasEngine {
         simSteps += steps
         for i in 0..<steps {
             let t = simTime - Double(steps - 1 - i) * step
-            sim.add(pilot.splats(at: t, dt: step, simCells: Double(sim.settings.simResolution)))
+            if runsPilot(at: now) { sim.add(pilot.splats(at: t, dt: step, simCells: Double(sim.settings.simResolution))) }
             sim.stepPhysics(cb, dt: Float(step))
         }
         // Colour moves once per drawn frame, by the time the physics covered.
         if steps > 0 { sim.moveColour(cb, dt: Float(Double(steps) * step)) }
 
+        sim.display.time = Float((now - start) * motionScale)
         if drivesLights, now - lastLightFrame >= 1 / Self.lightRate - 0.002, !lightTargets.isEmpty {
             lastLightFrame = now
             readForLights(cb)
