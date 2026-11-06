@@ -77,6 +77,10 @@ public final class ScreenCaptureKitProvider: NSObject, ScreenFrameProvider {
         cfg.width = 48
         cfg.height = 27
         cfg.pixelFormat = kCVPixelFormatType_32BGRA
+        // Unset, the buffer comes back in the captured display's own space (P3 on both
+        // screens here), while every consumer treats the bytes as sRGB — so the same
+        // content read a different hue depending on which display sync followed.
+        cfg.colorSpaceName = CGColorSpace.sRGB
         // 30 Hz: the lightbar takes 30 fps; the strip's BLE writes stay gated at 20 Hz
         // in the sync loop. EE-011 had 20 here when only the strip existed.
         cfg.minimumFrameInterval = CMTime(value: 1, timescale: 30)
