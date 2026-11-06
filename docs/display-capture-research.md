@@ -1,7 +1,7 @@
 # LightStar Display Capture Research
 
 > Deep technical investigation into macOS display capture, DRM protection, and possibilities for ambient lighting from protected video content.
-> Last updated: September 2026
+> Last updated: November 2026 (re-verified on macOS 26.5.1 — see [Measured Verification](#measured-verification-macos-2651))
 
 ---
 
@@ -33,6 +33,7 @@
 24. [Distribution Implications](#distribution-implications)
 25. [Recommended Implementation Path](#recommended-implementation-path)
 26. [Test Matrix](#test-matrix)
+27. [Measured Verification (macOS 26.5.1)](#measured-verification-macos-2651)
 
 ---
 
@@ -41,6 +42,8 @@
 **Core Finding**: DRM-protected video (Netflix, Amazon Prime, Apple TV+) produces black frames in screen capture by design. This protection operates at the WindowServer compositor level and cannot be circumvented through any public macOS API.
 
 **Viable Workaround**: For Chromium-based browsers (Chrome, Edge, Brave), disabling hardware acceleration forces Widevine L3 software rendering, which makes captured frames visible. This is a user-configurable browser setting, not a DRM bypass.
+
+**Both findings were re-measured on macOS 26.5.1 / Apple M3 in November 2026 and still hold.** With acceleration on, a protected stream captures as a flat Y=16 surface; with it off, the same stream captures within 1% of an unprotected copy of the same asset. Numbers and method: [Measured Verification](#measured-verification-macos-2651).
 
 **Recommended Approach**:
 1. Use ScreenCaptureKit for normal desktop capture (works excellently)
@@ -618,8 +621,8 @@ The following have been confirmed through real-world testing:
 
 | Finding | Status | Source |
 |---------|--------|--------|
-| ScreenCaptureKit receives black for protected video | ✅ Verified | Multiple sources |
-| Chrome HW accel OFF enables capture | ✅ Verified | Community testing |
+| ScreenCaptureKit receives black for protected video | ✅ Verified | Measured on macOS 26.5.1 — see below |
+| Chrome HW accel OFF enables capture | ✅ Verified | Measured on macOS 26.5.1 — see below |
 | Safari always produces black | ✅ Verified | FairPlay design |
 | Virtual displays don't bypass protection | ✅ Verified | BetterDisplay issues |
 | OBS receives same black frames | ✅ Verified | OBS community |
@@ -827,6 +830,69 @@ class MetalColorAnalyzer {
 | Apple TV+ | Safari | N/A | Any | ❌ Black | FairPlay |
 | Apple TV+ | App | N/A | Any | ❌ Black | FairPlay |
 | Disney+ | Chrome | OFF | Any | ✅ Works | Widevine L3 |
+
+---
+
+## Measured Verification (macOS 26.5.1)
+
+Run 2026-11-07 on Apple M3, macOS 26.5.1, Google Chrome, SIP enabled. This section replaces
+"multiple sources" and "community testing" with numbers taken on the machine.
+
+### Method
+
+Both streams play **side by side in one page, in one window**, so a single `screencapture`
+frame holds the protected and unprotected cases under identical geometry, compositing and
+exposure. Earlier attempts loaded them into separate windows; the window size changed between
+loads and the crops no longer corresponded, which produced two junk measurements before the
+design was fixed.
+
+| Element | Value |
+|---------|-------|
+| Player | Shaka Player 4.3.5 |
+| Clear asset | `shaka-demo-assets/angel-one/dash.mpd` |
+| Protected asset | `shaka-demo-assets/angel-one-widevine/dash.mpd` (same source, same scene) |
+| Licence server | `cwip-shaka-proxy.appspot.com/no_auth` (no account needed) |
+| Served from | `http://localhost` — EME needs a secure context, so `file://` will not work |
+| Playback | `autoplay muted` so no click is needed; seek to t=12s to clear the dark title card |
+| Measurement | `screencapture -x -D 2`, then `ffmpeg -vf crop=…,signalstats` per half |
+
+### Results
+
+`signalstats` over the video rectangle. Y is video-range (16–235), so Y=16 is black.
+
+| Condition | YMIN | YAVG | YMAX | SATAVG | SATMAX |
+|-----------|------|------|------|--------|--------|
+| Clear, accel ON | 16 | 52.0 | 235 | 8.74 | 22 |
+| **Widevine, accel ON** | **16** | **16** | **16** | **0** | **0** |
+| Clear, accel OFF | 16 | 55.6 | 235 | 7.79 | 20 |
+| **Widevine, accel OFF** | **16** | **55.1** | **235** | **7.71** | **21** |
+
+**Accel ON**: every pixel of the protected half is exactly 16 with zero saturation. A uniform
+surface, not dark content — real video cannot be perfectly flat across 1.2M pixels.
+
+**Accel OFF**: the protected half tracks the unprotected half to within 1% on every statistic
+(YAVG 55.1 vs 55.6, SATAVG 7.71 vs 7.79). The residual is the two players sitting a few frames
+apart. Captured colour from protected content is **not degraded or approximate** — it is
+equivalent to unprotected content, so no colour compensation is needed in the pipeline.
+
+### Caveat
+
+Shaka's test asset negotiates its own Widevine robustness level. Netflix and Prime request
+their own levels, so this proves the *mechanism* works on macOS 26.5.1 — it does not prove
+those two services specifically. The service-by-service claims in the [Test Matrix](#test-matrix)
+remain untested on this OS.
+
+### Supporting observations
+
+| Observation | Evidence |
+|-------------|----------|
+| HDCP is handled by the Secure Enclave, not the kernel | `ioreg` lists `AppleSEPHDCPManager`, `AppleDCPDPTXRemoteHDCPAuthSessionProxy` |
+| Composition/scanout is owned by the Display Coprocessor | `AppleDCPExpert`, `AppleCLCD2`; the HDCP classes are `Remote…Proxy` objects |
+| DriverKit has no display family, so no sanctioned driver can sit in the path | Apple lists USBDriverKit, HIDDriverKit, NetworkingDriverKit, PCIDriverKit, SerialDriverKit, AudioDriverKit — nothing for graphics |
+| ScreenCaptureKit exposes no colour-only or lower-privilege mode | `SCStreamConfiguration` has width/height/sourceRect/minimumFrameInterval and no protected-content option |
+
+The DriverKit asymmetry is worth noting: `AudioDriverKit` exists, which is why the Core Audio
+process tap works for Music Pulse. There is no video equivalent, at any privilege level.
 
 ---
 
