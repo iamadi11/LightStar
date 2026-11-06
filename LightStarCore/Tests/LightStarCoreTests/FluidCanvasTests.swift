@@ -51,6 +51,15 @@ final class FluidAutoPilotTests: XCTestCase {
 /// Runs the real shaders on this Mac's GPU: they compile, a splat shows up
 /// where it was put, the flow carries it, and nothing turns into NaN.
 final class FluidSimulationGPUTests: XCTestCase {
+    override func setUpWithError() throws {
+        // CI's macOS VMs have a paravirtual GPU: the shaders compile, but it
+        // renders nothing back. Pixel checks run on real Macs only; the
+        // shaders still compile in FluidShaderCompileTests everywhere.
+        if let device = MTLCreateSystemDefaultDevice(), device.name.localizedCaseInsensitiveContains("paravirtual") {
+            throw XCTSkip("\(device.name) renders nothing back")
+        }
+    }
+
     private func render(_ sim: FluidSimulation, size: Int = 48) throws -> [UInt8] {
         let d = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .bgra8Unorm, width: size, height: size, mipmapped: false)
         d.usage = [.renderTarget]
@@ -103,6 +112,13 @@ final class FluidSimulationGPUTests: XCTestCase {
         XCTAssertGreaterThan(rightOfStart, 0, "carried to the right")
         XCTAssertLessThan(atStart, red(first, x: 12, y: 24), "moved on from where it started")
         XCTAssertFalse(later.isEmpty)
+    }
+}
+/// Runs everywhere, CI's virtual GPU included: the Metal source compiles.
+final class FluidShaderCompileTests: XCTestCase {
+    func testShadersCompile() throws {
+        guard MTLCreateSystemDefaultDevice() != nil else { throw XCTSkip("no Metal device") }
+        XCTAssertNotNil(FluidSimulation(), "fluid shaders failed to compile")
     }
 }
 #endif
