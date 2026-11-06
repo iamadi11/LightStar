@@ -53,7 +53,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// The Canvas liquid; runs for its window and, in canvas mode, for the lights.
     lazy var canvas: CanvasEngine = {
         let engine = CanvasEngine()
-        if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion { engine.pilot.speed = 0.4 }
+        if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion { engine.motionScale = 0.4 }
         return engine
     }()
 
@@ -68,6 +68,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .environment(yeelight)
             .environment(homeKitLamp)
             .environment(wizLamp)
+            .environment(\.canvasEngine, canvas)
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -197,6 +198,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             if let ignore = change.ignoreBars { d.set(ignore, forKey: LampGradient.ignoreBarsDefaultsKey) }
             self.remoteControl.publishState()
+        }
+        remoteControl.canvasStatus = {
+            CanvasState(mode: CanvasMode.stored.rawValue, style: CanvasStyle.stored.rawValue,
+                        quality: CanvasQuality.stored.rawValue)
+        }
+        // Same settings as the Canvas section; a stir moves the liquid.
+        remoteControl.onCanvas = { [weak self] change in
+            guard let self else { return }
+            let d = UserDefaults.standard
+            var settingsChanged = false
+            if let raw = change.mode, CanvasMode(rawValue: raw) != nil {
+                d.set(raw, forKey: CanvasMode.defaultsKey); settingsChanged = true
+            }
+            if let raw = change.style, CanvasStyle(rawValue: raw) != nil {
+                d.set(raw, forKey: CanvasStyle.defaultsKey); settingsChanged = true
+            }
+            if let raw = change.quality, CanvasQuality(rawValue: raw) != nil {
+                d.set(raw, forKey: CanvasQuality.defaultsKey)
+                self.canvas.applyQuality()
+            }
+            if settingsChanged { self.canvas.applySettings() }
+            if let s = change.stir, s.count == 4, s.allSatisfy({ $0.isFinite && (-0.1...1.1).contains($0) }) {
+                self.canvas.stir(from: CGPoint(x: s[0], y: s[1]), to: CGPoint(x: s[2], y: s[3]))
+            }
         }
         homeKitLamp.onStateChange = { [weak self] in
             self?.remoteControl.publishState()

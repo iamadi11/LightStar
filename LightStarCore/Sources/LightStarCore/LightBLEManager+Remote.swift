@@ -138,6 +138,8 @@ public final class RemoteControlCoordinator: ObservableObject {
     /// Lightbar state for the phone, and lightbar changes from it. The app owns the lightbar.
     public var lightbarStatus: () -> LightbarState? = { nil }
     public var onLightbar: ((SetLightbarMessage) -> Void)?
+    public var canvasStatus: () -> CanvasState? = { nil }
+    public var onCanvas: ((SetCanvasMessage) -> Void)?
     private var stateObservationTask: Task<Void, Never>?
     private var shouldObserveState = false
     private var lastBroadcastIdentity = ""
@@ -188,6 +190,7 @@ public final class RemoteControlCoordinator: ObservableObject {
             .withSystemLevels(volume: levels.volume, brightness: levels.brightness)
             .withLamp(phase: lamp.phase, detail: lamp.detail)
             .withLightbar(lightbarStatus())
+            .withCanvas(canvasStatus())
     }
 
     public func publishState() {
@@ -281,6 +284,12 @@ public final class RemoteControlCoordinator: ObservableObject {
                 onLampCode?(cmd.code)
             }
             return try? RemoteMessage(type: .stateUpdate, content: stateForClients())
+        case .setCanvas:
+            guard let cmd = try? message.decode(SetCanvasMessage.self) else { return nil }
+            onCanvas?(cmd)
+            // A stir comes 30+ times a second; only a settings change needs the state back.
+            return cmd.stir != nil && cmd.mode == nil && cmd.style == nil && cmd.quality == nil
+                ? nil : try? RemoteMessage(type: .stateUpdate, content: stateForClients())
         case .setLightbar:
             if let cmd = try? message.decode(SetLightbarMessage.self) {
                 onLightbar?(cmd)

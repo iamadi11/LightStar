@@ -253,6 +253,9 @@ struct MenuBarView: View {
             SyncControlView()
                 .stripOutputEnabled(live)
             Divider().opacity(0.35)
+            CanvasSection()
+                .stripOutputEnabled(live)
+            Divider().opacity(0.35)
             HStack {
                 Button("Open full controls") { openLightStarControlWindow() }
                     .buttonStyle(.plain)

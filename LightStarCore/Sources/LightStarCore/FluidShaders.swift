@@ -11,6 +11,9 @@ enum FluidShaders {
     using namespace metal;
 
     constexpr sampler linearClamp(filter::linear, address::clamp_to_edge);
+    // Drawing a big colour texture into a smaller target needs its mipmaps:
+    // plain linear sampling skips texels and shimmers.
+    constexpr sampler displaySampler(filter::linear, mip_filter::linear, address::clamp_to_edge);
 
     struct FluidParams {
         float2 simTexel;     // 1 / velocity texture size
@@ -161,10 +164,19 @@ enum FluidShaders {
 
     fragment float4 displayFragment(DisplayOut in [[stage_in]],
                                     texture2d<float, access::sample> dye [[texture(0)]]) {
-        float3 c = dye.sample(linearClamp, in.uv).rgb;
-        // Soft shoulder instead of a hard clip, so bright folds keep their colour.
-        c = 1.0 - exp(-c * 1.6);
-        return float4(c, 1.0);
+        float3 c = max(dye.sample(displaySampler, in.uv).rgb, 0.0);
+        // Compress brightness, not each channel: a per-channel curve pulled
+        // bright colours towards white and dim ones towards grey (dull).
+        float peak = max(c.r, max(c.g, c.b));
+        if (peak < 1e-4) return float4(0, 0, 0, 1);
+        float mapped = 1.0 - exp(-peak * 2.2);
+        c = c / peak * mapped;
+        // Vibrance: push colours away from their own grey, more where they're
+        // already colourful, so mixed folds stay vivid instead of muddy.
+        float luma = dot(c, float3(0.2126, 0.7152, 0.0722));
+        float chroma = peak > 0 ? (peak - min(c.r, min(c.g, c.b))) / max(peak, 1e-4) : 0;
+        c = max(mix(float3(luma), c, 1.35 + 0.25 * chroma), 0.0);
+        return float4(min(c, 1.0), 1.0);
     }
     """
 }

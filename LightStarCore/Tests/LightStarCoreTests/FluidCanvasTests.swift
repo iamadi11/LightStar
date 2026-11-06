@@ -47,6 +47,40 @@ final class FluidAutoPilotTests: XCTestCase {
     }
 }
 
+final class CanvasStyleTests: XCTestCase {
+    func testEveryAnimationStaysOnTheCanvas() {
+        for style in CanvasStyle.allCases {
+            let pilot = FluidAutoPilot(style: style)
+            for t in stride(from: 0.0, to: 400, by: 0.9) {
+                for s in pilot.splats(at: t, dt: 1 / 60) {
+                    XCTAssert((0.05...0.95).contains(s.x) && (0.05...0.95).contains(s.y), "\(style) at \(t): \(s.x), \(s.y)")
+                    XCTAssert(s.dx.isFinite && s.dy.isFinite)
+                }
+            }
+        }
+    }
+
+    func testAnimationsMoveDifferently() {
+        // Galaxy circles the centre; Lava pushes upward; Aurora mostly sideways.
+        let galaxy = FluidAutoPilot(style: .galaxy)
+        let distances = stride(from: 0.0, to: 200, by: 1.3).flatMap { galaxy.splats(at: $0, dt: 1 / 60) }
+            .map { hypot($0.x - 0.5, $0.y - 0.5) }
+        XCTAssert(distances.allSatisfy { (0.1...0.4).contains($0) }, "galaxy keeps to its rings")
+
+        let lava = stride(from: 0.0, to: 200, by: 0.7).flatMap { FluidAutoPilot(style: .lava).splats(at: $0, dt: 1 / 60) }
+        XCTAssertLessThan(lava.map(\.dy).reduce(0, +), 0, "lava rises (y down)")
+
+        let aurora = stride(from: 0.0, to: 200, by: 0.7).flatMap { FluidAutoPilot(style: .aurora).splats(at: $0, dt: 1 / 60) }
+        XCTAssertGreaterThan(aurora.map { abs($0.dx) }.reduce(0, +), aurora.map { abs($0.dy) }.reduce(0, +) * 2)
+    }
+
+    func testStoredSettingsFallBackToDefaults() {
+        XCTAssertEqual(CanvasStyle(rawValue: "nonsense"), nil)
+        XCTAssertEqual(CanvasStyle.allCases.count, 6)
+        XCTAssertEqual(CanvasMode.allCases.map(\.title), ["Auto", "Interactive"])
+    }
+}
+
 #if canImport(Metal)
 /// Runs the real shaders on this Mac's GPU: they compile, a splat shows up
 /// where it was put, the flow carries it, and nothing turns into NaN.
