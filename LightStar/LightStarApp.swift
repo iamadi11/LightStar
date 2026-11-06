@@ -812,6 +812,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let controller = NSWindowController(window: window)
         canvasWindowController = controller
         controller.showWindow(nil)
+        // A monitor that is asleep or switched to another input (a console)
+        // still counts as a screen, but nothing on it can be seen: if the
+        // Canvas lands there, move it to the first screen where it shows.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak window] in
+            guard let window, window.isVisible, !window.occlusionState.contains(.visible) else { return }
+            for screen in NSScreen.screens where screen != window.screen {
+                let v = screen.visibleFrame
+                window.setFrameOrigin(NSPoint(x: v.midX - window.frame.width / 2, y: v.midY - window.frame.height / 2))
+                if window.occlusionState.contains(.visible) { break }
+            }
+        }
         NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: window, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.canvasWindowController = nil }
         }
