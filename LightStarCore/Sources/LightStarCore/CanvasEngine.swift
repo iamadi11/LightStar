@@ -21,6 +21,10 @@ public final class CanvasEngine {
     private let queue: MTLCommandQueue?
     private(set) var pilot = FluidAutoPilot(style: .stored)
     private var mode = CanvasMode.stored
+    private var style = CanvasStyle.stored
+    /// Interactive mode plays a newly picked animation this long, so the pick shows.
+    static let previewSeconds = 4.0
+    private(set) var previewUntil = 0.0
     /// Reduce Motion: slower animations (the app sets 0.4).
     public var motionScale = 1.0 { didSet { applySettings() } }
     private var start = CACurrentMediaTime()
@@ -93,12 +97,18 @@ public final class CanvasEngine {
         let style = CanvasStyle.stored
         pilot = FluidAutoPilot(style: style, speedScale: motionScale)
         mode = CanvasMode.stored
+        // Interactive never moves by itself, so a new pick would look like nothing happened.
+        if style != self.style { previewUntil = CACurrentMediaTime() + Self.previewSeconds }
+        self.style = style
         guard let sim else { return }
         let look = style.look
+        sim.display = DisplayLook(style: style, time: sim.display.time)
         sim.settings.curl = look.curl
         sim.settings.dyeDissipation = look.dyeDissipation
         sim.settings.velocityDissipation = look.velocityDissipation
     }
+
+    func runsPilot(at now: CFTimeInterval) -> Bool { mode == .auto || now < previewUntil }
 
     /// After the quality setting changes: rebuild the colour at the new size.
     public func applyQuality() {
@@ -126,12 +136,13 @@ public final class CanvasEngine {
         simSteps += steps
         for i in 0..<steps {
             let t = simTime - Double(steps - 1 - i) * step
-            if mode == .auto { sim.add(pilot.splats(at: t, dt: step, simCells: Double(sim.settings.simResolution))) }
+            if runsPilot(at: now) { sim.add(pilot.splats(at: t, dt: step, simCells: Double(sim.settings.simResolution))) }
             sim.stepPhysics(cb, dt: Float(step))
         }
         // Colour moves once per drawn frame, by the time the physics covered.
         if steps > 0 { sim.moveColour(cb, dt: Float(Double(steps) * step)) }
 
+        sim.display.time = Float((now - start) * motionScale)
         if drivesLights, now - lastLightFrame >= 1 / Self.lightRate - 0.002, !lightTargets.isEmpty {
             lastLightFrame = now
             readForLights(cb)

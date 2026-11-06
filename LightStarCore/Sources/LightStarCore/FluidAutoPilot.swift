@@ -12,11 +12,22 @@ public enum CanvasMode: String, CaseIterable, Identifiable, Sendable {
     }
 }
 
-/// The Canvas animations: each is a motion, a palette and its own physics.
+/// The Canvas animations, each after a kind of calming ambient video: its own
+/// drawing (the display shader's look), palette, motion and physics. All slow,
+/// on dark backgrounds (bar Ink), with no flicker.
 public enum CanvasStyle: String, CaseIterable, Identifiable, Sendable {
-    case liquid, neon, lava, aurora, galaxy, ink
+    /// Paint in water. Aura: a soft drifting gradient, like a mood-light loop.
+    /// Lava: a lava lamp's merging blobs. Aurora: northern-lights curtains.
+    /// Ocean: bioluminescent wave edges. Nebula: clouds over stars. Ink: ink on paper.
+    case liquid, aura, lava, aurora, ocean, nebula, ink
     public var id: String { rawValue }
-    public var title: String { rawValue.prefix(1).uppercased() + rawValue.dropFirst() }
+    public var title: String {
+        switch self {
+        case .lava: return "Lava lamp"
+        case .ocean: return "Ocean glow"
+        default: return rawValue.prefix(1).uppercased() + rawValue.dropFirst()
+        }
+    }
     public static let defaultsKey = "canvasStyle"
     public static var stored: CanvasStyle {
         UserDefaults.standard.string(forKey: defaultsKey).flatMap(CanvasStyle.init) ?? .liquid
@@ -42,23 +53,26 @@ public enum CanvasStyle: String, CaseIterable, Identifiable, Sendable {
     public var look: Look {
         switch self {
         case .liquid:
-            return Look(hues: FluidAutoPilot.pop, emitters: 3, speed: 1, pattern: .wander, radius: 0.0018,
-                        force: 1.4, amount: 0.09, curl: 30, dyeDissipation: 0.6, velocityDissipation: 0.2)
-        case .neon:
-            return Look(hues: [0.92, 0.5, 0.25, 0.78, 0.15], emitters: 4, speed: 1.8, pattern: .wander, radius: 0.0011,
-                        force: 2.2, amount: 0.12, curl: 45, dyeDissipation: 0.9, velocityDissipation: 0.3)
+            return Look(hues: FluidAutoPilot.pop, emitters: 3, speed: 0.6, pattern: .wander, radius: 0.0022,
+                        force: 1.1, amount: 0.08, curl: 25, dyeDissipation: 0.45, velocityDissipation: 0.25)
+        case .aura:
+            return Look(hues: [0.92, 0.78, 0.62, 0.5, 0.07], emitters: 4, speed: 0.35, pattern: .wander, radius: 0.012,
+                        force: 0.6, amount: 0.05, curl: 5, dyeDissipation: 0.3, velocityDissipation: 0.6)
         case .lava:
-            return Look(hues: [0.0, 0.04, 0.08, 0.12, 0.95], emitters: 3, speed: 0.5, pattern: .rise, radius: 0.004,
-                        force: 1.0, amount: 0.08, curl: 12, dyeDissipation: 0.35, velocityDissipation: 0.5)
+            return Look(hues: [0.0, 0.06, 0.95, 0.1, 0.88], emitters: 2, speed: 0.4, pattern: .rise, radius: 0.006,
+                        force: 0.7, amount: 0.03, curl: 8, dyeDissipation: 0.5, velocityDissipation: 0.6)
         case .aurora:
-            return Look(hues: [0.33, 0.45, 0.5, 0.75, 0.85], emitters: 3, speed: 0.6, pattern: .sweep, radius: 0.003,
-                        force: 1.1, amount: 0.07, curl: 20, dyeDissipation: 0.5, velocityDissipation: 0.3)
-        case .galaxy:
-            return Look(hues: [0.62, 0.7, 0.78, 0.85, 0.55], emitters: 4, speed: 0.8, pattern: .orbit, radius: 0.0015,
-                        force: 1.6, amount: 0.08, curl: 40, dyeDissipation: 0.45, velocityDissipation: 0.15)
+            return Look(hues: [0.36, 0.42, 0.5, 0.78, 0.33], emitters: 3, speed: 0.35, pattern: .sweep, radius: 0.004,
+                        force: 0.8, amount: 0.05, curl: 15, dyeDissipation: 0.5, velocityDissipation: 0.35)
+        case .ocean:
+            return Look(hues: [0.52, 0.55, 0.6, 0.48, 0.65], emitters: 3, speed: 0.5, pattern: .sweep, radius: 0.003,
+                        force: 1.4, amount: 0.09, curl: 35, dyeDissipation: 0.55, velocityDissipation: 0.25)
+        case .nebula:
+            return Look(hues: [0.62, 0.72, 0.8, 0.88, 0.55], emitters: 4, speed: 0.4, pattern: .orbit, radius: 0.004,
+                        force: 1.0, amount: 0.05, curl: 30, dyeDissipation: 0.3, velocityDissipation: 0.15)
         case .ink:
-            return Look(hues: [0.6, 0.95, 0.12], emitters: 2, speed: 0.4, pattern: .wander, radius: 0.0008,
-                        force: 0.9, amount: 0.06, curl: 55, dyeDissipation: 0.25, velocityDissipation: 0.1)
+            return Look(hues: [0.6, 0.95, 0.12, 0.5], emitters: 2, speed: 0.3, pattern: .wander, radius: 0.0012,
+                        force: 0.8, amount: 0.06, curl: 50, dyeDissipation: 0.2, velocityDissipation: 0.1)
         }
     }
 }

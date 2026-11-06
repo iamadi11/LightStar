@@ -44,6 +44,25 @@ public enum CanvasQuality: String, CaseIterable, Identifiable, Sendable {
     }
 }
 
+/// The display shader's `DisplayParams`, same layout.
+public struct DisplayLook {
+    /// CanvasStyle order.
+    public var look: Int32 = 0
+    /// Seconds of drift for the drawn-only parts (lava blobs, aurora curtains, stars).
+    public var time: Float = 0
+    private var pad = SIMD2<Float>()
+    public var palette: (SIMD4<Float>, SIMD4<Float>, SIMD4<Float>, SIMD4<Float>) = (.zero, .zero, .zero, .zero)
+    public init() {}
+
+    public init(style: CanvasStyle, time: Float = 0) {
+        look = Int32(CanvasStyle.allCases.firstIndex(of: style) ?? 0)
+        self.time = time
+        let hues = style.look.hues
+        let rgb = (0..<4).map { SIMD4(FluidAutoPilot.rgb(hue: hues[$0 % hues.count]), 1) }
+        palette = (rgb[0], rgb[1], rgb[2], rgb[3])
+    }
+}
+
 public final class FluidSimulation {
     public struct Settings: Equatable, Sendable {
         /// Short side of the velocity grid, in cells.
@@ -80,6 +99,8 @@ public final class FluidSimulation {
 
     public let device: MTLDevice
     public var settings: Settings
+    /// How the colour is drawn; not a Setting, so changing it never rebuilds the textures.
+    public var display = DisplayLook()
     private let pipelines: [String: MTLComputePipelineState]
     private let library: MTLLibrary
     private var velocity: Pair?
@@ -229,6 +250,8 @@ public final class FluidSimulation {
         guard let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: pass) else { return }
         encoder.setRenderPipelineState(state)
         encoder.setFragmentTexture(dye, index: 0)
+        var display = display
+        encoder.setFragmentBytes(&display, length: MemoryLayout<DisplayLook>.stride, index: 0)
         encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
         encoder.endEncoding()
     }

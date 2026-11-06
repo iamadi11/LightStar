@@ -61,8 +61,8 @@ final class CanvasStyleTests: XCTestCase {
     }
 
     func testAnimationsMoveDifferently() {
-        // Galaxy circles the centre; Lava pushes upward; Aurora mostly sideways.
-        let galaxy = FluidAutoPilot(style: .galaxy)
+        // Nebula circles the centre; Lava pushes upward; Aurora mostly sideways.
+        let galaxy = FluidAutoPilot(style: .nebula)
         let distances = stride(from: 0.0, to: 200, by: 1.3).flatMap { galaxy.splats(at: $0, dt: 1 / 60) }
             .map { hypot($0.x - 0.5, $0.y - 0.5) }
         XCTAssert(distances.allSatisfy { (0.1...0.4).contains($0) }, "galaxy keeps to its rings")
@@ -76,12 +76,33 @@ final class CanvasStyleTests: XCTestCase {
 
     func testStoredSettingsFallBackToDefaults() {
         XCTAssertEqual(CanvasStyle(rawValue: "nonsense"), nil)
-        XCTAssertEqual(CanvasStyle.allCases.count, 6)
+        XCTAssertEqual(CanvasStyle.allCases.count, 7)
         XCTAssertEqual(CanvasMode.allCases.map(\.title), ["Auto", "Interactive"])
     }
 }
 
 #if canImport(Metal)
+@MainActor
+final class CanvasEngineSettingsTests: XCTestCase {
+    /// Interactive mode is still until stirred, so a new animation plays for a moment.
+    func testInteractivePlaysNewAnimationBriefly() {
+        let d = UserDefaults.standard
+        let saved = (d.object(forKey: CanvasMode.defaultsKey), d.object(forKey: CanvasStyle.defaultsKey))
+        defer { d.set(saved.0, forKey: CanvasMode.defaultsKey); d.set(saved.1, forKey: CanvasStyle.defaultsKey) }
+        d.set(CanvasMode.interactive.rawValue, forKey: CanvasMode.defaultsKey)
+        d.set(CanvasStyle.liquid.rawValue, forKey: CanvasStyle.defaultsKey)
+        let engine = CanvasEngine()
+        let now = CACurrentMediaTime()
+        XCTAssertFalse(engine.runsPilot(at: now), "Interactive stays still")
+        engine.applySettings()
+        XCTAssertFalse(engine.runsPilot(at: now), "same animation: no replay")
+        d.set(CanvasStyle.lava.rawValue, forKey: CanvasStyle.defaultsKey)
+        engine.applySettings()
+        XCTAssertTrue(engine.runsPilot(at: CACurrentMediaTime()))
+        XCTAssertFalse(engine.runsPilot(at: CACurrentMediaTime() + CanvasEngine.previewSeconds + 0.1))
+    }
+}
+
 /// Runs the real shaders on this Mac's GPU: they compile, a splat shows up
 /// where it was put, the flow carries it, and nothing turns into NaN.
 final class FluidSimulationGPUTests: XCTestCase {
@@ -137,6 +158,33 @@ final class FluidSimulationGPUTests: XCTestCase {
         XCTAssertGreaterThan(rightOfStart, 0, "carried to the right")
         XCTAssertLessThan(atStart, red(first, x: 12, y: 24), "moved on from where it started")
         XCTAssertFalse(later.isEmpty)
+    }
+
+    /// Each animation draws the same liquid its own way, not just in other colours.
+    func testEveryAnimationLooksDifferent() throws {
+        var settings = FluidSimulation.Settings()
+        settings.simResolution = 64; settings.dyeResolution = 128
+        let sim = try XCTUnwrap(FluidSimulation(settings: settings), "Metal or the fluid shaders unavailable")
+        sim.resize(width: 400, height: 400)
+        try step(sim, frames: 1)
+        sim.add(FluidSplat(x: 0.35, y: 0.5, dx: 300, dy: 100, color: SIMD3(0.8, 0.1, 0.5), radius: 0.004))
+        sim.add(FluidSplat(x: 0.65, y: 0.4, dx: -200, dy: 0, color: SIMD3(0.1, 0.4, 0.9), radius: 0.003))
+        try step(sim, frames: 10)
+        let frames = try CanvasStyle.allCases.indices.map { i -> [UInt8] in
+            sim.display = DisplayLook(style: CanvasStyle.allCases[i], time: 30)
+            return try render(sim)
+        }
+        for i in frames.indices { for j in frames.indices where j > i {
+            // Share of lit pixels that clearly differ (black background ignored).
+            var lit = 0, differ = 0
+            for p in stride(from: 0, to: frames[i].count, by: 4) {
+                let a = frames[i][p..<p + 3], b = frames[j][p..<p + 3]
+                guard a.contains(where: { $0 > 20 }) || b.contains(where: { $0 > 20 }) else { continue }
+                lit += 1
+                if zip(a, b).contains(where: { abs(Int($0) - Int($1)) > 40 }) { differ += 1 }
+            }
+            XCTAssertGreaterThan(Double(differ), Double(lit) * 0.1, "\(CanvasStyle.allCases[i]) and \(CanvasStyle.allCases[j]) look alike")
+        } }
     }
 }
 #endif
