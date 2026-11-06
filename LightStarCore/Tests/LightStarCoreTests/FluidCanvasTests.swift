@@ -114,6 +114,15 @@ final class CanvasEngineSettingsTests: XCTestCase {
 /// Runs the real shaders on this Mac's GPU: they compile, a splat shows up
 /// where it was put, the flow carries it, and nothing turns into NaN.
 final class FluidSimulationGPUTests: XCTestCase {
+    override func setUpWithError() throws {
+        // CI's macOS VMs have a paravirtual GPU: the shaders compile, but it
+        // renders nothing back. Pixel checks run on real Macs only; the
+        // shaders still compile in FluidShaderCompileTests everywhere.
+        if let device = MTLCreateSystemDefaultDevice(), device.name.localizedCaseInsensitiveContains("paravirtual") {
+            throw XCTSkip("\(device.name) renders nothing back")
+        }
+    }
+
     /// The lights' copy of the scene (no glow or grain), size×size.
     private func render(_ sim: FluidSimulation, look: DisplayLook = DisplayLook(), size: Int = 48) throws -> [UInt8] {
         let renderer = try XCTUnwrap(CanvasRenderer(device: sim.device), "canvas shaders didn't compile")
@@ -278,6 +287,14 @@ final class FluidSimulationGPUTests: XCTestCase {
         let ring = [(32, 24), (32, 40), (24, 32), (40, 32)]
         XCTAssertGreaterThan(ring.map { level(glow, $0.0, $0.1) }.reduce(0, +), ring.map { level(plain, $0.0, $0.1) }.reduce(0, +) + 20,
                              "glow spreads light around a bright spot")
+    }
+}
+/// Runs everywhere, CI's virtual GPU included: the Metal source compiles.
+final class FluidShaderCompileTests: XCTestCase {
+    func testShadersCompile() throws {
+        guard MTLCreateSystemDefaultDevice() != nil else { throw XCTSkip("no Metal device") }
+        let sim = try XCTUnwrap(FluidSimulation(), "fluid shaders failed to compile")
+        XCTAssertNotNil(CanvasRenderer(device: sim.device), "canvas shaders failed to compile")
     }
 }
 #endif
