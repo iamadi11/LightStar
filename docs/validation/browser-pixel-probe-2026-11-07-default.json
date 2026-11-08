@@ -1,0 +1,373 @@
+{
+  "startedAt": "2026-11-06T23:00:28.104Z",
+  "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36",
+  "shaka": "v5.3.4-uncompiled",
+  "entries": [
+    {
+      "name": "clear",
+      "samples": [
+        {
+          "name": "clear",
+          "time": 12,
+          "readyState": 1,
+          "paused": false,
+          "width": 720,
+          "height": 576,
+          "hasMediaKeys": false,
+          "loaded": false,
+          "errors": [],
+          "keySystem": "",
+          "decodedFrames": 0,
+          "canvas": {
+            "mean": 0,
+            "max": 0,
+            "litPixels": 0,
+            "opaquePixels": 0,
+            "rgbMean": [
+              0,
+              0,
+              0
+            ],
+            "elapsedMs": 6.0999999940395355
+          },
+          "videoFrame": {
+            "error": "InvalidStateError",
+            "message": "Failed to construct 'VideoFrame': Invalid source state"
+          }
+        },
+        {
+          "name": "clear",
+          "time": 20.702532,
+          "readyState": 4,
+          "paused": false,
+          "width": 450,
+          "height": 360,
+          "hasMediaKeys": false,
+          "loaded": true,
+          "errors": [],
+          "keySystem": "",
+          "decodedFrames": 222,
+          "canvas": {
+            "mean": 60.303497942386834,
+            "max": 248,
+            "litPixels": 1267,
+            "opaquePixels": 1296,
+            "rgbMean": [
+              67.1520061728395,
+              57.70524691358025,
+              56.05324074074074
+            ],
+            "elapsedMs": 415
+          },
+          "videoFrame": {
+            "created": true,
+            "width": 450,
+            "height": 360
+          }
+        },
+        {
+          "name": "clear",
+          "time": 21.521914,
+          "readyState": 4,
+          "paused": false,
+          "width": 450,
+          "height": 360,
+          "hasMediaKeys": false,
+          "loaded": true,
+          "errors": [],
+          "keySystem": "",
+          "decodedFrames": 242,
+          "canvas": {
+            "mean": 42.49074074074074,
+            "max": 254,
+            "litPixels": 1179,
+            "opaquePixels": 1296,
+            "rgbMean": [
+              56.19135802469136,
+              36.67824074074074,
+              34.60262345679013
+            ],
+            "elapsedMs": 1.9000000059604645
+          },
+          "videoFrame": {
+            "created": true,
+            "width": 450,
+            "height": 360
+          }
+        },
+        {
+          "name": "clear",
+          "time": 21.924744,
+          "readyState": 4,
+          "paused": false,
+          "width": 450,
+          "height": 360,
+          "hasMediaKeys": false,
+          "loaded": true,
+          "errors": [],
+          "keySystem": "",
+          "decodedFrames": 252,
+          "canvas": {
+            "mean": 42.273148148148145,
+            "max": 254,
+            "litPixels": 1169,
+            "opaquePixels": 1296,
+            "rgbMean": [
+              56.10339506172839,
+              36.42824074074074,
+              34.28780864197531
+            ],
+            "elapsedMs": 2.7999999821186066
+          },
+          "videoFrame": {
+            "created": true,
+            "width": 450,
+            "height": 360
+          }
+        },
+        {
+          "name": "clear",
+          "time": 22.328892,
+          "readyState": 4,
+          "paused": false,
+          "width": 450,
+          "height": 360,
+          "hasMediaKeys": false,
+          "loaded": true,
+          "errors": [],
+          "keySystem": "",
+          "decodedFrames": 262,
+          "canvas": {
+            "mean": 42.52829218106996,
+            "max": 255,
+            "litPixels": 1171,
+            "opaquePixels": 1296,
+            "rgbMean": [
+              56.44598765432099,
+              36.520833333333336,
+              34.61805555555556
+            ],
+            "elapsedMs": 2.699999988079071
+          },
+          "videoFrame": {
+            "created": true,
+            "width": 450,
+            "height": 360
+          }
+        },
+        {
+          "name": "clear",
+          "time": 22.73428,
+          "readyState": 4,
+          "paused": false,
+          "width": 450,
+          "height": 360,
+          "hasMediaKeys": false,
+          "loaded": true,
+          "errors": [],
+          "keySystem": "",
+          "decodedFrames": 272,
+          "canvas": {
+            "mean": 43.83307613168724,
+            "max": 254,
+            "litPixels": 1171,
+            "opaquePixels": 1296,
+            "rgbMean": [
+              57.92206790123457,
+              37.73225308641975,
+              35.844907407407405
+            ],
+            "elapsedMs": 2.7999999821186066
+          },
+          "videoFrame": {
+            "created": true,
+            "width": 450,
+            "height": 360
+          }
+        }
+      ]
+    },
+    {
+      "name": "widevine",
+      "samples": [
+        {
+          "name": "widevine",
+          "time": 12.752971,
+          "readyState": 4,
+          "paused": false,
+          "width": 192,
+          "height": 144,
+          "hasMediaKeys": true,
+          "loaded": true,
+          "errors": [],
+          "keySystem": "com.widevine.alpha",
+          "decodedFrames": 23,
+          "canvas": {
+            "mean": 0,
+            "max": 0,
+            "litPixels": 0,
+            "opaquePixels": 1296,
+            "rgbMean": [
+              0,
+              0,
+              0
+            ],
+            "elapsedMs": 1.2999999821186066
+          },
+          "videoFrame": {
+            "error": "InvalidStateError",
+            "message": "Failed to construct 'VideoFrame': Invalid source state"
+          }
+        },
+        {
+          "name": "widevine",
+          "time": 22.546127,
+          "readyState": 4,
+          "paused": false,
+          "width": 192,
+          "height": 144,
+          "hasMediaKeys": true,
+          "loaded": true,
+          "errors": [],
+          "keySystem": "com.widevine.alpha",
+          "decodedFrames": 267,
+          "canvas": {
+            "mean": 0,
+            "max": 0,
+            "litPixels": 0,
+            "opaquePixels": 1296,
+            "rgbMean": [
+              0,
+              0,
+              0
+            ],
+            "elapsedMs": 0.3999999761581421
+          },
+          "videoFrame": {
+            "error": "InvalidStateError",
+            "message": "Failed to construct 'VideoFrame': Invalid source state"
+          }
+        },
+        {
+          "name": "widevine",
+          "time": 22.949957,
+          "readyState": 4,
+          "paused": false,
+          "width": 192,
+          "height": 144,
+          "hasMediaKeys": true,
+          "loaded": true,
+          "errors": [],
+          "keySystem": "com.widevine.alpha",
+          "decodedFrames": 278,
+          "canvas": {
+            "mean": 0,
+            "max": 0,
+            "litPixels": 0,
+            "opaquePixels": 1296,
+            "rgbMean": [
+              0,
+              0,
+              0
+            ],
+            "elapsedMs": 0.20000001788139343
+          },
+          "videoFrame": {
+            "error": "InvalidStateError",
+            "message": "Failed to construct 'VideoFrame': Invalid source state"
+          }
+        },
+        {
+          "name": "widevine",
+          "time": 23.355536,
+          "readyState": 4,
+          "paused": false,
+          "width": 192,
+          "height": 144,
+          "hasMediaKeys": true,
+          "loaded": true,
+          "errors": [],
+          "keySystem": "com.widevine.alpha",
+          "decodedFrames": 288,
+          "canvas": {
+            "mean": 0,
+            "max": 0,
+            "litPixels": 0,
+            "opaquePixels": 1296,
+            "rgbMean": [
+              0,
+              0,
+              0
+            ],
+            "elapsedMs": 0.6000000238418579
+          },
+          "videoFrame": {
+            "error": "InvalidStateError",
+            "message": "Failed to construct 'VideoFrame': Invalid source state"
+          }
+        },
+        {
+          "name": "widevine",
+          "time": 23.760595,
+          "readyState": 4,
+          "paused": false,
+          "width": 192,
+          "height": 144,
+          "hasMediaKeys": true,
+          "loaded": true,
+          "errors": [],
+          "keySystem": "com.widevine.alpha",
+          "decodedFrames": 298,
+          "canvas": {
+            "mean": 0,
+            "max": 0,
+            "litPixels": 0,
+            "opaquePixels": 1296,
+            "rgbMean": [
+              0,
+              0,
+              0
+            ],
+            "elapsedMs": 0.6000000238418579
+          },
+          "videoFrame": {
+            "error": "InvalidStateError",
+            "message": "Failed to construct 'VideoFrame': Invalid source state"
+          }
+        },
+        {
+          "name": "widevine",
+          "time": 24.164754,
+          "readyState": 4,
+          "paused": false,
+          "width": 192,
+          "height": 144,
+          "hasMediaKeys": true,
+          "loaded": true,
+          "errors": [],
+          "keySystem": "com.widevine.alpha",
+          "decodedFrames": 308,
+          "canvas": {
+            "mean": 0,
+            "max": 0,
+            "litPixels": 0,
+            "opaquePixels": 1296,
+            "rgbMean": [
+              0,
+              0,
+              0
+            ],
+            "elapsedMs": 0.6000000238418579
+          },
+          "videoFrame": {
+            "error": "InvalidStateError",
+            "message": "Failed to construct 'VideoFrame': Invalid source state"
+          }
+        }
+      ]
+    }
+  ],
+  "testMode": "installed Chrome; default graphics settings; no screen capture API",
+  "installedChromeVersion": "157.0.8103.38",
+  "macOS": "26.5.1 (25F80), arm64"
+}

@@ -1,5 +1,7 @@
 # LightStar Display Capture Research
 
+> **Research qualification (7 November 2026):** See [the newer display-output investigation](display-output-options-2026-11-07.md) for the current comparison and proposed solution. Several categorical driver, security-level, and service-compatibility claims below exceed the evidence. The historical Shaka test does not establish Netflix/Prime compatibility. The installed SDK includes VideoDriverKit, but no usable existing-display tap was demonstrated. This document retains the earlier investigation and recorded measurements; they were not rerun in the newer review.
+
 > Deep technical investigation into macOS display capture, DRM protection, and possibilities for ambient lighting from protected video content.
 > Last updated: November 2026 (re-verified on macOS 26.5.1 — see [Measured Verification](#measured-verification-macos-2651))
 

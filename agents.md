@@ -372,7 +372,9 @@ See `docs/display-capture-research.md` for full research. Summary:
 
 **DRM-impossible (do not loop on this):** Widevine L1 / FairPlay with hardware acceleration on never puts movie pixels in ScreenCaptureKit. Software-rendered L3 (HW accel off) is the only capturable Chromium path; Safari has none. LightStar automates the Chromium pref + relaunch; it does not patch Widevine or bypass `preventsCapture`.
 
-A GPU/HDMI/DisplayPort **driver** also cannot see those pixels (DCP + WindowServer + HDCP). Background scripts still need Screen Recording. Do not wire `Experimental/DirectCapture/` into the app (`ENABLED=0`, not in `project.yml`).
+No supported GPU/HDMI/DisplayPort **driver tap** for the existing display output has been demonstrated. The installed SDK includes VideoDriverKit, but its device/stream interfaces do not establish scanout access. Background screenshot scripts still need Screen Recording. Do not wire `Experimental/DirectCapture/` into the app (`ENABLED=0`, not in `project.yml`). For evidence limits, WiZ HDMI hardware, and the proposed camera input, see `docs/display-output-options-2026-11-07.md`.
+
+**Chrome direct-pixel experiment (2026-11-07):** Installed Chrome 157/macOS 26.5.1 reads the public Shaka clear video via canvas, but its playing Widevine version yields opaque black and rejects `VideoFrame`, with default hardware graphics and with `--disable-gpu`. This does not use screen capture and does not test Netflix/Prime directly. Do not promise a simple browser sampler fixes protected video. Probe, raw results and limits: `docs/validation/browser-pixel-probe-2026-11-07.md`.
 
 ---
 
