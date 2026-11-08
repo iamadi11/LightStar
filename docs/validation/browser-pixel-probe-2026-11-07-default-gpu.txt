@@ -1,0 +1,7 @@
+Graphics Feature Status
+=======================*   Canvas: Hardware accelerated*   Direct Rendering Display Compositor: Disabled*   Compositing: Hardware accelerated*   Multiple Raster Threads: Enabled*   OpenGL: Enabled*   Rasterization: Hardware accelerated*   Skia Graphite: Enabled*   TreesInViz: Disabled*   Video Decode: Hardware accelerated*   Video Encode: Hardware accelerated*   WebGL: Hardware accelerated*   WebGPU: Hardware accelerated*   WebNN: Disabled
+
+Version Information
+===================Data exported              :2026-11-06T23:01:34.413ZChrome version             :Chrome/157.0.8103.38Operating system           :Mac OS X 26.5.1Software rendering list URL:https://chromium.googlesource.com/chromium/src/+/a733b5afbb3ba618844ff8876b89ad1a774b2f18/gpu/config/software_rendering_list.jsonDriver bug list URL        :https://chromium.googlesource.com/chromium/src/+/a733b5afbb3ba618844ff8876b89ad1a774b2f18/gpu/config/gpu_driver_bug_list.jsonANGLE commit id            :751417514a522D graphics backend        :Skia/157 ca84ce0a6f1659748188469a89361ccea71e3a64Command Line               :/Applications/Google Chrome.app/Contents/MacOS/Google Chrome --user-data-dir=/private/tmp/lightstar-chrome-pixel-test.wdrVYQ --remote-debugging-port=0 --no-first-run --no-default-browser-check --flag-switches-begin --flag-switches-end https://shaka-project.github.io/shaka-player-release/demo/
+
+
